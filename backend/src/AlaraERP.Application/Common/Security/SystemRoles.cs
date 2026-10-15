@@ -1,4 +1,4 @@
-using static AlaraERP.Application.Common.Security.Permissions;
+using P = AlaraERP.Application.Common.Security.Permissions;
 
 namespace AlaraERP.Application.Common.Security;
 
@@ -24,33 +24,33 @@ public static class SystemRoles
         new(Manager, "Runs day-to-day operations: catalogue, pricing, inventory, orders, payments and reports.",
             new HashSet<string>
             {
-                Products.View, Products.Create, Products.Update, Products.Delete, Products.ManagePricing,
-                Inventory.View, Inventory.Receive, Inventory.Adjust, Inventory.Transfer, Inventory.ManageThresholds,
-                Warehouses.Manage,
-                Orders.View, Orders.Create, Orders.Update, Orders.Cancel, Orders.ManagePayments,
-                DeliveryCompanies.Manage,
-                Reports.View,
-                Users.View,
+                P.Products.View, P.Products.Create, P.Products.Update, P.Products.Delete, P.Products.ManagePricing,
+                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer, P.Inventory.ManageThresholds,
+                P.Warehouses.Manage,
+                P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
+                P.DeliveryCompanies.Manage,
+                P.Reports.View,
+                P.Users.View,
             }),
 
         new(InventoryManager, "Receives, adjusts and transfers stock.",
             new HashSet<string>
             {
-                Products.View,
-                Inventory.View, Inventory.Receive, Inventory.Adjust, Inventory.Transfer,
+                P.Products.View,
+                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer,
             }),
 
         new(SalesEmployee, "Takes and processes orders from WhatsApp, Instagram and the website.",
             new HashSet<string>
             {
-                Products.View, Inventory.View,
-                Orders.View, Orders.Create, Orders.Update, Orders.Cancel,
+                P.Products.View, P.Inventory.View,
+                P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel,
             }),
 
         new(Viewer, "Read-only access to catalogue, inventory, orders and reports.",
             new HashSet<string>
             {
-                Products.View, Inventory.View, Orders.View, Reports.View,
+                P.Products.View, P.Inventory.View, P.Orders.View, P.Reports.View,
             }),
     ];
 

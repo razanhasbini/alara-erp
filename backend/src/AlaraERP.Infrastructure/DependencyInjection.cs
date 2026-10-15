@@ -1,4 +1,8 @@
+using AlaraERP.Application.Common;
 using AlaraERP.Application.Identity;
+using AlaraERP.Application.Inventory;
+using AlaraERP.Infrastructure.Seeding;
+using AlaraERP.Infrastructure.Storage;
 using AlaraERP.Infrastructure.Identity;
 using AlaraERP.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -47,11 +51,18 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
         services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<AppUser>>();
 
+        services.AddScoped<IAlaraDbContext>(sp => sp.GetRequiredService<AlaraDbContext>());
+        services.AddScoped<IDocumentNumbers, DocumentNumbers>();
+        services.AddScoped<IStockLocks, StockLocks>();
+        services.AddScoped<IUserDirectory, UserDirectory>();
+        services.AddSingleton<IFileStorage, LocalFileStorage>();
+
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<AdminBootstrapper>();
         services.AddSingleton<DatabaseMigrator>();
+        services.AddScoped<CatalogImporter>();
 
         return services;
     }

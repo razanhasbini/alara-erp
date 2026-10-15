@@ -1,3 +1,7 @@
+using AlaraERP.Application.Common;
+using AlaraERP.Domain.Catalog;
+using AlaraERP.Domain.Inventory;
+using AlaraERP.Domain.Sales;
 using AlaraERP.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -6,13 +10,53 @@ using Microsoft.EntityFrameworkCore;
 namespace AlaraERP.Infrastructure.Persistence;
 
 public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
-    : IdentityDbContext<AppUser, AppRole, Guid>(options)
+    : IdentityDbContext<AppUser, AppRole, Guid>(options), IAlaraDbContext
 {
+    public const string OrderNumberSequence = "order_number_seq";
+    public const string ReceiptNumberSequence = "receipt_number_seq";
+    public const string TransferNumberSequence = "transfer_number_seq";
+    public const string RemittanceNumberSequence = "remittance_number_seq";
+
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<BundleItem> BundleItems => Set<BundleItem>();
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<ProductInventorySettings> ProductInventorySettings => Set<ProductInventorySettings>();
+    public DbSet<Batch> Batches => Set<Batch>();
+    public DbSet<StockBalance> StockBalances => Set<StockBalance>();
+    public DbSet<BatchBalance> BatchBalances => Set<BatchBalance>();
+    public DbSet<StockReservation> StockReservations => Set<StockReservation>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<StockReceipt> StockReceipts => Set<StockReceipt>();
+    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();
+    public DbSet<DeliveryCompany> DeliveryCompanies => Set<DeliveryCompany>();
+    public DbSet<CourierRemittance> CourierRemittances => Set<CourierRemittance>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         ConfigureIdentity(builder);
         builder.ApplyConfigurationsFromAssembly(typeof(AlaraDbContext).Assembly);
+
+        // Domain entities create their own ids (UUIDv7). Telling EF the keys are never store-generated makes it
+        // treat new children reached through navigations (order lines, history, images…) as inserts, not updates.
+        foreach (var entity in builder.Model.GetEntityTypes().Where(e => e.ClrType.Namespace?.StartsWith("AlaraERP.Domain") == true))
+        {
+            var key = entity.FindPrimaryKey();
+            if (key is { Properties: [{ ClrType: var t } single] } && t == typeof(Guid))
+                single.ValueGenerated = Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never;
+        }
+
+        builder.HasSequence<long>(OrderNumberSequence, Schemas.Sales);
+        builder.HasSequence<long>(RemittanceNumberSequence, Schemas.Sales);
+        builder.HasSequence<long>(ReceiptNumberSequence, Schemas.Inventory);
+        builder.HasSequence<long>(TransferNumberSequence, Schemas.Inventory);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)

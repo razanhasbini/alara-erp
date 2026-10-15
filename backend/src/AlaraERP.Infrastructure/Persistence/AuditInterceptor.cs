@@ -24,17 +24,20 @@ public sealed class AuditInterceptor(TimeProvider clock) : SaveChangesIntercepto
     {
         if (context is null) return;
         var now = clock.GetUtcNow();
-        foreach (var entry in context.ChangeTracker.Entries<IAuditable>())
+        foreach (var entry in context.ChangeTracker.Entries<ITracksUpdates>())
         {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            entry.Entity.UpdatedAt = now;
+            if (entry.Entity is not IAuditable auditable) continue;
+
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.CreatedAt = now;
-                entry.Entity.UpdatedAt = now;
+                // Keep a creation time the domain set explicitly (e.g. orders), otherwise stamp it.
+                if (auditable.CreatedAt == default) auditable.CreatedAt = now;
             }
-            else if (entry.State == EntityState.Modified)
+            else
             {
-                entry.Property(e => e.CreatedAt).IsModified = false;
-                entry.Entity.UpdatedAt = now;
+                entry.Property(nameof(IAuditable.CreatedAt)).IsModified = false;
             }
         }
     }

@@ -1,0 +1,699 @@
+{
+  "source": "https://alaraline.co (public catalogue, read 2026-10-15)",
+  "currency": "USD",
+  "notes": [
+    "SKUs were assigned for the ERP; the website has none.",
+    "Sizes (ml/g) are not published on the site and are left empty.",
+    "Weights are taken from the product pages where listed.",
+    "No stock, costs or batches are included: those must be entered from real counts."
+  ],
+  "categories": [
+    {
+      "slug": "hair-care",
+      "name": "Hair Care",
+      "sortOrder": 1,
+      "description": "Shampoos, conditioners, treatments, styling and hair mists."
+    },
+    {
+      "slug": "curls-on-collection",
+      "name": "Curls On Collection",
+      "parent": "hair-care",
+      "sortOrder": 1,
+      "description": "For wavy, curly and coily hair."
+    },
+    {
+      "slug": "hair-accessories",
+      "name": "Hair Accessories",
+      "sortOrder": 2,
+      "description": null
+    },
+    {
+      "slug": "body-care",
+      "name": "Body Care",
+      "sortOrder": 3,
+      "description": null
+    },
+    {
+      "slug": "sets-and-bundles",
+      "name": "Sets & Bundles",
+      "sortOrder": 4,
+      "description": "Routines sold together at a set price."
+    }
+  ],
+  "products": [
+    {
+      "sku": "ALR-HC-SHAM-OH",
+      "name": "Intensive Repair Shampoo – Oh Honey",
+      "slug": "shampoo",
+      "category": "hair-care",
+      "sellingPrice": 15.0,
+      "shortDescription": "Hydrate. Revive. Strengthen.\nExperience next-level haircare with this gentle, sulfate- and silicone-free\nshampoo. Infused with organic botanicals, provitamins, and peptides, it\nrevitalizes and nourishes your hair, delivering softness and shine from the very\nfirst wash. Scented with Honey.",
+      "description": null,
+      "howToUse": "Apply a generous amount to wet hair. Massage gently into scalp and lengths to create a rich lather. Rinse thoroughly. For best results, follow with AlaraLine Intensive Nourish Conditioner.",
+      "ingredients": "Aqua (Water), Organic Aloe Vera, Coconut Oil, Honey, Mango Butter, Hydrolyzed Collagen, Cocamidopropyl Betaine, Pro-Vitamin B5, Hydrolyzed Wheat Protein, Organic Argan Oil, Vitamin E, Biotin, Copper Tripeptide, Leuconostoc/Radish Root Ferment Filtrate, Caprylhydroxamic Acid, Honey Fragrance, Red Dragon Fruit Extract.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/shampoo/",
+      "sourceId": 3789,
+      "weightGrams": 570
+    },
+    {
+      "sku": "ALR-HC-SHAM-TV",
+      "name": "Intensive Repair Shampoo – Tropical Vanilla",
+      "slug": "intensive-repair-shampoo-tropical-vanilla",
+      "category": "hair-care",
+      "sellingPrice": 15.0,
+      "shortDescription": "Hydrate. Revive. Strengthen.\nExperience next-level haircare with this gentle, sulfate- and silicone-free\nshampoo. Infused with organic botanicals, provitamins, and peptides, it\nrevitalizes and nourishes your hair, delivering softness and shine from the very\nfirst wash. Scented with Tropical Vanilla",
+      "description": null,
+      "howToUse": "Apply a generous amount to wet hair. Massage gently into scalp and lengths to create a rich lather. Rinse thoroughly. For best results, follow with AlaraLine Intensive Nourish Conditioner.",
+      "ingredients": "Aqua (Water), Aloe Vera Juice, Coconut Oil, Shea Butter, Mango Butter, Jojoba Oil, Honey, Glycerin, Pro-Vitamin B5, Vitamin E, Lavandula Angustifolia, Leuconostoc/Radish Root Ferment Filtrate, Rosemary Extract, Coconut Fragrance, Vanilla Extract, Raspberry Extract.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/intensive-repair-shampoo-tropical-vanilla/",
+      "sourceId": 4159,
+      "weightGrams": 570
+    },
+    {
+      "sku": "ALR-HC-COND-OH",
+      "name": "Hydrating Conditioner – Oh Honey",
+      "slug": "conditioner",
+      "category": "hair-care",
+      "sellingPrice": 15.0,
+      "shortDescription": "Ultimate Hydration & Silky Smoothness.\nIndulge your hair with this rich, sulfate- and silicone-free conditioner, infused\nwith organic botanicals, provitamins, and peptides. It delivers deep hydration,\neffortless detangling, and a radiant, silky finish—leaving hair luxuriously soft\nand beautifully fragranced. Scented with Honey.",
+      "description": null,
+      "howToUse": null,
+      "ingredients": "Aqua (Water), Aloe Vera Juice, Coconut Oil, Shea Butter, Mango Butter, Jojoba Oil, Honey, Glycerin, Pro-Vitamin B5, Vitamin E, Lavandula Angustifolia, Leuconostoc/Radish Root Ferment Filtrate, Rosemary Extract, Honey Fragrance, Red Dragon Fruit Extract.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/conditioner/",
+      "sourceId": 3791,
+      "weightGrams": 530
+    },
+    {
+      "sku": "ALR-HC-COND-TV",
+      "name": "Hydrating Conditioner – Tropical Vanilla",
+      "slug": "hydrating-conditioner-tropical-vanilla",
+      "category": "hair-care",
+      "sellingPrice": 15.0,
+      "shortDescription": "Ultimate Hydration & Silky Smoothness.\nIndulge your hair with this rich, sulfate- and silicone-free conditioner, infused\nwith organic botanicals, provitamins, and peptides. It delivers deep hydration,\neffortless detangling, and a radiant, silky finish—leaving hair luxuriously soft\nand beautifully fragranced. Scented with Tropical Vanilla",
+      "description": null,
+      "howToUse": "After shampooing, apply a generous amount to wet hair, focusing on mid-lengths and ends. Leave on for 2–5 minutes to allow nutrients to absorb fully. Rinse thoroughly for smooth, nourished, and manageable hair.",
+      "ingredients": "Aqua (Water), Aloe Vera Juice, Coconut Oil, Shea Butter, Mango Butter, Jojoba Oil, Honey, Glycerin, Pro-Vitamin B5, Vitamin E, Lavandula Angustifolia, Leuconostoc/Radish Root Ferment Filtrate, Rosemary Extract, Coconut Fragrance, Vanilla Extract, Raspberry Extract.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hydrating-conditioner-tropical-vanilla/",
+      "sourceId": 4150,
+      "weightGrams": 530
+    },
+    {
+      "sku": "ALR-HC-LEAVEIN",
+      "name": "Leave In Your Dreams",
+      "slug": "leave-in",
+      "category": "hair-care",
+      "sellingPrice": 17.0,
+      "shortDescription": "Fresh. Defined. Hydrated. Nourished.\nA lightweight leave-in cream that refreshes your hair with deep hydration and rich nourishment. It smooths frizz and enhances your natural shape, leaving every strand soft, more defined, and full of life — whether curly, wavy, or straight.",
+      "description": null,
+      "howToUse": "Apply to damp hair after showering for instant hydration and definition. Use daily on dry hair to keep your look fresh, smooth, and perfectly defined all day long.",
+      "ingredients": "Coconut Milk, Aloe Vera, Honey, Avocado Oil, Shea Butter, Jojoba Oil, Water, Cetyl Alcohol, Phyllanthus Emblica (Amla) Fruit Extract, Acacia Concinna (Shikakai) Fruit Extract, Argania Spinosa (Argan) Kernel Oil, Crambe Abyssinica Seed Oil, Phytosterols, Betaine, Serenoa Serrulata (Saw Palmetto) Fruit Extract, Glycerin, Leuconostoc/Radish Root Ferment Filtrate.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/leave-in/",
+      "sourceId": 3799,
+      "weightGrams": 280
+    },
+    {
+      "sku": "ALR-HC-MASK",
+      "name": "Miracle Mask",
+      "slug": "miracle-mask",
+      "category": "hair-care",
+      "sellingPrice": 24.0,
+      "shortDescription": "Intense Deep Hydration\nA rich blend of Shea, Mango, and Cocoa butters with honey penetrates deeply to saturate dry hair with moisture. Restores softness, elasticity, and shine for deeply hydrated, silky, revitalized hair. Results visible from the very first use.",
+      "description": null,
+      "howToUse": "Apply generously to wet hair and leave on for 15 minutes before your shower, then shampoo and rinse as usual.\nAlternatively, use it during your shower after shampoo and conditioner — apply to wet hair, leave for 15 minutes, and do not rinse completely to allow the mask to continue delivering deep hydration throughout the day.",
+      "ingredients": "Biotin, Shea Butter, Mango Butter, Black Castor Oil, Argan Oil, Protein, Tamanu Butter, Kokum Butter, Aloe Vera, Honey, Avocado Oil, Omega 9, Pro-Vitamin B5 (Panthenol), Leuconostoc/Radish Root Ferment Filtrate.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/miracle-mask/",
+      "sourceId": 3803,
+      "weightGrams": 310
+    },
+    {
+      "sku": "ALR-HC-MIRACLE-PRO",
+      "name": "The Miracle Pro-Edition",
+      "slug": "miracle-pro-edition",
+      "category": "hair-care",
+      "sellingPrice": 36.0,
+      "shortDescription": "Our Top Rated Product\nA powerful water-based scalp treatment infused with vitamins, caffeine, peptides, and botanical extracts to support healthier-looking, fuller hair while energizing the scalp and supporting the daily hair growth cycle.",
+      "description": null,
+      "howToUse": "1- Apply a few drops evenly across the scalp.\n2- Use daily for best result.\nStay consistent and you can always pair it with ÀLara Line Intensive Repair Shampoo.",
+      "ingredients": "Aqua (Water), Aloe Barbadensis Leaf Juice, Glycerin, Butylene Glycol, Niacinamide (Vitamin B3), Panthenol (Pro-Vitamin B5), Betaine, Caffeine, Hydrolyzed Pea Peptides, Hydrolyzed Wheat Protein, Sodium Hyaluronate (Hyaluronic Acid), Zinc PCA, Arginine, Saw Palmetto Extract, Rosmarinus Officinalis (Rosemary) Leaf Extract, Panax Ginseng Root Extract, Zingiber Officinale (Ginger) Root Extract, Camellia Sinensis (Green Tea) Extract, Biota Orientalis Leaf Extract, Mel (Honey) Extract, Allantoin, Acetyl Tetrapeptide-3, Biotinoyl Tripeptide-1, Biotin, Trifolium Pratense (Red Clover) Extract, Phenoxyethanol, Ethylhexylglycerin, Hydroxyacetophenone, 1,2-Hexanediol, Citric Acid, Disodium EDTA.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/miracle-pro-edition/",
+      "sourceId": 3808,
+      "weightGrams": 250
+    },
+    {
+      "sku": "ALR-HC-SHAM-AD",
+      "name": "Anti-Dandruff Shampoo",
+      "slug": "anti-dandruff-shampoo",
+      "category": "hair-care",
+      "sellingPrice": 20.0,
+      "shortDescription": "Scalp Advanced Purifying Anti-Dandruff Shampoo gently cleanses while helping reduce visible flakes, balance the scalp, and refresh the hair. Enriched with Piroctone Olamine, Niacinamide, and Caffeine to help soothe the scalp, control excess oil, and promote healthier-looking hair with every wash.",
+      "description": null,
+      "howToUse": "Apply to wet scalp and hair. Massage gently for 1-2 minutes, then leave on for 2-5 minutes to let the formula work. Rinse thoroughly. Use 2-3 times a week or as needed for best results.",
+      "ingredients": "Aqua (Water), Cocamidopropyl Betaine, Decyl Glucoside, Glycerin, Guar Hydroxypropyltrimonium Chloride, Aloe Barbadensis Leaf Extract, Panthenol (Pro-Vitamin B5), Niacinamide (Vitamin B3), Piroctone Olamine, Zinc PCA, Salicylic Acid, Caffeine, Sodium Hyaluronate, Hydrolyzed Wheat Protein, Amino Acid Complex, Simmondsia Chinensis (Jojoba) Seed Oil, Mel (Honey) Extract, Propolis Extract, Ceramide NP, Chamomilla Recutita (Chamomile) Flower Extract, Rosmarinus Officinalis (Rosemary) Leaf Extract, Camellia Sinensis (Green Tea) Leaf Extract, Zingiber Officinale (Ginger) Root Extract, Curcuma Longa (Turmeric) Root Extract, Allantoin, Bisabolol, Tocopherol (Vitamin E), Xanthan Gum, Disodium EDTA (or Tetrasodium Glutamate Diacetate), Benzyl Alcohol, Dehydroacetic Acid, Sodium Benzoate, Citric Acid, Naturally Derived Fragrance.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/anti-dandruff-shampoo/",
+      "sourceId": 4578,
+      "weightGrams": 580
+    },
+    {
+      "sku": "ALR-HC-SCRUB",
+      "name": "Detox Scalp Scrub",
+      "slug": "detox-scalp-scrub",
+      "category": "hair-care",
+      "sellingPrice": 24.0,
+      "shortDescription": null,
+      "description": "Our Detox Scalp Scrub goes beyond regular cleansing to help remove years of buildup, excess oils, impurities, and flakes that can accumulate on the scalp over time. This refreshing exfoliating treatment helps rebalance scalp pH, purify the scalp surface, and promote a healthier environment for hair growth.",
+      "howToUse": null,
+      "ingredients": null,
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/detox-scalp-scrub/",
+      "sourceId": 5573,
+      "weightGrams": null
+    },
+    {
+      "sku": "ALR-HC-CAPS",
+      "name": "Deep Repair Capsules",
+      "slug": "deep-repair-capsules",
+      "category": "hair-care",
+      "sellingPrice": 30.0,
+      "shortDescription": "Gives glossy Keratin-effect enriched with natural oils, vitamins & peptides to smooth repair & add shine",
+      "description": null,
+      "howToUse": null,
+      "ingredients": "Flaxseed Oil, Pumpkin Seed Oil, Jojoba Oil, Coconut Oil, Avocado Oil, Vitamin E, Vitamin A, Biotin, Pro-Vitamin B5, Hydrolyzed Keratin Peptides, Natural Fruit Essence.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/deep-repair-capsules/",
+      "sourceId": 4903,
+      "weightGrams": 60
+    },
+    {
+      "sku": "ALR-HC-HEATPRO",
+      "name": "Heat Protectant",
+      "slug": "heat-protectant",
+      "category": "hair-care",
+      "sellingPrice": 25.0,
+      "shortDescription": "Shield and Protect Your Hair All Day\nProtect your hair with an invisible shield that defends against heat up to 450°F, UV rays, chlorine, and sun exposure. This powerful formula locks in moisture and shine, keeping your hair healthy, strong, and beautifully styled every day.",
+      "description": null,
+      "howToUse": "Shake well before each use. Spray evenly onto damp or dry hair, focusing on areas most exposed to heat or sun. Comb through to distribute. Reapply every 2 hours when exposed to direct sunlight for optimal protection.",
+      "ingredients": "Water, Organic Aloe Vera Juice, Organic Argan Oil, Coconut Oil, Organic Glycerin, Organic Jojoba Oil, Organic Hydrolyzed Rice Protein, Pro-Vitamin B5, Green Tea Extract, Natural Vitamin E, Leuconostoc/Radish Root Ferment Filtrate (Natural Preservative)",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/heat-protectant/",
+      "sourceId": 3837,
+      "weightGrams": 415
+    },
+    {
+      "sku": "ALR-HC-WAXSTICK",
+      "name": "Edge Control Wax Stick",
+      "slug": "wax-stick-styling-hair-wax",
+      "category": "hair-care",
+      "sellingPrice": 22.0,
+      "shortDescription": "Tames Flyaways. Nourishes While It Holds.\nThis smooth-glide wax stick is infused with honey and coconut oil to nourish your hair while providing long-lasting hold. Perfect for taming baby hairs, smoothing edges, and keeping styles sleek without flaking or buildup. Lightweight, non-greasy, and easy to apply",
+      "description": null,
+      "howToUse": "Apply directly to dry hair along the hairline or on flyaways. Use your fingers or a small brush to smooth hair into place. Ideal for sleek buns, ponytails, and polished styles.",
+      "ingredients": "Beeswax, Almond Oil, Coconut Oil.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/wax-stick-styling-hair-wax/",
+      "sourceId": 4165,
+      "weightGrams": 108
+    },
+    {
+      "sku": "ALR-HC-SERUM",
+      "name": "Crystal Glow Hair Serum",
+      "slug": "serum",
+      "category": "hair-care",
+      "sellingPrice": 22.0,
+      "shortDescription": "Illuminate Your Hair with Radiant Golden Glow\nUnlock dazzling shine and smoothness with our Crystal Glow Hair Serum, enriched with provitamins and peptides. This lightweight formula reduces frizz, deeply nourishes strands, and revives dull hair, leaving a luminous, golden glow that catches every ray of light.",
+      "description": null,
+      "howToUse": "Apply a small amount to damp hair before styling to lock in moisture, reduce frizz, and enhance smoothness. For added glow and a polished finish, apply a drop or two on dry hair, focusing on mid-lengths and ends. Perfect for daily use or touch-ups whenever your hair needs a boost of shine.",
+      "ingredients": "Jojoba Oil, Argan Oil, Sweet Almond Oil, Avocado Oil, Pro-Vitamin B5, Peptides, Silk Protein, Vitamin E",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/serum/",
+      "sourceId": 3820,
+      "weightGrams": 175
+    },
+    {
+      "sku": "ALR-HC-MIST-TV",
+      "name": "Hair Mist – Tropical Vanilla",
+      "slug": "hair-mist-tropical-vanilla",
+      "category": "hair-care",
+      "sellingPrice": 20.0,
+      "shortDescription": "Creamy Vanilla. Exotic Touch. Lasts All Day.\nEnjoy an all-day long-lasting scent that combines creamy vanilla with exotic tropical fruits. This alcohol-free mist, infused with vitamin E, leaves your hair feeling fresh, softly scented, and irresistibly vibrant from morning till night.",
+      "description": null,
+      "howToUse": "Mist lightly over dry or damp hair to enjoy an all-day fresh scent. Can be applied anytime for an instant boost of fragrance and hydration. Gentle enough for scalp use.",
+      "ingredients": "Aloe Vera Juice, Rose Water, Vanilla Essential Oil, Vitamin E, Sweet Orange Essential Oil, Optiphen.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hair-mist-tropical-vanilla/",
+      "sourceId": 4198,
+      "weightGrams": 141
+    },
+    {
+      "sku": "ALR-HC-MIST-OH",
+      "name": "Hair Mist – Oh Honey",
+      "slug": "hair-mist-oh-honey",
+      "category": "hair-care",
+      "sellingPrice": 20.0,
+      "shortDescription": "Sweet Honey. Pure Delight. Lasts All Day.\nExperience the warm, sweet scent just like a jar of honey that lingers all day. Alcohol-free and enriched with vitamin E, this mist keeps your hair fresh, softly fragranced, and naturally radiant.",
+      "description": null,
+      "howToUse": "Mist lightly over dry or damp hair to enjoy an all-day fresh scent. Can be applied anytime for an instant boost of fragrance and hydration. Gentle enough for scalp use.",
+      "ingredients": "Honey Extract, Cinnamon Essential Oil, Vitamin E, Aloe Vera Juice, Coconut Water, Optiphen.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hair-mist-oh-honey/",
+      "sourceId": 4137,
+      "weightGrams": 141
+    },
+    {
+      "sku": "ALR-HC-MIST-GT",
+      "name": "Hair Mist – Green Tea",
+      "slug": "hair-mist-green-tea",
+      "category": "hair-care",
+      "sellingPrice": 20.0,
+      "shortDescription": "Zesty Lemon & Green Tea. Refresh & Last.\nAwaken your senses with a fresh blend of lemon and green tea, delivering a crisp, long-lasting scent. Alcohol-free and vitamin E infused, it revitalizes your hair while keeping it lightly scented and fresh all day.",
+      "description": null,
+      "howToUse": "Mist lightly over dry or damp hair to enjoy an all-day fresh scent. Can be applied anytime for an instant boost of fragrance and hydration. Gentle enough for scalp use.",
+      "ingredients": "Aloe Vera Juice, Rose Water, Green Tea, Vitamin E, Tea Tree Essential Oil, Optiphen.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hair-mist-green-tea/",
+      "sourceId": 4131,
+      "weightGrams": 141
+    },
+    {
+      "sku": "ALR-HC-MIST-AM",
+      "name": "Hair Mist – Amber Musk",
+      "slug": "hair-mist-amber-musk",
+      "category": "hair-care",
+      "sellingPrice": 20.0,
+      "shortDescription": "Luxury Arabian Musk & Amber.\nIndulge in the rich, sophisticated aroma of amber and Arabian musk with this long-lasting hair mist. Alcohol-free and fortified with vitamin E, it leaves hair delicately scented and irresistibly soft throughout the day.",
+      "description": null,
+      "howToUse": "Mist lightly over dry or damp hair to enjoy an all-day fresh scent. Can be applied anytime for an instant boost of fragrance and hydration. Gentle enough for scalp use.",
+      "ingredients": "Amber Essential Oil, Musk Essential Oil, Vitamin E, Sandalwood Essential Oil, Aloe Vera Juice, Optiphen.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hair-mist-amber-musk/",
+      "sourceId": 4121,
+      "weightGrams": 141
+    },
+    {
+      "sku": "ALR-CO-SHAM",
+      "name": "Curl Defining Shampoo",
+      "slug": "curl-defining-shampoo",
+      "category": "curls-on-collection",
+      "sellingPrice": 16.0,
+      "shortDescription": "Give your curls the wash they deserve with a hydrating shampoo designed to enhance definition, boost bounce, and leave curls soft, smooth, and beautifully defined. Infused with a juicy blend of antioxidant-rich berries, it helps nourish the hair while enhancing shine, softness, and the natural beauty of your curls without weighing them down.",
+      "description": null,
+      "howToUse": "Apply to wet hair and gently massage into the scalp and lengths. Rinse thoroughly and repeat if desired. For best results, follow with ÀLARA CURLS ON Conditioner.",
+      "ingredients": "Aqua (Water), Cocamidopropyl Betaine, Decyl Glucoside, Glycerin, Betaine, Aloe Barbadensis Leaf Extract (Aloe Vera), Guar Hydroxypropyltrimonium Chloride, Panthenol (Pro-Vitamin B5), Niacinamide (Vitamin B3), Hydrolyzed Rice Protein, Amino Acids, Vaccinium Myrtillus (Bilberry) Fruit Extract, Rubus Idaeus (Raspberry) Fruit Extract, Rubus Fruticosus (Blackberry) Fruit Extract, Simmondsia Chinensis (Jojoba) Seed Oil, Tocopherol (Vitamin E), Glyceryl Caprylate, Caprylyl Glycol, Naturally Derived Fragrance, Citric Acid.\nCustomer Reviews\nQuestions",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/curl-defining-shampoo/",
+      "sourceId": 6125,
+      "weightGrams": null
+    },
+    {
+      "sku": "ALR-CO-COND",
+      "name": "Hydrating Curl Conditioner",
+      "slug": "hydrating-curl-conditioner",
+      "category": "curls-on-collection",
+      "sellingPrice": 14.0,
+      "shortDescription": "Give your curls the hydration they deserve with a nourishing conditioner designed to soften, detangle, enhance definition, and help control frizz. Infused with a juicy blend of antioxidant-rich berries, it helps nourish and condition the hair, leaving curls smooth, shiny, and beautifully defined without weighing them down.",
+      "description": null,
+      "howToUse": "Apply to clean, wet hair after using ÀLARA LINE Shampoo, focusing on the lengths and ends. Leave on for 2–3 minutes, then rinse thoroughly.",
+      "ingredients": "Aqua (Water), Cetearyl Alcohol, Behentrimonium Chloride, Glycerin, Betaine, Aloe Barbadensis Leaf Extract (Aloe Vera), Panthenol (Pro-Vitamin B5), Niacinamide (Vitamin B3), Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea Butter), Hydrolyzed Rice Protein, Amino Acids, Vaccinium Myrtillus (Bilberry) Fruit Extract, Rubus Idaeus (Raspberry) Fruit Extract, Rubus Fruticosus (Blackberry) Fruit Extract, Tocopherol (Vitamin E), Glyceryl Caprylate, Caprylyl Glycol, Naturally Derived Fragrance, Citric Acid.\nCustomer Reviews\nQuestions",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/hydrating-curl-conditioner/",
+      "sourceId": 6128,
+      "weightGrams": null
+    },
+    {
+      "sku": "ALR-CO-CREAM",
+      "name": "Curl Boosting Cream",
+      "slug": "curl-boosting-cream",
+      "category": "curls-on-collection",
+      "sellingPrice": 26.0,
+      "shortDescription": "Boost your curls with a rich curling cream designed to enhance definition, shape, and bounce while helping control frizz. It brings out your natural curl pattern, leaving curls soft, smooth, and beautifully defined. Infused with antioxidant-rich wild berries, it helps nourish the hair while enhancing shine and softness without weighing curls down.",
+      "description": null,
+      "howToUse": "Apply to wet hair after showering, distributing evenly through your curls. Follow with your preferred gel or mousse for extra hold. To boost definition or refresh your curls the next day, lightly re-wet your hair and apply a small amount of cream to reshape your curls.",
+      "ingredients": "Aqua (Water), Cetearyl Alcohol, Glycerin, Butyrospermum Parkii (Shea Butter), Mangifera Indica (Mango) Seed Butter, Betaine, Aloe Barbadensis Leaf Extract (Aloe Vera), Simmondsia Chinensis (Jojoba) Seed Oil, Panthenol (Pro-Vitamin B5), Niacinamide (Vitamin B3), Hydrolyzed Rice Protein, Acacia Senegal Gum, Pullulan, Amino Acids, Vaccinium Myrtillus (Bilberry) Fruit Extract, Rubus Idaeus (Raspberry) Fruit Extract, Rubus Fruticosus (Blackberry) Fruit Extract, Tocopherol (Vitamin E), Glyceryl Caprylate, Caprylyl Glycol, Naturally Derived Fragrance, Citric Acid.\nCustomer Reviews\nQuestions",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/curl-boosting-cream/",
+      "sourceId": 6131,
+      "weightGrams": null
+    },
+    {
+      "sku": "ALR-ACC-BRUSH",
+      "name": "Curly Hair Brush",
+      "slug": "curly-hair-brush",
+      "category": "hair-accessories",
+      "sellingPrice": 13.0,
+      "shortDescription": "Bring your curls to life with our Curly Hair Brush, specially designed to define, detangle, and enhance your natural curl pattern without frizz or breakage.",
+      "description": null,
+      "howToUse": null,
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/curly-hair-brush/",
+      "sourceId": 4906,
+      "weightGrams": 78
+    },
+    {
+      "sku": "ALR-ACC-PILLOW",
+      "name": "Satin Pillow Cover",
+      "slug": "satin-pillow-cover",
+      "category": "hair-accessories",
+      "sellingPrice": 14.0,
+      "shortDescription": "Sleep Smooth. Wake Beautiful.\nOur satin pillow cover is designed to reduce friction on your hair and skin while you sleep, helping to prevent frizz, breakage, and creases. The smooth, silky texture keeps hair moisturized and skin soft, promoting healthier hair and glowing skin every morning. Lightweight and breathable, it’s a luxurious addition to your bedtime routine.",
+      "description": null,
+      "howToUse": "Slip the satin cover over your pillow and enjoy a gentle, protective surface all night long. Machine washable for easy care.",
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/satin-pillow-cover/",
+      "sourceId": 3850,
+      "weightGrams": 65
+    },
+    {
+      "sku": "ALR-ACC-MASSAGER",
+      "name": "Scalp Massager",
+      "slug": "scalp-massager",
+      "category": "hair-accessories",
+      "sellingPrice": 14.0,
+      "shortDescription": "Stimulate. Relax. Strengthen.\nMade with soft silicone, this gentle scalp massager boosts circulation, encourages healthy hair growth, and delivers a calming, spa-like experience. Use with your shampoo for a deep cleanse or pair with AlaraLine Miracle Hair Oil to enhance absorption and nourish your roots.",
+      "description": null,
+      "howToUse": "Use daily in the morning to boost blood circulation and promote relaxation. It’s perfect to use while shampooing or when applying Miracle Hair Oil.",
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/scalp-massager/",
+      "sourceId": 3846,
+      "weightGrams": 41
+    },
+    {
+      "sku": "ALR-ACC-DERMAROLLER",
+      "name": "Derma Roller 0.25mm",
+      "slug": "dermaroller",
+      "category": "hair-accessories",
+      "sellingPrice": 16.0,
+      "shortDescription": "Boost Hair Growth and Improve Skin Texture\nThis 0.25mm derma roller is designed to gently stimulate the scalp, helping improve circulation and enhance the absorption of hair growth oils. The fine titanium needles create micro-channels that allow nutrients to reach the hair follicles more effectively. It can also be used on the skin to improve tone, texture, and product absorption.",
+      "description": null,
+      "howToUse": "Disinfect before each use. On clean, dry scalp or skin, roll gently in vertical, horizontal, and diagonal directions using light pressure. Follow with your favorite hair growth oil or skincare product. Use 2–3 times per week.",
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/dermaroller/",
+      "sourceId": 3842,
+      "weightGrams": 67
+    },
+    {
+      "sku": "ALR-ACC-DIFFUSER",
+      "name": "Diffuser Top for Hair Dryers",
+      "slug": "diffuser-top",
+      "category": "hair-accessories",
+      "sellingPrice": 16.0,
+      "shortDescription": "Fits All Hair Dryer Models\nThis diffuser top easily attaches to any hair dryer. It spreads the airflow gently to reduce frizz and helps define curls and waves, giving your hair more volume and bounce.",
+      "description": null,
+      "howToUse": "Attach the diffuser to your Secchoire dryer. Place sections of damp hair into the bowl, then dry using low heat and speed. Hold near the roots to add volume or scrunch upwards to define curls.",
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/diffuser-top/",
+      "sourceId": 3852,
+      "weightGrams": 148
+    },
+    {
+      "sku": "ALR-ACC-POUCH",
+      "name": "ÀLara’s Pouch",
+      "slug": "alaras-pouch",
+      "category": "hair-accessories",
+      "sellingPrice": 18.0,
+      "shortDescription": null,
+      "description": null,
+      "howToUse": null,
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/alaras-pouch/",
+      "sourceId": 5477,
+      "weightGrams": null
+    },
+    {
+      "sku": "ALR-ACC-TOWEL",
+      "name": "Microfiber Hair Towel",
+      "slug": "microfiber-towel",
+      "category": "hair-accessories",
+      "sellingPrice": 10.0,
+      "shortDescription": "Frizz-Free Drying, Fast and Gentle.\nSoft and absorbent microfiber dries hair quickly without friction, reducing frizz, breakage, and heat damage for smoother, healthier-looking hair.",
+      "description": null,
+      "howToUse": "After washing your hair, gently squeeze out excess water. Flip your head forward, place the towel over your head, and wrap it securely. Twist the towel and tuck or fasten it in place. Leave on for 10–20 minutes, then remove and style as usual — no rubbing needed.",
+      "ingredients": null,
+      "tracksExpiry": false,
+      "sourceUrl": "https://alaraline.co/product/microfiber-towel/",
+      "sourceId": 3815,
+      "weightGrams": 70
+    },
+    {
+      "sku": "ALR-BC-TANOIL",
+      "name": "Golden Dusky Tanning Oil",
+      "slug": "golden-dusky-tanning-oil",
+      "category": "body-care",
+      "sellingPrice": 16.0,
+      "shortDescription": "Glow Fast. Tan Deep.\nGolden Dusky is a fast-absorbing tanning oil designed to accelerate your natural tan while keeping your skin nourished and protected. It helps you achieve a golden glow in less time, without causing dryness or burns. Lightweight and non-greasy, it leaves your skin soft, smooth, and sun-kissed.",
+      "description": null,
+      "howToUse": "Apply generously to clean, dry skin before sun exposure. Reapply regularly, especially after swimming or towel-drying. For best results, avoid peak UV hours and tan gradually.",
+      "ingredients": "Sweet Almond Oil, Cocoa Seed Extract, Coconut Oil, Olive Oil, Grape Seed Oil, Green Tea, Walnut Oil, Date Oil, Watermelon Seeds, SPF 15.",
+      "tracksExpiry": true,
+      "sourceUrl": "https://alaraline.co/product/golden-dusky-tanning-oil/",
+      "sourceId": 3860,
+      "weightGrams": 200
+    }
+  ],
+  "bundles": [
+    {
+      "sku": "ALR-SET-FULL-OH",
+      "name": "Full Treatment Set – Oh Honey",
+      "slug": "full-treatment-set-oh-honey",
+      "category": "sets-and-bundles",
+      "sellingPrice": 75.0,
+      "compareAtPrice": 107.0,
+      "shortDescription": null,
+      "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams\nMiracle Mask\nThe Miracle Pro-Edition",
+      "components": [
+        {
+          "sku": "ALR-HC-SHAM-OH",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-COND-OH",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-LEAVEIN",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MASK",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIRACLE-PRO",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/full-treatment-set/",
+      "sourceId": 3947
+    },
+    {
+      "sku": "ALR-SET-FULL-TV",
+      "name": "Full Treatment Set – Tropical Vanilla",
+      "slug": "full-treatment-set-tropical-vanilla",
+      "category": "sets-and-bundles",
+      "sellingPrice": 75.0,
+      "compareAtPrice": 107.0,
+      "shortDescription": null,
+      "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams\nMiracle Mask\nThe Miracle Pro-Edition",
+      "components": [
+        {
+          "sku": "ALR-HC-SHAM-TV",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-COND-TV",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-LEAVEIN",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MASK",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIRACLE-PRO",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/full-treatment-set/",
+      "sourceId": 3947
+    },
+    {
+      "sku": "ALR-SET-TRIO-OH",
+      "name": "Hydrate & Repair Trio – Oh Honey",
+      "slug": "hydrate-and-repair-trio-oh-honey",
+      "category": "sets-and-bundles",
+      "sellingPrice": 40.0,
+      "compareAtPrice": 47.0,
+      "shortDescription": null,
+      "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams",
+      "components": [
+        {
+          "sku": "ALR-HC-SHAM-OH",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-COND-OH",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-LEAVEIN",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/hydrate-and-repair-trio/",
+      "sourceId": 5486
+    },
+    {
+      "sku": "ALR-SET-TRIO-TV",
+      "name": "Hydrate & Repair Trio – Tropical Vanilla",
+      "slug": "hydrate-and-repair-trio-tropical-vanilla",
+      "category": "sets-and-bundles",
+      "sellingPrice": 40.0,
+      "compareAtPrice": 47.0,
+      "shortDescription": null,
+      "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams",
+      "components": [
+        {
+          "sku": "ALR-HC-SHAM-TV",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-COND-TV",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-LEAVEIN",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/hydrate-and-repair-trio/",
+      "sourceId": 5486
+    },
+    {
+      "sku": "ALR-SET-CURLS",
+      "name": "Curls On Collection",
+      "slug": "curls-on-collection",
+      "category": "sets-and-bundles",
+      "sellingPrice": 49.0,
+      "compareAtPrice": 56.0,
+      "shortDescription": "Curls On Collection Includes:\n– Curl Defining Shampoo\n– Curl Hydrating Conditioner\n-Curl Boosting Cream",
+      "description": null,
+      "components": [
+        {
+          "sku": "ALR-CO-SHAM",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-CO-COND",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-CO-CREAM",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/curls-on-collection/",
+      "sourceId": 6133
+    },
+    {
+      "sku": "ALR-SET-CURLS-KIT",
+      "name": "Curls On Care Kit",
+      "slug": "curls-on-care-kit",
+      "category": "sets-and-bundles",
+      "sellingPrice": 85.0,
+      "compareAtPrice": 116.0,
+      "shortDescription": "Including:\n– Curl Defining Shampoo\n– Hydrating Curl Conditioner\n– Curl Boosting Cream\n– Miracle Mask\n– The Miracle Pro-Edition",
+      "description": null,
+      "components": [
+        {
+          "sku": "ALR-CO-SHAM",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-CO-COND",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-CO-CREAM",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MASK",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIRACLE-PRO",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/curls-on-care-kit/",
+      "sourceId": 6166
+    },
+    {
+      "sku": "ALR-SET-DUO",
+      "name": "Deep Repair Duo",
+      "slug": "deep-repair-duo",
+      "category": "sets-and-bundles",
+      "sellingPrice": 53.0,
+      "compareAtPrice": 60.0,
+      "shortDescription": "A power duo for deep repair and hydration!\nour Miracle mask and oil together to restore strength, reduce damage and leave your hair silky smooth and healthy.",
+      "description": null,
+      "components": [
+        {
+          "sku": "ALR-HC-MASK",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIRACLE-PRO",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/deep-repair-duo/",
+      "sourceId": 4214
+    },
+    {
+      "sku": "ALR-SET-MISTS",
+      "name": "4 Hair Mists",
+      "slug": "4hair-mists",
+      "category": "sets-and-bundles",
+      "sellingPrice": 65.0,
+      "compareAtPrice": 80.0,
+      "shortDescription": null,
+      "description": null,
+      "components": [
+        {
+          "sku": "ALR-HC-MIST-TV",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIST-OH",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIST-GT",
+          "quantity": 1
+        },
+        {
+          "sku": "ALR-HC-MIST-AM",
+          "quantity": 1
+        }
+      ],
+      "sourceUrl": "https://alaraline.co/product/4hair-mists/",
+      "sourceId": 4632
+    }
+  ]
+}

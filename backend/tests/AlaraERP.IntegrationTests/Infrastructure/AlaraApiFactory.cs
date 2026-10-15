@@ -42,6 +42,8 @@ public sealed class AlaraApiFactory : WebApplicationFactory<Program>, IAsyncLife
             // Re-validate the session on every request so deactivation/role tests are deterministic.
             ["Auth:SessionRevalidationInterval"] = "00:00:00",
             ["Logging:LogLevel:Default"] = "Warning",
+            // Uploaded test images go to a throwaway folder, never the API's App_Data.
+            ["Storage:LocalPath"] = Path.Combine(Path.GetTempPath(), "alara-erp-tests", Guid.NewGuid().ToString("N")),
         }));
     }
 
@@ -117,4 +119,11 @@ public abstract class ApiTestBase(AlaraApiFactory factory) : IAsyncLifetime
     }
 
     protected async Task<ErpClient> SignedInAsAsync(params string[] roles) => await SignedInAsync(await CreateEmployeeAsync(roles));
+
+    /// <summary>A Manager session plus a scenario builder: covers catalogue, inventory, orders and payments.</summary>
+    protected async Task<(ErpClient Client, Scenario Scenario)> ManagerAsync()
+    {
+        var client = await SignedInAsAsync(AlaraERP.Application.Common.Security.SystemRoles.Manager);
+        return (client, new Scenario(client, Factory));
+    }
 }

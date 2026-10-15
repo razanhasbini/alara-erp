@@ -1,5 +1,6 @@
 using AlaraERP.Infrastructure.Identity;
 using AlaraERP.Infrastructure.Persistence;
+using AlaraERP.Infrastructure.Seeding;
 using Npgsql;
 
 namespace AlaraERP.Api.Cli;
@@ -10,7 +11,7 @@ namespace AlaraERP.Api.Cli;
 /// </summary>
 public static class CliCommands
 {
-    public static readonly string[] Names = ["migrate", "bootstrap-admin"];
+    public static readonly string[] Names = ["migrate", "bootstrap-admin", "import-catalog"];
 
     public static async Task<int?> TryRunAsync(WebApplication app, string[] args)
     {
@@ -30,6 +31,18 @@ public static class CliCommands
                     return 0;
                 case "bootstrap-admin":
                     return await BootstrapAdminAsync(app, config, cts.Token) ? 0 : 1;
+                case "import-catalog":
+                    if (args.Length < 2)
+                        throw new InvalidOperationException("Usage: import-catalog <path-to-catalog.json>");
+                    await using (var scope = app.Services.CreateAsyncScope())
+                    {
+                        var result = await scope.ServiceProvider.GetRequiredService<CatalogImporter>()
+                            .ImportAsync(Path.GetFullPath(args[1]), cts.Token);
+                        Console.WriteLine($"Categories created: {result.CategoriesCreated}, products: {result.ProductsCreated}, " +
+                                          $"bundles: {result.BundlesCreated}, skipped (already present): {result.Skipped}, " +
+                                          $"warehouse MAIN created: {result.WarehouseCreated}");
+                    }
+                    return 0;
             }
         }
         catch (Exception ex)

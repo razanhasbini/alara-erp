@@ -16,7 +16,7 @@ var config = builder.Configuration;
 if (!builder.Environment.IsDevelopment())
     builder.Logging.ClearProviders().AddJsonConsole();
 
-builder.Services.AddApplication();
+builder.Services.AddApplication(config);
 builder.Services.AddInfrastructure(config);
 
 builder.Services.AddHttpContextAccessor();

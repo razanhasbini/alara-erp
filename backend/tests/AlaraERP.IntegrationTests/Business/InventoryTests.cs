@@ -1,0 +1,199 @@
+using System.Net;
+using AlaraERP.Application.Common;
+using AlaraERP.Application.Common.Security;
+using AlaraERP.Application.Inventory;
+using AlaraERP.Domain.Inventory;
+using AlaraERP.IntegrationTests.Infrastructure;
+
+namespace AlaraERP.IntegrationTests.Business;
+
+public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factory)
+{
+    [Fact]
+    public async Task Receiving_stock_creates_batch_balance_and_receipt_movement()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        var expiry = Scenario.InAYear;
+
+        var receipt = await s.ReceiveAsync(warehouse.Id, mask.Id, 40, expiry, "LOT-2026-07", unitCost: 6.25m);
+
+        Assert.StartsWith("RC-", receipt.ReceiptNumber);
+        Assert.Equal(40, receipt.TotalUnits);
+        Assert.Equal(250.00m, receipt.TotalCost);
+        var stock = await s.StockAsync(mask.Id);
+        Assert.Equal(40, stock.OnHand);
+        Assert.Equal(0, stock.Reserved);
+        var batch = Assert.Single(stock.Batches);
+        Assert.Equal(("LOT-2026-07", expiry, 40), (batch.BatchNumber, batch.ExpiryDate, batch.OnHand));
+        var movement = Assert.Single((await client.GetJsonAsync<PagedResult<MovementDto>>($"/api/inventory/movements?productId={mask.Id}")).Items);
+        Assert.Equal((MovementType.Receipt, 40, receipt.ReceiptNumber), (movement.Type, movement.QuantityChange, movement.ReferenceNumber));
+    }
+
+    [Fact]
+    public async Task Expiry_is_required_for_tracked_products_and_cannot_be_in_the_past()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var serum = await s.ProductAsync("ALR-HC-SERUM", 22m);
+        var brush = await s.ProductAsync("ALR-ACC-BRUSH", 13m, tracksExpiry: false);
+
+        var missing = await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(serum.Id, 5, null, null, null)]));
+        var past = await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(serum.Id, 5, null, null, new DateOnly(2020, 1, 1))]));
+        var accessory = await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(brush.Id, 5, null, null, null)]));
+
+        Assert.Equal("inventory.expiry_required", await missing.ProblemCodeAsync());
+        Assert.Equal("inventory.already_expired", await past.ProblemCodeAsync());
+        Assert.Equal(HttpStatusCode.Created, accessory.StatusCode);
+    }
+
+    [Fact]
+    public async Task Bundles_cannot_be_stocked_directly()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var shampoo = await s.ProductAsync("ALR-SH", 15m);
+        var set = await s.BundleAsync("ALR-SET", 20m, (shampoo.Id, 1));
+
+        var response = await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(set.Id, 5, null, null, Scenario.InAYear)]));
+
+        Assert.Equal("inventory.bundle_not_stocked", await response.ProblemCodeAsync());
+    }
+
+    [Fact]
+    public async Task Adjustments_need_a_reason_and_never_eat_into_reserved_stock()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var oil = await s.ProductAsync("ALR-BC-TANOIL", 16m);
+        await s.ReceiveAsync(warehouse.Id, oil.Id, 10);
+        var batchId = (await s.StockAsync(oil.Id)).Batches.Single().BatchId;
+        await s.OrderAsync(warehouse.Id, confirm: true, (oil.Id, 7)); // 7 reserved, 3 free
+
+        var noReason = await client.PostAsync("/api/inventory/adjustments",
+            new AdjustStockRequest(warehouse.Id, oil.Id, -1, AdjustmentReason.Other, null, batchId, null, null));
+        var tooMuch = await client.PostAsync("/api/inventory/adjustments",
+            new AdjustStockRequest(warehouse.Id, oil.Id, -4, AdjustmentReason.Damaged, "Broken bottles", batchId, null, null));
+        var ok = await client.PostAsync("/api/inventory/adjustments",
+            new AdjustStockRequest(warehouse.Id, oil.Id, -3, AdjustmentReason.Damaged, "Broken bottles", batchId, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, noReason.StatusCode);
+        Assert.Equal("inventory.insufficient_available", await tooMuch.ProblemCodeAsync());
+        var movement = await ok.OkJsonAsync<MovementDto>();
+        Assert.Equal((MovementType.AdjustmentDecrease, -3, AdjustmentReason.Damaged), (movement.Type, movement.QuantityChange, movement.Reason));
+        var stock = await s.StockAsync(oil.Id);
+        Assert.Equal((7, 7, 0), (stock.OnHand, stock.Reserved, stock.Available));
+    }
+
+    [Fact]
+    public async Task Transfers_move_stock_first_expiry_first_and_record_both_sides()
+    {
+        var (client, s) = await ManagerAsync();
+        var main = await s.WarehouseAsync("MAIN");
+        var shop = await s.WarehouseAsync("SHOP");
+        var mist = await s.ProductAsync("ALR-HC-MIST-OH", 20m);
+        var soon = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(3);
+        await s.ReceiveAsync(main.Id, mist.Id, 10, Scenario.InAYear, "LATE");
+        await s.ReceiveAsync(main.Id, mist.Id, 4, soon, "EARLY");
+
+        var transfer = await (await client.PostAsync("/api/inventory/transfers",
+            new TransferStockRequest(main.Id, shop.Id, "Restock shop", [new TransferLineInput(mist.Id, 6, null)]))).OkJsonAsync<TransferDto>();
+
+        Assert.StartsWith("TR-", transfer.TransferNumber);
+        Assert.Equal([("EARLY", 4), ("LATE", 2)], transfer.Lines.Select(l => (l.BatchNumber, l.Quantity)));
+        Assert.Equal(8, await s.AvailableAsync(mist.Id, main.Id));
+        Assert.Equal(6, await s.AvailableAsync(mist.Id, shop.Id));
+        Assert.Equal(14, await s.AvailableAsync(mist.Id));
+        var movements = (await client.GetJsonAsync<PagedResult<MovementDto>>($"/api/inventory/movements?referenceId={transfer.Id}")).Items;
+        Assert.Equal(4, movements.Count);
+        Assert.Equal(0, movements.Sum(m => m.QuantityChange));
+    }
+
+    [Fact]
+    public async Task Transfer_of_more_than_is_available_fails_and_changes_nothing()
+    {
+        var (client, s) = await ManagerAsync();
+        var main = await s.WarehouseAsync("MAIN");
+        var shop = await s.WarehouseAsync("SHOP");
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        await s.ReceiveAsync(main.Id, mask.Id, 3);
+
+        var response = await client.PostAsync("/api/inventory/transfers",
+            new TransferStockRequest(main.Id, shop.Id, null, [new TransferLineInput(mask.Id, 5, null)]));
+
+        Assert.Equal("inventory.insufficient_available", await response.ProblemCodeAsync());
+        Assert.Equal(3, await s.AvailableAsync(mask.Id, main.Id));
+        Assert.Equal(0, await s.AvailableAsync(mask.Id, shop.Id));
+    }
+
+    [Fact]
+    public async Task Bundle_availability_is_limited_by_its_scarcest_component()
+    {
+        var (_, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var shampoo = await s.ProductAsync("ALR-SH", 15m);
+        var conditioner = await s.ProductAsync("ALR-CO", 15m);
+        await s.ReceiveAsync(warehouse.Id, shampoo.Id, 10);
+        await s.ReceiveAsync(warehouse.Id, conditioner.Id, 7);
+        var duo = await s.BundleAsync("ALR-DUO", 25m, (shampoo.Id, 2), (conditioner.Id, 1));
+
+        Assert.Equal(5, await s.AvailableAsync(duo.Id)); // 10 shampoo / 2 per set
+    }
+
+    [Fact]
+    public async Task Low_stock_uses_the_threshold_a_manager_sets()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        await s.ReceiveAsync(warehouse.Id, mask.Id, 5);
+
+        Assert.Equal(StockStatus.InStock, (await s.StockAsync(mask.Id)).Status);
+        (await client.PutAsync($"/api/inventory/settings/{mask.Id}", new UpdateInventorySettingsRequest(5, true))).EnsureSuccessStatusCode();
+
+        Assert.Equal(StockStatus.Low, (await s.StockAsync(mask.Id)).Status);
+        var low = await client.GetJsonAsync<PagedResult<StockRowDto>>("/api/inventory?filter=Low");
+        Assert.Equal(mask.Id, Assert.Single(low.Items).ProductId);
+    }
+
+    [Fact]
+    public async Task Only_managers_set_thresholds_and_sales_cannot_move_stock()
+    {
+        var (_, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        using var stockKeeper = await SignedInAsAsync(SystemRoles.InventoryManager);
+        using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
+
+        var threshold = await stockKeeper.PutAsync($"/api/inventory/settings/{mask.Id}", new UpdateInventorySettingsRequest(3, true));
+        var receive = await stockKeeper.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(mask.Id, 5, null, null, Scenario.InAYear)]));
+        var salesAdjust = await sales.PostAsync("/api/inventory/adjustments",
+            new AdjustStockRequest(warehouse.Id, mask.Id, 5, AdjustmentReason.CountCorrection, null, null, null, Scenario.InAYear));
+
+        Assert.Equal(HttpStatusCode.Forbidden, threshold.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, receive.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, salesAdjust.StatusCode);
+    }
+
+    [Fact]
+    public async Task Ledger_rows_cannot_be_rewritten_by_the_application_role()
+    {
+        var (_, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        await s.ReceiveAsync(warehouse.Id, mask.Id, 5);
+
+        await using var conn = new Npgsql.NpgsqlConnection(Factory.AppConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new Npgsql.NpgsqlCommand("UPDATE inventory.stock_movements SET quantity_change = 500", conn);
+
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => cmd.ExecuteNonQueryAsync());
+        Assert.Equal("42501", ex.SqlState); // insufficient_privilege
+    }
+}
