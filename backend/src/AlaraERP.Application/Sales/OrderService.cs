@@ -42,6 +42,7 @@ public sealed class OrderService(
                           || (o.TrackingNumber != null && EF.Functions.Like(o.TrackingNumber.ToLower(), term, "\\")));
         }
         if (query.Status is { } status) q = q.Where(o => o.Status == status);
+        if (query.Statuses is { Length: > 0 } statuses) q = q.Where(o => statuses.Contains(o.Status));
         if (query.PaymentStatus is { } payment) q = q.Where(o => o.PaymentStatus == payment);
         if (query.Source is { } source) q = q.Where(o => o.Source == source);
         if (query.DeliveryCompanyId is { } company) q = q.Where(o => o.DeliveryCompanyId == company);

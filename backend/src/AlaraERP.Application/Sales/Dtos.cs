@@ -27,7 +27,9 @@ public sealed record ShipOrderRequest(Guid? DeliveryCompanyId, string? TrackingN
 
 public sealed record OrderListQuery(
     string? Search, OrderStatus? Status, PaymentStatus? PaymentStatus, OrderSource? Source, Guid? DeliveryCompanyId,
-    DateOnly? From, DateOnly? To, string? Sort, int Page = 1, int PageSize = 25);
+    DateOnly? From, DateOnly? To, string? Sort, int Page = 1, int PageSize = 25,
+    /// <summary>Any of these statuses (e.g. the "open" view: Draft, Confirmed, Shipped). Combined with <c>Status</c> if both set.</summary>
+    OrderStatus[]? Statuses = null);
 
 public sealed record OrderListItemDto(
     Guid Id, string OrderNumber, OrderStatus Status, PaymentStatus PaymentStatus, PaymentMethod PaymentMethod, OrderSource Source,

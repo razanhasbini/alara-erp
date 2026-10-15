@@ -8,8 +8,8 @@ namespace AlaraERP.Application.Inventory;
 public sealed class WarehouseService(IAlaraDbContext db) : IWarehouseDirectory
 {
     public async Task<IReadOnlyList<WarehouseDto>> ListAsync(bool includeInactive, CancellationToken ct) =>
-        await Project(db.Warehouses.AsNoTracking().Where(w => includeInactive || w.IsActive))
-            .OrderByDescending(w => w.IsActive).ThenBy(w => w.Code)
+        await Project(db.Warehouses.AsNoTracking().Where(w => includeInactive || w.IsActive)
+                .OrderByDescending(w => w.IsActive).ThenBy(w => w.Code))
             .ToListAsync(ct);
 
     public async Task<WarehouseDto> GetAsync(Guid id, CancellationToken ct) =>

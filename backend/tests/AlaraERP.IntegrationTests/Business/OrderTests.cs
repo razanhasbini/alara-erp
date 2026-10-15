@@ -289,8 +289,11 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var byPhone = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?search=70123456");
         var confirmed = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?status=Confirmed");
 
+        var open = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?statuses=Draft&statuses=Confirmed&statuses=Shipped");
+
         Assert.Equal(2, byPhone.TotalCount);
         Assert.Single(confirmed.Items);
+        Assert.Equal(2, open.TotalCount);
         Assert.All(byPhone.Items, o => Assert.NotNull(o.CreatedBy));
     }
 

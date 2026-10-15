@@ -1,6 +1,6 @@
 # ÀLara Line ERP — Architecture & Database Design (Phase A)
 
-Status: **proposed — awaiting approval before Phase B**
+Status: **implemented** (MVP, 2026-10-15). Differences from the original proposal are listed in §11.
 
 ## 1. Environment findings (verified 2026-10-15)
 
@@ -331,6 +331,7 @@ erDiagram
         varchar reason
         varchar reference_type "Receipt | Transfer | Order | Adjustment"
         uuid reference_id
+        varchar reference_number "AL-… / RC-… / TR-…, denormalised"
         text notes
         uuid performed_by_user_id FK
         timestamptz created_at
@@ -584,3 +585,20 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 - [ ] Migrations, builds, backend tests, frontend typecheck/lint/build
 - [ ] Manual end-to-end run of acceptance criteria 1–22
 - [ ] README, `.env.example`, ERD in docs
+
+## 11. Changes made during implementation
+
+- **`stock_movements.reference_number`.** The ledger stores the human-readable document number, so Inventory never has to query Sales just to display "AL-000123".
+- **COD without a courier.** A cash-on-delivery order delivered by ÀLara Line staff (no delivery company) becomes `Paid` on delivery. With a courier it becomes `CollectedByCourier` until a remittance is recorded.
+- **Remittances** store `amount_collected`, `courier_fees` (from the orders' courier fees), `net_amount` and `order_count`.
+- **Order list** accepts `statuses=` (repeatable) for the "open" view (Draft, Confirmed, Shipped).
+- **Recipient phones** are stored normalised (`+96170123456`), so searches match however the number was typed.
+- **Paid orders cannot be cancelled or returned** until refunds are supported. This only affects non-COD prepaid orders.
+- **Entity keys** are UUIDv7, generated in the domain (EF `ValueGenerated.Never`).
+- **Product images** carry `created_at`/`updated_at`. At most one primary image per product, enforced by a partial unique index.
+- **Seed data is real, not a demo.** `import-catalog` loads the alaraline.co catalogue (SKUs assigned for the ERP) into the real database. It never creates stock, costs or orders.
+
+### Adding later
+- **Purchasing / Suppliers.** Receipts already capture supplier name, reference and unit cost, so a `purchasing` schema can link to `stock_receipts`.
+- **Customers.** Orders keep an indexed, normalised `recipient_phone`. A migration can add `customer_id` and backfill it by phone.
+- **Website integration.** Products already have slug, short description, how-to-use, ingredients, size, weight and compare-at price for the React storefront.

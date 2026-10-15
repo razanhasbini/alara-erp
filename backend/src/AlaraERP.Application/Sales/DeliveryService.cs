@@ -8,8 +8,9 @@ namespace AlaraERP.Application.Sales;
 public sealed class DeliveryService(IAlaraDbContext db, IDocumentNumbers numbers, BusinessClock clock, ICurrentUser currentUser, IUserDirectory users)
 {
     public async Task<IReadOnlyList<DeliveryCompanyDto>> ListCompaniesAsync(bool includeInactive, CancellationToken ct) =>
-        await Project(db.DeliveryCompanies.AsNoTracking().Where(d => includeInactive || d.IsActive))
-            .OrderByDescending(d => d.IsActive).ThenBy(d => d.Name).ToListAsync(ct);
+        await Project(db.DeliveryCompanies.AsNoTracking().Where(d => includeInactive || d.IsActive)
+                .OrderByDescending(d => d.IsActive).ThenBy(d => d.Name))
+            .ToListAsync(ct);
 
     public async Task<DeliveryCompanyDto> GetCompanyAsync(Guid id, CancellationToken ct) =>
         await Project(db.DeliveryCompanies.AsNoTracking().Where(d => d.Id == id)).FirstOrDefaultAsync(ct)

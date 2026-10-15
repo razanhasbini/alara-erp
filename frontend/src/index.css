@@ -1,0 +1,174 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/shadcn-tailwind.css";
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/bodoni-moda";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+ * ÀLara Line ERP — visual language
+ * Paper and ink, with the brand's rose used sparingly: primary actions, the active nav marker,
+ * focus rings and the monogram. Display serif (Bodoni Moda, close to the logo's Didone) only for
+ * page titles and headline figures; DM Sans (the website's UI face) for everything else.
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "DM Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-display: "Bodoni Moda Variable", "Didot", "Bodoni 72", serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* brand */
+  --color-rose: var(--rose);
+  --color-rose-ink: var(--rose-ink);
+  --color-blush: var(--blush);
+  --color-petal: var(--petal);
+  --color-paper: var(--paper);
+  --color-hairline: var(--hairline);
+
+  /* status tones (text / tint) */
+  --color-tone-neutral: var(--tone-neutral);
+  --color-tone-neutral-bg: var(--tone-neutral-bg);
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-blue-bg: var(--tone-blue-bg);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-amber-bg: var(--tone-amber-bg);
+  --color-tone-green: var(--tone-green);
+  --color-tone-green-bg: var(--tone-green-bg);
+  --color-tone-red: var(--tone-red);
+  --color-tone-red-bg: var(--tone-red-bg);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  --radius: 0.4rem;
+
+  --paper: #faf7f5;          /* app background */
+  --hairline: #ebe4e1;       /* dividers */
+  --rose: #e85c9c;           /* brand rose (logo) */
+  --rose-ink: #b8306f;       /* rose dark enough for white text / small text (AA) */
+  --blush: #fdecf4;          /* brand pale blush */
+  --petal: #f8bed6;          /* brand pink */
+
+  --background: var(--paper);
+  --foreground: #1d1819;
+  --card: #ffffff;
+  --card-foreground: #1d1819;
+  --popover: #ffffff;
+  --popover-foreground: #1d1819;
+  --primary: var(--rose-ink);
+  --primary-foreground: #ffffff;
+  --secondary: #f3eeec;
+  --secondary-foreground: #1d1819;
+  --muted: #f3eeec;
+  --muted-foreground: #6f6567;
+  --accent: #f6f0ee;
+  --accent-foreground: #1d1819;
+  --destructive: #b42330;
+  --border: var(--hairline);
+  --input: #ddd4d1;
+  --ring: var(--rose);
+
+  --chart-1: var(--rose-ink);
+  --chart-2: var(--petal);
+  --chart-3: #6f6567;
+  --chart-4: #c9a27a;
+  --chart-5: #3f5a7a;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1d1819;
+  --sidebar-primary: var(--rose-ink);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--blush);
+  --sidebar-accent-foreground: #1d1819;
+  --sidebar-border: var(--hairline);
+  --sidebar-ring: var(--rose);
+
+  --tone-neutral: #5e5557;
+  --tone-neutral-bg: #f1eceb;
+  --tone-blue: #2d4f7c;
+  --tone-blue-bg: #e9eff7;
+  --tone-amber: #845400;
+  --tone-amber-bg: #fbf0d9;
+  --tone-green: #2e6a3e;
+  --tone-green-bg: #e5f1e7;
+  --tone-red: #9b2c22;
+  --tone-red-bg: #fbe8e3;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "ss01";
+  }
+  /* figures line up in tables and totals */
+  .tabular,
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: var(--petal);
+  }
+}
+
+@layer components {
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.01em;
+  }
+  /* small uppercase labels used above figures and in table headers */
+  .eyebrow {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+  .code {
+    @apply font-mono text-[0.78rem] tracking-tight;
+  }
+}
