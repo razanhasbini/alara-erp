@@ -1,0 +1,7 @@
+@host = http://localhost:5190
+
+### CSRF token (send as X-XSRF-TOKEN on unsafe requests)
+GET {{host}}/api/auth/csrf
+
+### Current user
+GET {{host}}/api/auth/me

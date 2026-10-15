@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlaraERP.Api/AlaraERP.Api.csproj" />
+    <Project Path="src/AlaraERP.Application/AlaraERP.Application.csproj" />
+    <Project Path="src/AlaraERP.Domain/AlaraERP.Domain.csproj" />
+    <Project Path="src/AlaraERP.Infrastructure/AlaraERP.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlaraERP.ArchitectureTests/AlaraERP.ArchitectureTests.csproj" />
+    <Project Path="tests/AlaraERP.IntegrationTests/AlaraERP.IntegrationTests.csproj" />
+    <Project Path="tests/AlaraERP.UnitTests/AlaraERP.UnitTests.csproj" />
+  </Folder>
+</Solution>
