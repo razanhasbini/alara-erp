@@ -106,6 +106,13 @@ if (app.Environment.IsDevelopment())
 
 app.MapControllers();
 
+// Opening the API address in a browser should point people to the app, not show a bare 401.
+app.MapGet("/", (IConfiguration cfg) => Results.Text(
+        $"ÀLara Line ERP API is running. Open the app at {cfg["App:FrontendUrl"] ?? "the frontend address"}.\n",
+        "text/plain; charset=utf-8"))
+    .AllowAnonymous()
+    .ExcludeFromDescription();
+
 await app.RunAsync();
 return 0;
 
