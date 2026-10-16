@@ -91,7 +91,7 @@ export function ProductFormPage() {
   const { register, control, handleSubmit, reset, setError, formState: { errors } } = useForm<Values>({
     resolver: zodResolver(schema), defaultValues: empty,
   })
-  const [sellingPrice, standardCost] = useWatch({ control, name: ["sellingPrice", "standardCost"] })
+  const [sellingPrice, standardCost, compareAtPrice] = useWatch({ control, name: ["sellingPrice", "standardCost", "compareAtPrice"] })
   useEffect(() => { if (product) reset(toValues(product)) }, [product, reset])
 
   const uploadImages = useMutation({
@@ -190,7 +190,7 @@ export function ProductFormPage() {
 
           {type === "Bundle" && !isEdit && (
             <Section title="Products in this bundle" bodyClassName="p-4">
-              <BundleComponentsEditor value={components} onChange={setComponents} bundlePrice={Number(sellingPrice) || undefined} />
+              <BundleComponentsEditor value={components} onChange={setComponents} bundlePrice={Number(sellingPrice) || undefined} compareAtPrice={Number(compareAtPrice) || undefined} />
             </Section>
           )}
 
@@ -239,7 +239,7 @@ export function ProductFormPage() {
               <Input id="sellingPrice" inputMode="decimal" className="tabular" disabled={!canPrice} {...register("sellingPrice")} />
             </Field>
             <Field label="Compare-at price (USD)" htmlFor="compareAtPrice" error={errors.compareAtPrice?.message}
-              hint={type === "Bundle" ? "Usually the components' total at full price." : "Shown crossed out when on offer."}>
+              hint={type === "Bundle" ? "Shown crossed out. Leave empty to compare against the products bought separately." : "Shown crossed out when on offer."}>
               <Input id="compareAtPrice" inputMode="decimal" className="tabular" disabled={!canPrice} {...register("compareAtPrice")} />
             </Field>
           </Section>
@@ -290,11 +290,16 @@ export function ProductFormPage() {
 }
 
 function PendingPhoto({ file, onRemove }: { file: File; onRemove: () => void }) {
-  const [src] = useState(() => URL.createObjectURL(file))
-  useEffect(() => () => URL.revokeObjectURL(src), [src])
+  // Created inside the effect so a remount (React StrictMode mounts twice in development) never uses a revoked URL.
+  const [src, setSrc] = useState<string>()
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setSrc(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
   return (
     <div className="group relative overflow-hidden rounded-md border border-rose bg-white">
-      <img src={src} alt="Selected upload preview" className="aspect-square w-full object-cover" />
+      {src ? <img src={src} alt={`Preview of ${file.name}`} className="aspect-square w-full object-cover" /> : <div className="aspect-square w-full bg-secondary" />}
       <span className="absolute top-1 left-1 rounded bg-white/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-rose-ink">New</span>
       <Button type="button" size="icon-xs" variant="secondary" aria-label={`Remove ${file.name}`}
         className="absolute right-1 bottom-1" onClick={onRemove}><X /></Button>

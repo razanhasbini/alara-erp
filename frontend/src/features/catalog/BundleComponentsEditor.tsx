@@ -5,11 +5,16 @@ import { money } from "@/lib/format"
 
 export interface ComponentLine { productId: string; name: string; unitPrice: number; quantity: number }
 
-/** Edits a bundle's composition; shows the full-price value the bundle is discounted against. */
-export function BundleComponentsEditor({ value, onChange, bundlePrice }: {
-  value: ComponentLine[]; onChange: (lines: ComponentLine[]) => void; bundlePrice?: number
+/**
+ * Edits a bundle's composition and shows what the customer saves: against the compare-at price when one is set
+ * (that is the "was" price customers see), otherwise against the products bought separately.
+ */
+export function BundleComponentsEditor({ value, onChange, bundlePrice, compareAtPrice }: {
+  value: ComponentLine[]; onChange: (lines: ComponentLine[]) => void; bundlePrice?: number; compareAtPrice?: number
 }) {
   const total = value.reduce((s, l) => s + l.unitPrice * l.quantity, 0)
+  const usesCompareAt = !!compareAtPrice && compareAtPrice > 0
+  const against = usesCompareAt ? compareAtPrice : total
   const update = (i: number, quantity: number) => onChange(value.map((l, j) => (j === i ? { ...l, quantity } : l)))
   return (
     <div className="grid gap-2">
@@ -36,8 +41,9 @@ export function BundleComponentsEditor({ value, onChange, bundlePrice }: {
       {value.length > 0 && (
         <p className="text-xs text-muted-foreground">
           Bought separately: <span className="tabular font-medium text-foreground">{money(total)}</span>
-          {bundlePrice !== undefined && bundlePrice > 0 && bundlePrice < total && (
-            <> · customer saves <span className="tabular font-medium text-rose-ink">{money(total - bundlePrice)}</span> ({Math.round((1 - bundlePrice / total) * 100)}%)</>
+          {bundlePrice !== undefined && bundlePrice > 0 && bundlePrice < against && (
+            <> · customer saves <span className="tabular font-medium text-rose-ink">{money(against - bundlePrice)}</span> ({Math.round((1 - bundlePrice / against) * 100)}%)
+              {usesCompareAt && <> against the compare-at price of <span className="tabular">{money(compareAtPrice)}</span></>}</>
           )}
         </p>
       )}

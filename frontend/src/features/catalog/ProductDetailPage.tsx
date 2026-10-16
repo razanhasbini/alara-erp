@@ -234,7 +234,7 @@ function ComponentsDialog({ product, onClose }: { product: ProductDetail; onClos
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Contents of {product.name}</DialogTitle></DialogHeader>
         <p className="text-xs text-muted-foreground">Orders already placed keep the contents they were sold with.</p>
-        <BundleComponentsEditor value={lines} onChange={setLines} bundlePrice={product.sellingPrice} />
+        <BundleComponentsEditor value={lines} onChange={setLines} bundlePrice={product.sellingPrice} compareAtPrice={product.compareAtPrice ?? undefined} />
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={() => save.mutate()} disabled={save.isPending || lines.length === 0}>{save.isPending && <InlineSpinner />} Save contents</Button>
