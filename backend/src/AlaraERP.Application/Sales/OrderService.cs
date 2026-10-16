@@ -21,6 +21,7 @@ public sealed class OrderService(
     BusinessClock clock,
     ICurrentUser currentUser,
     IUserDirectory users,
+    IOrderDeletionLedger deletionLedger,
     IOptions<ErpOptions> options)
 {
     private Guid? UserId => currentUser.UserId;
@@ -258,6 +259,31 @@ public sealed class OrderService(
                 await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
             }
         }, ct);
+
+    /// <summary>
+    /// Permanently removes a test order while leaving inventory exactly as it was before the order existed.
+    /// This is restricted to Super Admin by the API permission. The reversal, dependent-record cleanup and
+    /// deletion commit together, so a failure cannot leave stock without its order or vice versa.
+    /// </summary>
+    public async Task DeleteAsync(Guid id, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == id, ct)
+                    ?? throw new NotFoundException("Order", id);
+
+        // A reserved order may still hold units. A sold order may have net shipment movements.
+        // Both methods are idempotent for cancelled/returned orders that already put stock back.
+        await stock.RestoreAndEraseOrderInventoryAsync(order.Id, order.OrderNumber, ct);
+        await deletionLedger.EraseAsync(order.Id, ct);
+        await db.Notifications
+            .Where(n => n.ReferenceType == "Order" && n.ReferenceId == order.Id)
+            .ExecuteDeleteAsync(ct);
+
+        // Execute directly because a released reservation is still tracked in this short-lived context even
+        // after its database row is erased. The database dependencies above are already gone.
+        await db.Orders.Where(o => o.Id == order.Id).ExecuteDeleteAsync(ct);
+        await tx.CommitAsync(ct);
+    }
 
     // ---- helpers -----------------------------------------------------------------------------
 

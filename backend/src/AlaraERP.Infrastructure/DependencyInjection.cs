@@ -1,6 +1,7 @@
 using AlaraERP.Application.Common;
 using AlaraERP.Application.Identity;
 using AlaraERP.Application.Inventory;
+using AlaraERP.Application.Sales;
 using AlaraERP.Infrastructure.Notifications;
 using AlaraERP.Infrastructure.Seeding;
 using AlaraERP.Infrastructure.Storage;
@@ -57,6 +58,7 @@ public static class DependencyInjection
         services.AddScoped<IDocumentNumbers, DocumentNumbers>();
         services.AddScoped<IStockLocks, StockLocks>();
         services.AddScoped<IUserDirectory, UserDirectory>();
+        services.AddScoped<IOrderDeletionLedger, OrderDeletionLedger>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
 
         services.AddScoped<IAuthService, AuthService>();

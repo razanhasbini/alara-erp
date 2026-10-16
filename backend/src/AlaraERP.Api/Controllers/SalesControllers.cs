@@ -108,6 +108,16 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(Orders.Cancel)]
     public Task<OrderDetailDto> Cancel(Guid id, TransitionRequest request, CancellationToken ct) => orders.CancelAsync(id, request, ct);
+
+    /// <summary>Super Admin-only pre-launch cleanup. Restores held/deducted stock, then permanently removes the order.</summary>
+    [HttpDelete("{id:guid}")]
+    [HasPermission(Orders.Delete)]
+    [ProducesResponseType(204)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await orders.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }
 
 [Route("api/delivery-companies")]
