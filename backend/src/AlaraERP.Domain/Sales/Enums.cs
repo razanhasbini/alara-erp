@@ -12,9 +12,10 @@ public enum OrderSource { WhatsApp, Instagram, Website, Other }
 public enum PaymentMethod { CashOnDelivery, Whish, Omt, BankTransfer, Cash }
 
 /// <summary>
-/// COD: Unpaid → CollectedByCourier (on delivery) → Paid (courier remits the cash).
-/// Other methods: Unpaid → Paid. Cancelled/returned unpaid orders become Void.
+/// A sale is paid the moment it is made: Reserved orders are Unpaid, selling makes them Paid, and moving a sold
+/// order back to Reserved makes it Unpaid again. Cancelled or returned orders are Void (the money is taken back out).
+/// Delivery costs are handled separately from orders.
 /// </summary>
-public enum PaymentStatus { Unpaid, CollectedByCourier, Paid, Void }
+public enum PaymentStatus { Unpaid, Paid, Void }
 
 public enum OrderEventType { Status, Payment, Reservation }

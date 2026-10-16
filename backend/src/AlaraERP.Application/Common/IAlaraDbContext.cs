@@ -36,7 +36,7 @@ public interface IAlaraDbContext
     DbSet<OrderItem> OrderItems { get; }
     DbSet<OrderHistoryEntry> OrderHistory { get; }
     DbSet<DeliveryCompany> DeliveryCompanies { get; }
-    DbSet<CourierRemittance> CourierRemittances { get; }
+    DbSet<DeliveryExpense> DeliveryExpenses { get; }
 
     // notifications
     DbSet<AlaraERP.Domain.Notifications.Notification> Notifications { get; }
@@ -53,7 +53,6 @@ public interface IDocumentNumbers
     Task<string> NextOrderNumberAsync(CancellationToken ct);
     Task<string> NextReceiptNumberAsync(CancellationToken ct);
     Task<string> NextTransferNumberAsync(CancellationToken ct);
-    Task<string> NextRemittanceNumberAsync(CancellationToken ct);
 }
 
 /// <summary>Resolves employee ids to display names for audit columns ("created by", "performed by").</summary>

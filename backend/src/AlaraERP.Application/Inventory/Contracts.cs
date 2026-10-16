@@ -28,7 +28,7 @@ public interface IStockReservationService
     /// <summary>Deducts staged stock from non-expired batches (FEFO). Called during confirmation; a later shipping call is a compatibility no-op.</summary>
     Task ShipAsync(Guid orderId, string orderNumber, CancellationToken ct);
 
-    /// <summary>Puts shipped units back into the batches they left from (courier return).</summary>
+    /// <summary>Puts shipped units back into the batches they left from after a delivery return.</summary>
     Task ReturnShipmentAsync(Guid orderId, string orderNumber, CancellationToken ct);
 }
 

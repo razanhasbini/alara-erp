@@ -1,7 +1,7 @@
 # ÀLara Line ERP
 
-Internal operations system for **ÀLara Line**, a Lebanese haircare brand: catalogue, stock with batch and expiry
-tracking, customer profiles and loyalty analytics, orders from WhatsApp / Instagram / the website, courier delivery, and cash-on-delivery reconciliation.
+Internal operations system for **ÀLara Line**, a Lebanese haircare brand: catalogue, stock with optional expiry
+tracking, customer profiles and loyalty analytics, orders from WhatsApp / Instagram / the website, and standalone delivery-cost tracking.
 It is an internal tool for employees, separate from the public website [alaraline.co](https://alaraline.co).
 The future React storefront will read the same catalogue.
 
@@ -138,6 +138,49 @@ dotnet run --project src/AlaraERP.Api -- provision-user <username> <email> <firs
 Local Development accepts passwords of at least eight characters. Testing and Production retain the stronger
 ten-character mixed-case policy.
 
+## Deploying on Railway
+
+The root [Dockerfile](Dockerfile) builds the React app and ASP.NET API into one service. The API serves the SPA,
+so browser sessions, CSRF protection, images and API calls all use one HTTPS origin.
+
+1. Create a Railway project, add PostgreSQL, then add this GitHub repository as a service.
+2. In the app service, reference the PostgreSQL service variables:
+
+   ```env
+   PGHOST=${{Postgres.PGHOST}}
+   PGPORT=${{Postgres.PGPORT}}
+   PGDATABASE=${{Postgres.PGDATABASE}}
+   PGUSER=${{Postgres.PGUSER}}
+   PGPASSWORD=${{Postgres.PGPASSWORD}}
+   ```
+
+3. Add a volume mounted at **`/app/App_Data`**. Product photos are stored under
+   `/app/App_Data/uploads`; without this volume, uploaded photos disappear on a redeploy.
+4. Generate a public domain and set `App__FrontendUrl` to its full `https://...` address.
+5. Set the initial account variables below. They are read only when an account does not yet exist, so restarts do
+   not reset a password that was changed later.
+
+   ```env
+   Bootstrap__ImportCatalog=true
+   Bootstrap__SuperAdmin__UserName=lara
+   Bootstrap__SuperAdmin__Email=lara@alaraline.local
+   Bootstrap__SuperAdmin__FirstName=Lara
+   Bootstrap__SuperAdmin__LastName=Admin
+   Bootstrap__SuperAdmin__Password=<temporary password>
+   Bootstrap__Employee__UserName=diana
+   Bootstrap__Employee__Email=diana@alaraline.local
+   Bootstrap__Employee__FirstName=Diana
+   Bootstrap__Employee__LastName=Employee
+   Bootstrap__Employee__Password=<temporary password>
+   ```
+
+   The requested temporary eight-character password requires `Auth__SimpleDevelopmentPasswords=true`. Remove
+   that setting after replacing both passwords with production-strength passwords.
+
+The container runs the idempotent `initialize` command before every start. It applies pending migrations,
+synchronizes permissions, imports missing catalogue records when enabled, and creates only missing initial users.
+The committed [railway.json](railway.json) also checks `/health` before a deployment is marked healthy.
+
 ## Tests and checks
 
 ```bash
@@ -168,8 +211,9 @@ dotnet ef migrations add <Name> --project src/AlaraERP.Infrastructure --startup-
 dotnet run --project src/AlaraERP.Api -- migrate
 ```
 
-`migrations add` never connects to a database. Migrations are applied only by `migrate`, which uses the owner role.
-The API never migrates or resets the database at startup.
+`migrations add` never connects to a database. Migrations are applied by `migrate`, which uses the owner role.
+The Railway container runs the idempotent `initialize` command before starting the API; it applies pending
+migrations and never resets the database.
 
 ---
 
@@ -198,7 +242,7 @@ The API never migrates or resets the database at startup.
 | Role | Can |
 |---|---|
 | Super Admin | everything, including employees and roles |
-| Manager | catalogue, prices and costs; stock, thresholds, warehouses, orders, payments and courier cash, couriers, sales/profit reports; view employees |
+| Manager | catalogue and prices; stock, thresholds, warehouses, orders, delivery costs, sales reports; view employees |
 | Inventory Manager | view products; receive, adjust and transfer stock |
 | Sales Employee | manage products, bundles and categories; manage customers and orders; receive and view stock, receipts, warehouses and movements |
 | Viewer | read-only catalogue, stock, orders and reports |
@@ -230,7 +274,7 @@ Roles are defined in code and synced to the database by `migrate`.
 - **Reserved:** stock is held for the customer (it can't be sold to anyone else) until a chosen time, but nothing is deducted and no revenue or cost is counted. The order can still be edited. When the time is up an alert is raised (in **Alerts**, and on WhatsApp once connected); nothing is released automatically.
 - **Sold** (`Confirmed` in the API): stock is deducted immediately from FEFO batches and the sale counts. "Back to reserved" undoes the sale and holds the stock again.
 - Creating an order with too little free stock is refused, and the message names the reserved orders (number, quantity, customer, deadline) holding the rest.
-- **Shipped:** courier and tracking details are recorded separately; stock is not changed again.
+- **Shipped:** marks that the sold order has left the business; stock and payment are not changed again.
 - **Delivered**, or **Returned** (stock goes back into the same batches it left from).
 - **Cancelled** is possible only before shipping; it releases a reservation or returns stock deducted when the order was sold.
 - Prices, names and bundle contents are frozen when the order is placed.
@@ -240,13 +284,17 @@ Roles are defined in code and synced to the database by `migrate`.
 - Orders keep their own recipient and address snapshot, so editing a customer later never rewrites old orders.
 - The Customers page shows lifetime orders, total ordered, total paid, average order value, and last activity.
 
-**Cash on delivery**
-- Delivered by a courier: the payment is *With courier* until a **courier hand-over** is recorded, which marks the orders *Paid* and records the courier's fees.
-- Delivered by ÀLara Line staff: the order is *Paid* on delivery.
+**Payment and delivery**
+- A sold order is immediately *Paid*. Creating a sold order or changing a reservation to sold deducts stock and
+  updates sales, cost of goods, cash received and profit in the same database transaction.
+- A reserved order is *Unpaid* and holds stock. Moving a sold order back to reserved reverses the sale and stock
+  deduction. Cancelling or returning a sold order makes its payment *Void*.
+- Delivery companies and costs are managed on **Deliveries**. A cost may cover one day, week, month or invoice and
+  is not linked to an order. Profit analytics subtract costs by their recorded date.
 
 **Money**
 - Amounts are in USD, using `decimal` / `NUMERIC(12,2)`.
-- "Cash collected" on the dashboard counts **paid** orders only.
+- "Cash received" on the dashboard counts **paid** orders only; sold orders become paid immediately.
 - Analytics reports sales on the confirmation date and excludes cancelled and returned orders. Cost of goods uses the exact batches deducted at confirmation.
 - Loyalty analytics can rank customers by order count, total ordered, total paid, average order value, reorder frequency, or most recent order for the selected period.
 - Bundle revenue is allocated across its component products by their full prices. Profit reports flag shipped units with no recorded cost.

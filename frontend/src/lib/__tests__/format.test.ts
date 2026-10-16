@@ -19,7 +19,6 @@ describe("dateOnly", () => {
 describe("humanize", () => {
   it("turns enum names into readable labels", () => {
     expect(humanize("CashOnDelivery")).toBe("Cash on delivery")
-    expect(humanize("CollectedByCourier")).toBe("With courier")
     expect(humanize("WhatsApp")).toBe("WhatsApp")
   })
 })

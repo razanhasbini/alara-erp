@@ -62,11 +62,11 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     [HasPermission(Orders.Update)]
     public Task<OrderDetailDto> Update(Guid id, UpdateOrderRequest request, CancellationToken ct) => orders.UpdateAsync(id, request, ct);
 
-    /// <summary>Recipient and courier details; allowed until the order is final.</summary>
-    [HttpPut("{id:guid}/delivery")]
+    /// <summary>Recipient details; allowed until the order is final.</summary>
+    [HttpPut("{id:guid}/recipient")]
     [HasPermission(Orders.Update)]
-    public Task<OrderDetailDto> UpdateDelivery(Guid id, UpdateDeliveryRequest request, CancellationToken ct) =>
-        orders.UpdateDeliveryAsync(id, request, ct);
+    public Task<OrderDetailDto> UpdateRecipient(Guid id, UpdateRecipientRequest request, CancellationToken ct) =>
+        orders.UpdateRecipientAsync(id, request, ct);
 
     [HttpPost("{id:guid}/confirm")]
     [HasPermission(Orders.Update)]
@@ -95,7 +95,7 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
 
     [HttpPost("{id:guid}/ship")]
     [HasPermission(Orders.Update)]
-    public Task<OrderDetailDto> Ship(Guid id, ShipOrderRequest request, CancellationToken ct) => orders.ShipAsync(id, request, ct);
+    public Task<OrderDetailDto> Ship(Guid id, TransitionRequest request, CancellationToken ct) => orders.ShipAsync(id, request, ct);
 
     [HttpPost("{id:guid}/deliver")]
     [HasPermission(Orders.Update)]
@@ -108,22 +108,18 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     [HttpPost("{id:guid}/cancel")]
     [HasPermission(Orders.Cancel)]
     public Task<OrderDetailDto> Cancel(Guid id, TransitionRequest request, CancellationToken ct) => orders.CancelAsync(id, request, ct);
-
-    [HttpPost("{id:guid}/mark-paid")]
-    [HasPermission(Orders.ManagePayments)]
-    public Task<OrderDetailDto> MarkPaid(Guid id, TransitionRequest request, CancellationToken ct) => orders.MarkPaidAsync(id, request, ct);
 }
 
 [Route("api/delivery-companies")]
 public sealed class DeliveryCompaniesController(DeliveryService delivery) : ApiControllerBase
 {
     [HttpGet]
-    [HasPermission(Orders.View)]
+    [HasPermission(DeliveryCompanies.Manage)]
     public Task<IReadOnlyList<DeliveryCompanyDto>> List([FromQuery] bool includeInactive, CancellationToken ct) =>
         delivery.ListCompaniesAsync(includeInactive, ct);
 
     [HttpGet("{id:guid}")]
-    [HasPermission(Orders.View)]
+    [HasPermission(DeliveryCompanies.Manage)]
     public Task<DeliveryCompanyDto> Get(Guid id, CancellationToken ct) => delivery.GetCompanyAsync(id, ct);
 
     [HttpPost]
@@ -139,33 +135,41 @@ public sealed class DeliveryCompaniesController(DeliveryService delivery) : ApiC
     [HasPermission(DeliveryCompanies.Manage)]
     public Task<DeliveryCompanyDto> Update(Guid id, DeliveryCompanyRequest request, CancellationToken ct) =>
         delivery.UpdateCompanyAsync(id, request, ct);
-
-    [HttpGet("{id:guid}/awaiting-remittance")]
-    [HasPermission(Orders.ManagePayments)]
-    public Task<IReadOnlyList<RemittanceOrderDto>> AwaitingRemittance(Guid id, CancellationToken ct) =>
-        delivery.AwaitingRemittanceAsync(id, ct);
 }
 
-[Route("api/courier-remittances")]
-public sealed class CourierRemittancesController(DeliveryService delivery) : ApiControllerBase
+[Route("api/delivery-expenses")]
+public sealed class DeliveryExpensesController(DeliveryService delivery) : ApiControllerBase
 {
     [HttpGet]
-    [HasPermission(Orders.ManagePayments)]
-    public Task<PagedResult<RemittanceDto>> List([FromQuery] Guid? deliveryCompanyId, [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 25, CancellationToken ct = default) =>
-        delivery.ListRemittancesAsync(deliveryCompanyId, page, pageSize, ct);
+    [HasPermission(DeliveryCompanies.Manage)]
+    public Task<PagedResult<DeliveryExpenseDto>> List([FromQuery] DeliveryExpenseListQuery query, CancellationToken ct) =>
+        delivery.ListExpensesAsync(query, ct);
 
     [HttpGet("{id:guid}")]
-    [HasPermission(Orders.ManagePayments)]
-    public Task<RemittanceDto> Get(Guid id, CancellationToken ct) => delivery.GetRemittanceAsync(id, ct);
+    [HasPermission(DeliveryCompanies.Manage)]
+    public Task<DeliveryExpenseDto> Get(Guid id, CancellationToken ct) => delivery.GetExpenseAsync(id, ct);
 
     [HttpPost]
-    [HasPermission(Orders.ManagePayments)]
-    [ProducesResponseType<RemittanceDto>(201)]
-    public async Task<IActionResult> Create(CreateRemittanceRequest request, CancellationToken ct)
+    [HasPermission(DeliveryCompanies.Manage)]
+    [ProducesResponseType<DeliveryExpenseDto>(201)]
+    public async Task<IActionResult> Create(DeliveryExpenseRequest request, CancellationToken ct)
     {
-        var remittance = await delivery.RecordRemittanceAsync(request, ct);
-        return CreatedAtAction(nameof(Get), new { id = remittance.Id }, remittance);
+        var expense = await delivery.CreateExpenseAsync(request, ct);
+        return CreatedAtAction(nameof(Get), new { id = expense.Id }, expense);
+    }
+
+    [HttpPut("{id:guid}")]
+    [HasPermission(DeliveryCompanies.Manage)]
+    public Task<DeliveryExpenseDto> Update(Guid id, DeliveryExpenseRequest request, CancellationToken ct) =>
+        delivery.UpdateExpenseAsync(id, request, ct);
+
+    [HttpDelete("{id:guid}")]
+    [HasPermission(DeliveryCompanies.Manage)]
+    [ProducesResponseType(204)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        await delivery.DeleteExpenseAsync(id, ct);
+        return NoContent();
     }
 }
 

@@ -9,32 +9,31 @@ import { Facts, PageHeader, Section } from "@/components/common/page"
 import { OrderStatusPill, PaymentStatusPill, Pill } from "@/components/common/StatusBadge"
 import { ErrorState, FullPageSpinner } from "@/components/common/states"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, errorMessage } from "@/lib/api"
 import { dateTime, humanize, money } from "@/lib/format"
 import { P } from "@/lib/permissions"
-import { qk, useDeliveryCompanies } from "@/lib/queries"
+import { qk } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { OrderDetail, OrderStatus } from "@/types/api"
 import { ReserveTimeDialog } from "./ReserveTimeDialog"
 
-type Action = "confirm" | "deliver" | "return" | "cancel" | "mark-paid"
+type Action = "confirm" | "ship" | "deliver" | "return" | "cancel"
 type ReserveMode = "reserve" | "change"
 
 const actionDone: Record<Action, string> = {
-  confirm: "sold — stock deducted", deliver: "marked delivered",
-  return: "returned — stock back on the shelf", cancel: "cancelled", "mark-paid": "marked paid",
+  confirm: "sold — paid and stock deducted", ship: "marked as shipped", deliver: "marked delivered",
+  return: "returned — stock back on the shelf", cancel: "cancelled",
 }
 
 const actionCopy: Record<Action, { title: string; description: string; label: string; destructive?: boolean; note?: boolean }> = {
   confirm: { title: "Mark as sold?", description: "The held stock for every item, including products inside bundles, is deducted and the sale is counted in revenue and profit.", label: "Mark as sold" },
-  deliver: { title: "Mark as delivered?", description: "Cash-on-delivery orders become “with courier” until the courier hands over the cash (or paid, if your own staff delivered).", label: "Mark delivered" },
-  return: { title: "Record a returned delivery?", description: "Use when the customer refused or the courier couldn't deliver. The units go back into stock, into the batches they left from.", label: "Record return", destructive: true, note: true },
+  ship: { title: "Mark as shipped?", description: "The order has left ÀLara Line. Stock and payment were already applied when it was sold.", label: "Mark shipped", note: true },
+  deliver: { title: "Mark as delivered?", description: "The customer has received the order. Payment was already recorded when it was sold.", label: "Mark delivered" },
+  return: { title: "Record a returned delivery?", description: "Use when the customer refused or delivery failed. The units go back into stock, into the batches they left from.", label: "Record return", destructive: true, note: true },
   cancel: { title: "Cancel this order?", description: "Reserved stock is released and any stock deducted when it was sold is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
-  "mark-paid": { title: "Record payment?", description: "Confirms the customer has paid this order directly.", label: "Mark paid", note: true },
 }
 
 export function OrderDetailPage() {
@@ -44,8 +43,7 @@ export function OrderDetailPage() {
   const { data: o, isLoading, error, refetch } = useQuery({ queryKey: qk.order(id), queryFn: () => api<OrderDetail>(`/api/orders/${id}`) })
   const [action, setAction] = useState<Action | null>(null)
   const [note, setNote] = useState("")
-  const [shipping, setShipping] = useState(false)
-  const [editingDelivery, setEditingDelivery] = useState(false)
+  const [editingRecipient, setEditingRecipient] = useState(false)
   const [reserveMode, setReserveMode] = useState<ReserveMode | null>(null)
 
   const afterChange = async (updated: OrderDetail, message: string) => {
@@ -81,10 +79,8 @@ export function OrderDetailPage() {
   if (o.status === "Reserved" && can(P.orders.update)) buttons.push(<Button key="change" variant="outline" onClick={() => setReserveMode("change")}><Clock /> Change time</Button>)
   if (allowed("Reserved") && can(P.orders.update)) buttons.push(<Button key="reserve" variant="outline" onClick={() => setReserveMode("reserve")}><Undo2 /> {o.status === "Draft" ? "Reserve" : "Back to reserved"}</Button>)
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
-  if (o.paymentMethod !== "CashOnDelivery" && o.paymentStatus === "Unpaid" && !["Cancelled", "Returned"].includes(o.status) && can(P.orders.payments))
-    buttons.push(<Button key="paid" variant="outline" onClick={() => setAction("mark-paid")}>Mark paid</Button>)
   if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Mark as sold</Button>)
-  if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setShipping(true)}><Truck /> Shipping</Button>)
+  if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setAction("ship")}><Truck /> Mark shipped</Button>)
   if (allowed("Delivered") && can(P.orders.update)) buttons.push(<Button key="deliver" onClick={() => setAction("deliver")}><Check /> Delivered</Button>)
 
   // Every order starts as an internal draft and immediately becomes reserved or sold; "Reserved until…" already
@@ -170,21 +166,17 @@ export function OrderDetailPage() {
 
         <div className="grid content-start gap-6">
           <Section title="Customer" actions={!["Delivered", "Cancelled", "Returned"].includes(o.status) && can(P.orders.update) &&
-            <Button size="xs" variant="ghost" onClick={() => setEditingDelivery(true)}>Edit</Button>} bodyClassName="p-4">
+            <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(true)}>Edit</Button>} bodyClassName="p-4">
             <Facts items={[
               ["Name", o.customerId ? <Link key="customer" to={`/customers?search=${encodeURIComponent(o.recipientPhone)}`} className="font-medium text-primary hover:underline">{o.recipientName}</Link> : o.recipientName],
               ["Phone", <a key="f145-26" className="hover:underline" href={`https://wa.me/${o.recipientPhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">{o.recipientPhone}</a>],
               ["City", o.recipientCity], ["Address", o.recipientAddress],
             ]} />
           </Section>
-          <Section title="Delivery & payment" bodyClassName="p-4">
+          <Section title="Order & payment" bodyClassName="p-4">
             <Facts items={[
               ["Ships from", o.warehouseName],
-              ["Courier", o.deliveryCompanyName ?? "Own delivery"],
-              ["Waybill", o.trackingNumber ? <span key="f153-47" className="code">{o.trackingNumber}</span> : null],
-              ["Courier fee", o.courierFee !== null ? money(o.courierFee) : null],
               ["Payment", humanize(o.paymentMethod)],
-              ["Remittance", o.courierRemittanceNumber ? <span key="f156-59" className="code">{o.courierRemittanceNumber}</span> : null],
               ["Paid", o.paidAt ? dateTime(o.paidAt) : null],
             ]} />
           </Section>
@@ -198,7 +190,6 @@ export function OrderDetailPage() {
           {copy.note && <Textarea aria-label="Note" placeholder="Note (optional)" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />}
         </ConfirmDialog>
       )}
-      {shipping && <ShipDialog order={o} onClose={() => setShipping(false)} onDone={(u) => afterChange(u, `${u.orderNumber} marked as shipped`)} />}
       {reserveMode && (
         <ReserveTimeDialog open onOpenChange={(open) => !open && setReserveMode(null)} pending={reserve.isPending}
           initial={reserveMode === "change" ? o.reservedUntil : null}
@@ -210,7 +201,7 @@ export function OrderDetailPage() {
           confirmLabel={reserveMode === "change" ? "Save time" : "Reserve"}
           onConfirm={(until, notes) => reserve.mutate({ mode: reserveMode, until, notes: notes.trim() })} />
       )}
-      {editingDelivery && <DeliveryDialog order={o} onClose={() => setEditingDelivery(false)} onDone={(u) => afterChange(u, "Delivery details saved")} />}
+      {editingRecipient && <RecipientDialog order={o} onClose={() => setEditingRecipient(false)} onDone={(u) => afterChange(u, "Customer details saved")} />}
     </>
   )
 }
@@ -236,66 +227,15 @@ function ReservationBanner({ order }: { order: OrderDetail }) {
   )
 }
 
-function ShipDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: (o: OrderDetail) => Promise<void> }) {
-  const { data: couriers } = useDeliveryCompanies()
-  const [courierId, setCourierId] = useState(order.deliveryCompanyId ?? "")
-  const [tracking, setTracking] = useState(order.trackingNumber ?? "")
-  const [fee, setFee] = useState(order.courierFee?.toFixed(2) ?? "")
-  const feeError = fee && !/^\d{1,7}(\.\d{1,2})?$/.test(fee) ? "Invalid amount." : undefined
-  const ship = useMutation({
-    mutationFn: () => api<OrderDetail>(`/api/orders/${order.id}/ship`, {
-      method: "POST", body: { deliveryCompanyId: courierId || null, trackingNumber: tracking.trim() || null, courierFee: fee ? Number(fee) : null, notes: null },
-    }),
-    onSuccess: async (u) => { await onDone(u); onClose() },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Shipping for {order.orderNumber}</DialogTitle>
-          <DialogDescription>Stock was already deducted when the order was sold. Add the courier and tracking details here.</DialogDescription>
-        </DialogHeader>
-        <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!feeError) ship.mutate() }}>
-          <Field label="Delivery company" htmlFor="s-courier">
-            <Select value={courierId || "none"} onValueChange={(v) => setCourierId(v === "none" ? "" : v)}>
-              <SelectTrigger id="s-courier" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Own delivery (ÀLara Line staff)</SelectItem>
-                {couriers?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Waybill / tracking no." htmlFor="s-track"><Input id="s-track" className="font-mono" value={tracking} onChange={(e) => setTracking(e.target.value)} /></Field>
-            <Field label="Courier's fee (USD)" htmlFor="s-fee" error={feeError} hint="What they keep from the cash."><Input id="s-fee" inputMode="decimal" className="tabular" value={fee} onChange={(e) => setFee(e.target.value)} /></Field>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <SubmitButton pending={ship.isPending}><Truck /> Ship</SubmitButton>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function DeliveryDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: (o: OrderDetail) => Promise<void> }) {
-  const { data: couriers } = useDeliveryCompanies()
+function RecipientDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: () => void; onDone: (o: OrderDetail) => Promise<void> }) {
   const [name, setName] = useState(order.recipientName)
   const [phone, setPhone] = useState(order.recipientPhone)
   const [city, setCity] = useState(order.recipientCity ?? "")
   const [address, setAddress] = useState(order.recipientAddress ?? "")
-  const [courierId, setCourierId] = useState(order.deliveryCompanyId ?? "")
-  const [tracking, setTracking] = useState(order.trackingNumber ?? "")
-  const [fee, setFee] = useState(order.courierFee?.toFixed(2) ?? "")
   const save = useMutation({
-    mutationFn: () => api<OrderDetail>(`/api/orders/${order.id}/delivery`, {
+    mutationFn: () => api<OrderDetail>(`/api/orders/${order.id}/recipient`, {
       method: "PUT",
-      body: {
-        recipient: { name, phone, city: city || null, address: address || null }, deliveryCompanyId: courierId || null,
-        trackingNumber: tracking || null, courierFee: fee ? Number(fee) : null, notes: order.notes,
-      },
+      body: { recipient: { name, phone, city: city || null, address: address || null }, notes: order.notes },
     }),
     onSuccess: async (u) => { await onDone(u); onClose() },
     onError: (e) => toast.error(errorMessage(e)),
@@ -303,27 +243,14 @@ function DeliveryDialog({ order, onClose, onDone }: { order: OrderDetail; onClos
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Customer & delivery</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Customer details</DialogTitle></DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Name" htmlFor="d-name" required><Input id="d-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
             <Field label="Phone" htmlFor="d-phone" required><Input id="d-phone" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
             <Field label="City" htmlFor="d-city"><Input id="d-city" value={city} onChange={(e) => setCity(e.target.value)} /></Field>
-            <Field label="Courier" htmlFor="d-courier">
-              <Select value={courierId || "none"} onValueChange={(v) => setCourierId(v === "none" ? "" : v)}>
-                <SelectTrigger id="d-courier" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Own delivery</SelectItem>
-                  {couriers?.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
           </div>
           <Field label="Address" htmlFor="d-address"><Textarea id="d-address" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Waybill" htmlFor="d-track"><Input id="d-track" className="font-mono" value={tracking} onChange={(e) => setTracking(e.target.value)} /></Field>
-            <Field label="Courier fee (USD)" htmlFor="d-fee"><Input id="d-fee" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} /></Field>
-          </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
             <SubmitButton pending={save.isPending} disabled={!name.trim() || !phone.trim()}>Save</SubmitButton>

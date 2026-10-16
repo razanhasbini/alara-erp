@@ -28,47 +28,39 @@ public sealed class DeliveryCompany : IAuditable
     }
 }
 
-/// <summary>A cash hand-over from a delivery company covering one or more delivered COD orders.</summary>
-public sealed class CourierRemittance
+/// <summary>A delivery expense recorded independently from customer orders.</summary>
+public sealed class DeliveryExpense : IAuditable
 {
-    private CourierRemittance() { }
+    private DeliveryExpense() { }
 
-    public CourierRemittance(string remittanceNumber, Guid deliveryCompanyId, IReadOnlyList<Order> orders,
-        DateTimeOffset receivedAt, string? notes, Guid? recordedByUserId, DateTimeOffset createdAt)
+    public DeliveryExpense(Guid deliveryCompanyId, DateOnly incurredOn, decimal amount, int deliveryCount,
+        string? notes, Guid? recordedByUserId)
     {
-        if (orders.Count == 0)
-            throw new DomainException("remittances.no_orders", "Select at least one order.");
-        if (orders.Any(o => o.DeliveryCompanyId != deliveryCompanyId))
-            throw new DomainException("remittances.wrong_company", "All orders must have been delivered by this company.");
-
         Id = Guid.CreateVersion7();
-        RemittanceNumber = remittanceNumber;
         DeliveryCompanyId = deliveryCompanyId;
-        AmountCollected = Guard.Money(orders.Sum(o => o.GrandTotal));
-        CourierFees = Guard.Money(orders.Sum(o => o.CourierFee ?? 0));
-        NetAmount = AmountCollected - CourierFees;
-        OrderCount = orders.Count;
-        ReceivedAt = receivedAt;
-        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
         RecordedByUserId = recordedByUserId;
-        CreatedAt = createdAt;
-
-        foreach (var order in orders)
-            order.MarkRemitted(Id, recordedByUserId, createdAt);
+        Update(incurredOn, amount, deliveryCount, notes);
     }
 
     public Guid Id { get; private set; }
-    public string RemittanceNumber { get; private set; } = "";
     public Guid DeliveryCompanyId { get; private set; }
-    /// <summary>Cash the courier collected from customers (sum of order totals).</summary>
-    public decimal AmountCollected { get; private set; }
-    /// <summary>Fees the courier kept.</summary>
-    public decimal CourierFees { get; private set; }
-    /// <summary>Cash actually handed to ÀLara Line.</summary>
-    public decimal NetAmount { get; private set; }
-    public int OrderCount { get; private set; }
-    public DateTimeOffset ReceivedAt { get; private set; }
+    public DateOnly IncurredOn { get; private set; }
+    public decimal Amount { get; private set; }
+    public int DeliveryCount { get; private set; }
     public string? Notes { get; private set; }
     public Guid? RecordedByUserId { get; private set; }
-    public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public void Update(DateOnly incurredOn, decimal amount, int deliveryCount, string? notes)
+    {
+        if (amount <= 0)
+            throw new DomainException("delivery_expenses.amount_required", "Delivery cost must be greater than zero.");
+        IncurredOn = incurredOn;
+        Amount = Guard.Money(amount);
+        DeliveryCount = Guard.Positive(deliveryCount, "Number of deliveries");
+        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+    }
+
+    public void ChangeCompany(Guid deliveryCompanyId) => DeliveryCompanyId = deliveryCompanyId;
 }

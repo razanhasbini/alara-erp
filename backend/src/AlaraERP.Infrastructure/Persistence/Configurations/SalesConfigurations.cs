@@ -33,7 +33,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.ToTable("orders", Schemas.Sales, t =>
         {
             t.HasCheckConstraint("ck_orders_amounts_not_negative",
-                "subtotal >= 0 AND discount_total >= 0 AND shipping_total >= 0 AND grand_total >= 0 AND (courier_fee IS NULL OR courier_fee >= 0)");
+                "subtotal >= 0 AND discount_total >= 0 AND shipping_total >= 0 AND grand_total >= 0");
             t.HasCheckConstraint("ck_orders_discount_within_subtotal", "discount_total <= subtotal");
             t.HasCheckConstraint("ck_orders_grand_total", "grand_total = subtotal - discount_total + shipping_total");
             t.HasCheckConstraint("ck_orders_paid_at", "(payment_status = 'Paid') = (paid_at IS NOT NULL)");
@@ -47,10 +47,8 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.Property(o => o.RecipientName).HasMaxLength(150).IsRequired();
         b.Property(o => o.RecipientPhone).HasMaxLength(40).IsRequired();
         b.Property(o => o.RecipientCity).HasMaxLength(100);
-        b.Property(o => o.TrackingNumber).HasMaxLength(100);
         b.Property(o => o.CurrencyCode).HasMaxLength(3).IsFixedLength().IsRequired();
-        foreach (var money in new[] { nameof(Order.Subtotal), nameof(Order.DiscountTotal), nameof(Order.ShippingTotal),
-                                      nameof(Order.CourierFee), nameof(Order.GrandTotal) })
+        foreach (var money in new[] { nameof(Order.Subtotal), nameof(Order.DiscountTotal), nameof(Order.ShippingTotal), nameof(Order.GrandTotal) })
             b.Property(money).HasPrecision(12, 2);
         b.Property(o => o.Version).IsRowVersion();
         b.Ignore(o => o.IsFinal);
@@ -60,14 +58,11 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.HasIndex(o => o.CreatedAt);
         b.HasIndex(o => o.RecipientPhone);
         b.HasIndex(o => o.CustomerId);
-        b.HasIndex(o => new { o.DeliveryCompanyId, o.PaymentStatus });
         // Finds reservations whose time is up and that have not been alerted yet.
         b.HasIndex(o => new { o.Status, o.ReservedUntil }).HasFilter("status = 'Reserved'").HasDatabaseName("ix_orders_open_reservations");
 
         b.HasOne<Warehouse>().WithMany().HasForeignKey(o => o.WarehouseId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Customer>().WithMany().HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<DeliveryCompany>().WithMany().HasForeignKey(o => o.DeliveryCompanyId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<CourierRemittance>().WithMany().HasForeignKey(o => o.CourierRemittanceId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<AppUser>().WithMany().HasForeignKey(o => o.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
 
         b.HasMany(o => o.Items).WithOne().HasForeignKey(i => i.OrderId).OnDelete(DeleteBehavior.Cascade);
@@ -143,23 +138,21 @@ internal sealed class DeliveryCompanyConfiguration : IEntityTypeConfiguration<De
     }
 }
 
-internal sealed class CourierRemittanceConfiguration : IEntityTypeConfiguration<CourierRemittance>
+internal sealed class DeliveryExpenseConfiguration : IEntityTypeConfiguration<DeliveryExpense>
 {
-    public void Configure(EntityTypeBuilder<CourierRemittance> b)
+    public void Configure(EntityTypeBuilder<DeliveryExpense> b)
     {
-        b.ToTable("courier_remittances", Schemas.Sales, t =>
+        b.ToTable("delivery_expenses", Schemas.Sales, t =>
         {
-            t.HasCheckConstraint("ck_courier_remittances_amounts", "amount_collected >= 0 AND courier_fees >= 0 AND order_count > 0");
-            t.HasCheckConstraint("ck_courier_remittances_net", "net_amount = amount_collected - courier_fees");
+            t.HasCheckConstraint("ck_delivery_expenses_amount", "amount > 0");
+            t.HasCheckConstraint("ck_delivery_expenses_count", "delivery_count > 0");
         });
-        b.HasKey(r => r.Id);
-        b.Property(r => r.RemittanceNumber).HasMaxLength(40).IsRequired();
-        b.Property(r => r.AmountCollected).HasPrecision(12, 2);
-        b.Property(r => r.CourierFees).HasPrecision(12, 2);
-        b.Property(r => r.NetAmount).HasPrecision(12, 2);
-        b.HasIndex(r => r.RemittanceNumber).IsUnique();
-        b.HasIndex(r => new { r.DeliveryCompanyId, r.ReceivedAt });
-        b.HasOne<DeliveryCompany>().WithMany().HasForeignKey(r => r.DeliveryCompanyId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<AppUser>().WithMany().HasForeignKey(r => r.RecordedByUserId).OnDelete(DeleteBehavior.Restrict);
+        b.HasKey(e => e.Id);
+        b.Property(e => e.Amount).HasPrecision(12, 2);
+        b.Property(e => e.Notes).HasMaxLength(2000);
+        b.HasIndex(e => e.IncurredOn);
+        b.HasIndex(e => new { e.DeliveryCompanyId, e.IncurredOn });
+        b.HasOne<DeliveryCompany>().WithMany().HasForeignKey(e => e.DeliveryCompanyId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<AppUser>().WithMany().HasForeignKey(e => e.RecordedByUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

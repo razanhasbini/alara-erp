@@ -11,13 +11,13 @@ public sealed record AnalyticsQuery(DateOnly? From, DateOnly? To, Grouping Group
 /// Definitions (also shown in the UI):
 /// a sale counts on the day the order is confirmed (Confirmed/Shipped/Delivered; cancelled and returned orders are excluded).
 /// NetSales = items − discounts (excl. delivery fee). CostOfGoods = recorded cost of the units shipped.
-/// GrossProfit = NetSales − CostOfGoods. DeliveryResult = delivery fees charged − courier fees.
-/// Profit = GrossProfit + DeliveryResult. CashReceived = paid orders by payment date, after the courier's fee.
+/// GrossProfit = NetSales − CostOfGoods. DeliveryResult = delivery fees charged − independently recorded delivery costs.
+/// Profit = GrossProfit + DeliveryResult. CashReceived = paid orders by payment date (an order is paid when it is sold).
 /// Cost and profit figures are null unless the caller has costs.view.
 /// </summary>
 public sealed record ProfitTotals(
     int Orders, int UnitsSold, decimal GrossSales, decimal Discounts, decimal NetSales, decimal AverageOrderValue,
-    decimal DeliveryFees, decimal? CourierFees, decimal? DeliveryResult,
+    decimal DeliveryFees, decimal? DeliveryCosts, decimal? DeliveryResult,
     decimal? CostOfGoods, decimal? GrossProfit, decimal? GrossMarginPercent, decimal? Profit,
     decimal CashReceived, int UncostedUnits);
 

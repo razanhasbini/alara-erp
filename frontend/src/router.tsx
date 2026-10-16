@@ -66,7 +66,7 @@ export const router = createBrowserRouter([
           { path: "orders/new", element: <OrderFormPage /> },
         ]),
         gate(P.orders.update, [{ path: "orders/:id/edit", element: <OrderFormPage /> }]),
-        gate(P.orders.payments, [{ path: "deliveries", element: <DeliveriesPage /> }]),
+        gate(P.delivery.manage, [{ path: "deliveries", element: <DeliveriesPage /> }]),
 
         gate(P.inventory.view, [
           { path: "inventory", element: <StockPage /> },

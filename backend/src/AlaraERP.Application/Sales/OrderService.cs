@@ -38,14 +38,12 @@ public sealed class OrderService(
             var digits = new string(query.Search.Where(char.IsDigit).ToArray());
             q = q.Where(o => EF.Functions.Like(o.OrderNumber.ToLower(), term, "\\")
                           || EF.Functions.Like(o.RecipientName.ToLower(), term, "\\")
-                          || (digits.Length >= 3 && o.RecipientPhone.Contains(digits))
-                          || (o.TrackingNumber != null && EF.Functions.Like(o.TrackingNumber.ToLower(), term, "\\")));
+                          || (digits.Length >= 3 && o.RecipientPhone.Contains(digits)));
         }
         if (query.Status is { } status) q = q.Where(o => o.Status == status);
         if (query.Statuses is { Length: > 0 } statuses) q = q.Where(o => statuses.Contains(o.Status));
         if (query.PaymentStatus is { } payment) q = q.Where(o => o.PaymentStatus == payment);
         if (query.Source is { } source) q = q.Where(o => o.Source == source);
-        if (query.DeliveryCompanyId is { } company) q = q.Where(o => o.DeliveryCompanyId == company);
         if (query.CustomerId is { } customer) q = q.Where(o => o.CustomerId == customer);
         if (query.From is { } from) { var start = clock.StartOfDayUtc(from); q = q.Where(o => o.CreatedAt >= start); }
         if (query.To is { } to) { var end = clock.StartOfDayUtc(to.AddDays(1)); q = q.Where(o => o.CreatedAt < end); }
@@ -67,15 +65,14 @@ public sealed class OrderService(
                 o.Id, o.OrderNumber, o.Status, o.PaymentStatus, o.PaymentMethod, o.Source,
                 o.RecipientName, o.RecipientPhone, o.RecipientCity,
                 ItemCount = o.Items.Sum(i => i.Quantity), o.GrandTotal, o.CurrencyCode,
-                Company = db.DeliveryCompanies.Where(d => d.Id == o.DeliveryCompanyId).Select(d => d.Name).FirstOrDefault(),
-                o.TrackingNumber, o.CreatedAt, o.CreatedByUserId, o.ReservedUntil,
+                o.CreatedAt, o.CreatedByUserId, o.ReservedUntil,
             })
             .ToListAsync(ct);
         var names = await users.GetDisplayNamesAsync(rows.Select(r => r.CreatedByUserId), ct);
 
         return new PagedResult<OrderListItemDto>(rows.Select(r => new OrderListItemDto(
                 r.Id, r.OrderNumber, r.Status, r.PaymentStatus, r.PaymentMethod, r.Source, r.RecipientName, r.RecipientPhone,
-                r.RecipientCity, r.ItemCount, r.GrandTotal, r.CurrencyCode, r.Company, r.TrackingNumber, r.CreatedAt,
+                r.RecipientCity, r.ItemCount, r.GrandTotal, r.CurrencyCode, r.CreatedAt,
                 r.CreatedByUserId is { } u ? names.GetValueOrDefault(u) : null, r.ReservedUntil)).ToList(),
             page.SafePage, page.SafePageSize, total);
     }
@@ -89,12 +86,6 @@ public sealed class OrderService(
                 ?? throw new NotFoundException("Order", id);
 
         var warehouse = await warehouses.FindAsync(o.WarehouseId, ct);
-        var company = o.DeliveryCompanyId is { } dc
-            ? await db.DeliveryCompanies.Where(d => d.Id == dc).Select(d => d.Name).FirstOrDefaultAsync(ct)
-            : null;
-        var remittance = o.CourierRemittanceId is { } rid
-            ? await db.CourierRemittances.Where(r => r.Id == rid).Select(r => r.RemittanceNumber).FirstOrDefaultAsync(ct)
-            : null;
         var names = await users.GetDisplayNamesAsync(o.History.Select(h => h.ChangedByUserId).Append(o.CreatedByUserId), ct);
         string? Name(Guid? userId) => userId is { } u ? names.GetValueOrDefault(u) : null;
 
@@ -102,9 +93,8 @@ public sealed class OrderService(
         return new OrderDetailDto(
             o.Id, o.OrderNumber, o.Status, o.PaymentStatus, o.PaymentMethod, o.Source, o.WarehouseId, warehouse?.Name ?? "?", o.CustomerId,
             o.RecipientName, o.RecipientPhone, o.RecipientCity, o.RecipientAddress,
-            o.DeliveryCompanyId, company, o.TrackingNumber,
-            o.Subtotal, o.DiscountTotal, o.ShippingTotal, o.CourierFee, o.GrandTotal, o.CurrencyCode,
-            remittance, o.Notes, o.CreatedByUserId, Name(o.CreatedByUserId), o.CreatedAt, o.UpdatedAt,
+            o.Subtotal, o.DiscountTotal, o.ShippingTotal, o.GrandTotal, o.CurrencyCode,
+            o.Notes, o.CreatedByUserId, Name(o.CreatedByUserId), o.CreatedAt, o.UpdatedAt,
             o.ConfirmedAt, o.ShippedAt, o.DeliveredAt, o.CancelledAt, o.ReturnedAt, o.PaidAt,
             allowed,
             o.Items.OrderBy(i => i.ProductName).Select(i => new OrderItemDto(
@@ -123,7 +113,6 @@ public sealed class OrderService(
     public async Task<OrderDetailDto> CreateAsync(CreateOrderRequest request, CancellationToken ct)
     {
         await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
-        await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
 
         var customerId = await EnsureCustomerAsync(request.CustomerId, request.Recipient, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -135,7 +124,6 @@ public sealed class OrderService(
             request.DiscountTotal,
             request.ShippingTotal ?? options.Value.DefaultDeliveryFee,
             request.WarehouseId, request.Source, request.PaymentMethod);
-        order.SetDelivery(request.DeliveryCompanyId, null, null);
         order.SetNotes(request.Notes);
         db.Orders.Add(order);
 
@@ -165,7 +153,6 @@ public sealed class OrderService(
         return await ChangeAsync(id, async order =>
         {
             await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
-            await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
             var reserved = order.Status == OrderStatus.Reserved;
             if (reserved)
             {
@@ -178,19 +165,17 @@ public sealed class OrderService(
                 request.WarehouseId, request.Source, request.PaymentMethod);
             order.SetRecipient(ToRecipient(request.Recipient));
             order.SetCustomer(customerId);
-            order.SetDelivery(request.DeliveryCompanyId, order.TrackingNumber, order.CourierFee);
             order.SetNotes(request.Notes);
             if (reserved) await ReserveStockAsync(order, ct);
         }, ct);
     }
 
-    public Task<OrderDetailDto> UpdateDeliveryAsync(Guid id, UpdateDeliveryRequest request, CancellationToken ct) =>
+    public Task<OrderDetailDto> UpdateRecipientAsync(Guid id, UpdateRecipientRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
-            await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
             order.SetRecipient(ToRecipient(request.Recipient));
-            order.SetDelivery(request.DeliveryCompanyId, request.TrackingNumber, request.CourierFee);
             order.SetNotes(request.Notes);
+            await Task.CompletedTask;
         }, ct);
 
     /// <summary>Sell: a reserved order turns its hold into a deduction; a legacy draft takes the stock now. Counts as a sale.</summary>
@@ -239,12 +224,9 @@ public sealed class OrderService(
         }).ToList();
     }
 
-    public Task<OrderDetailDto> ShipAsync(Guid id, ShipOrderRequest request, CancellationToken ct) =>
+    public Task<OrderDetailDto> ShipAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
-            var companyId = request.DeliveryCompanyId ?? order.DeliveryCompanyId;
-            await EnsureDeliveryCompanyUsableAsync(companyId, ct);
-            order.SetDelivery(companyId, request.TrackingNumber ?? order.TrackingNumber, request.CourierFee ?? order.CourierFee);
             order.TransitionTo(OrderStatus.Shipped, UserId, clock.UtcNow, request.Notes);
             // Current orders were deducted at confirmation. This only fulfils a reservation left
             // by an order confirmed before that workflow changed.
@@ -275,13 +257,6 @@ public sealed class OrderService(
                 await stock.ReleaseAsync(order.Id, ct);
                 await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
             }
-        }, ct);
-
-    public Task<OrderDetailDto> MarkPaidAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
-        ChangeAsync(id, order =>
-        {
-            order.MarkPaid(UserId, clock.UtcNow, request.Notes);
-            return Task.CompletedTask;
         }, ct);
 
     // ---- helpers -----------------------------------------------------------------------------
@@ -367,15 +342,6 @@ public sealed class OrderService(
         var warehouse = await warehouses.FindAsync(warehouseId, ct) ?? throw new NotFoundException("Warehouse", warehouseId);
         if (!warehouse.IsActive)
             throw new DomainException("warehouses.inactive", $"Warehouse {warehouse.Code} is inactive.");
-    }
-
-    private async Task EnsureDeliveryCompanyUsableAsync(Guid? companyId, CancellationToken ct)
-    {
-        if (companyId is not { } id) return;
-        var company = await db.DeliveryCompanies.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct)
-                      ?? throw new NotFoundException("Delivery company", id);
-        if (!company.IsActive)
-            throw new DomainException("delivery_companies.inactive", $"{company.Name} is inactive.");
     }
 
     /// <summary>

@@ -15,7 +15,6 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public const string OrderNumberSequence = "order_number_seq";
     public const string ReceiptNumberSequence = "receipt_number_seq";
     public const string TransferNumberSequence = "transfer_number_seq";
-    public const string RemittanceNumberSequence = "remittance_number_seq";
 
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
@@ -38,7 +37,7 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();
     public DbSet<DeliveryCompany> DeliveryCompanies => Set<DeliveryCompany>();
-    public DbSet<CourierRemittance> CourierRemittances => Set<CourierRemittance>();
+    public DbSet<DeliveryExpense> DeliveryExpenses => Set<DeliveryExpense>();
 
     public DbSet<AlaraERP.Domain.Notifications.Notification> Notifications => Set<AlaraERP.Domain.Notifications.Notification>();
     public DbSet<AlaraERP.Domain.Notifications.NotificationRead> NotificationReads => Set<AlaraERP.Domain.Notifications.NotificationRead>();
@@ -60,7 +59,6 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
         }
 
         builder.HasSequence<long>(OrderNumberSequence, Schemas.Sales);
-        builder.HasSequence<long>(RemittanceNumberSequence, Schemas.Sales);
         builder.HasSequence<long>(ReceiptNumberSequence, Schemas.Inventory);
         builder.HasSequence<long>(TransferNumberSequence, Schemas.Inventory);
     }

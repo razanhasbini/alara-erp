@@ -93,9 +93,9 @@ export function AnalyticsPage() {
                 <p><b className="text-foreground">Net sales</b>: items minus discounts, without delivery fees.</p>
                 {s.includesCosts && <>
                   <p><b className="text-foreground">Cost of goods</b>: what the units that left actually cost, from the inventory batch they were taken from.</p>
-                  <p><b className="text-foreground">Gross profit</b>: net sales − cost of goods. <b className="text-foreground">Profit</b> also adds delivery fees charged and subtracts courier fees.</p>
+                  <p><b className="text-foreground">Gross profit</b>: net sales − cost of goods. <b className="text-foreground">Profit</b> also adds delivery fees charged and subtracts the delivery costs recorded by a manager.</p>
                 </>}
-                <p><b className="text-foreground">Cash received</b>: paid orders on the day they were paid, after the courier's fee.</p>
+                <p><b className="text-foreground">Cash received</b>: the full order total, counted on the day the order is sold.</p>
                 <p>Returned orders are not sales. Bundle revenue is shared across the products inside it by their full prices.</p>
               </Section>
             </div>
@@ -115,7 +115,7 @@ function Totals({ s }: { s: AnalyticsSummary }) {
         <Figure label="Net sales" value={money(t.netSales)} sub={range} hint="Items minus discounts (without delivery fees) from orders confirmed in this period. Cancelled and returned orders are excluded." />
         <Figure label="Orders" value={number(t.orders)} sub={`avg ${money(t.averageOrderValue)}`} hint="Orders confirmed in this period that remain confirmed, shipped or delivered." />
         <Figure label="Units sold" value={number(t.unitsSold)} sub="incl. units inside bundles" hint="Product units committed to confirmed orders, including the products inside bundles." />
-        <Figure label="Cash received" value={money(t.cashReceived)} hint="Orders paid in this period, after the courier's fee." />
+        <Figure label="Cash received" value={money(t.cashReceived)} hint="The full total of orders sold in this period. Reserved orders are excluded." />
       </FigureRow>
     )
   }
@@ -129,9 +129,9 @@ function Totals({ s }: { s: AnalyticsSummary }) {
         hint="Net sales − cost of goods. Margin = gross profit ÷ net sales." />
       <Figure label="Profit after delivery" value={money(t.profit)} tone={(t.profit ?? 0) < 0 ? "bad" : undefined}
         sub={`delivery ${(t.deliveryResult ?? 0) >= 0 ? "+" : ""}${money(t.deliveryResult)}`}
-        hint="Gross profit + delivery fees charged to customers − fees paid to couriers. Other expenses (rent, salaries, ads) are not included." />
+        hint="Gross profit + delivery fees charged to customers − delivery costs recorded on the Deliveries page. Other expenses (rent, salaries, ads) are not included." />
       <Figure label="Cash received" value={money(t.cashReceived)} sub={range}
-        hint="Orders paid in this period (by payment date), after the courier's fee. Can differ from sales because couriers pay later." />
+        hint="The full total of orders sold in this period. An order is paid when it is sold." />
     </FigureRow>
   )
 }

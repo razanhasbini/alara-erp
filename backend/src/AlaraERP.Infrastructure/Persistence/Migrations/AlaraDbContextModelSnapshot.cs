@@ -26,8 +26,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("receipt_number_seq", "inventory");
 
-            modelBuilder.HasSequence("remittance_number_seq", "sales");
-
             modelBuilder.HasSequence("transfer_number_seq", "inventory");
 
             modelBuilder.Entity("AlaraERP.Domain.Catalog.BundleItem", b =>
@@ -1033,78 +1031,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("AlaraERP.Domain.Sales.CourierRemittance", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("AmountCollected")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("amount_collected");
-
-                    b.Property<decimal>("CourierFees")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("courier_fees");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("DeliveryCompanyId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("delivery_company_id");
-
-                    b.Property<decimal>("NetAmount")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("net_amount");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<int>("OrderCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("order_count");
-
-                    b.Property<DateTimeOffset>("ReceivedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("received_at");
-
-                    b.Property<Guid?>("RecordedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("recorded_by_user_id");
-
-                    b.Property<string>("RemittanceNumber")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("remittance_number");
-
-                    b.HasKey("Id")
-                        .HasName("pk_courier_remittances");
-
-                    b.HasIndex("RecordedByUserId")
-                        .HasDatabaseName("ix_courier_remittances_recorded_by_user_id");
-
-                    b.HasIndex("RemittanceNumber")
-                        .IsUnique()
-                        .HasDatabaseName("ix_courier_remittances_remittance_number");
-
-                    b.HasIndex("DeliveryCompanyId", "ReceivedAt")
-                        .HasDatabaseName("ix_courier_remittances_delivery_company_id_received_at");
-
-                    b.ToTable("courier_remittances", "sales", t =>
-                        {
-                            t.HasCheckConstraint("ck_courier_remittances_amounts", "amount_collected >= 0 AND courier_fees >= 0 AND order_count > 0");
-
-                            t.HasCheckConstraint("ck_courier_remittances_net", "net_amount = amount_collected - courier_fees");
-                        });
-                });
-
             modelBuilder.Entity("AlaraERP.Domain.Sales.Customer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1216,6 +1142,66 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.ToTable("delivery_companies", "sales");
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Sales.DeliveryExpense", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DeliveryCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_company_id");
+
+                    b.Property<int>("DeliveryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("delivery_count");
+
+                    b.Property<DateOnly>("IncurredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("incurred_on");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid?>("RecordedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recorded_by_user_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_delivery_expenses");
+
+                    b.HasIndex("IncurredOn")
+                        .HasDatabaseName("ix_delivery_expenses_incurred_on");
+
+                    b.HasIndex("RecordedByUserId")
+                        .HasDatabaseName("ix_delivery_expenses_recorded_by_user_id");
+
+                    b.HasIndex("DeliveryCompanyId", "IncurredOn")
+                        .HasDatabaseName("ix_delivery_expenses_delivery_company_id_incurred_on");
+
+                    b.ToTable("delivery_expenses", "sales", t =>
+                        {
+                            t.HasCheckConstraint("ck_delivery_expenses_amount", "amount > 0");
+
+                            t.HasCheckConstraint("ck_delivery_expenses_count", "delivery_count > 0");
+                        });
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Sales.Order", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1229,15 +1215,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("confirmed_at");
-
-                    b.Property<decimal?>("CourierFee")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("courier_fee");
-
-                    b.Property<Guid?>("CourierRemittanceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("courier_remittance_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1261,10 +1238,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeliveredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("delivered_at");
-
-                    b.Property<Guid?>("DeliveryCompanyId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("delivery_company_id");
 
                     b.Property<decimal>("DiscountTotal")
                         .HasPrecision(12, 2)
@@ -1365,11 +1338,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(12,2)")
                         .HasColumnName("subtotal");
 
-                    b.Property<string>("TrackingNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("tracking_number");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1386,9 +1354,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_orders");
-
-                    b.HasIndex("CourierRemittanceId")
-                        .HasDatabaseName("ix_orders_courier_remittance_id");
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("ix_orders_created_at");
@@ -1409,9 +1374,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.HasIndex("WarehouseId")
                         .HasDatabaseName("ix_orders_warehouse_id");
 
-                    b.HasIndex("DeliveryCompanyId", "PaymentStatus")
-                        .HasDatabaseName("ix_orders_delivery_company_id_payment_status");
-
                     b.HasIndex("Status", "CreatedAt")
                         .HasDatabaseName("ix_orders_status_created_at");
 
@@ -1421,7 +1383,7 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                     b.ToTable("orders", "sales", t =>
                         {
-                            t.HasCheckConstraint("ck_orders_amounts_not_negative", "subtotal >= 0 AND discount_total >= 0 AND shipping_total >= 0 AND grand_total >= 0 AND (courier_fee IS NULL OR courier_fee >= 0)");
+                            t.HasCheckConstraint("ck_orders_amounts_not_negative", "subtotal >= 0 AND discount_total >= 0 AND shipping_total >= 0 AND grand_total >= 0");
 
                             t.HasCheckConstraint("ck_orders_discount_within_subtotal", "discount_total <= subtotal");
 
@@ -2175,30 +2137,24 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_whatsapp_messages_notifications_notification_id");
                 });
 
-            modelBuilder.Entity("AlaraERP.Domain.Sales.CourierRemittance", b =>
+            modelBuilder.Entity("AlaraERP.Domain.Sales.DeliveryExpense", b =>
                 {
                     b.HasOne("AlaraERP.Domain.Sales.DeliveryCompany", null)
                         .WithMany()
                         .HasForeignKey("DeliveryCompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_courier_remittances_delivery_companies_delivery_company_id");
+                        .HasConstraintName("fk_delivery_expenses_delivery_companies_delivery_company_id");
 
                     b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
                         .WithMany()
                         .HasForeignKey("RecordedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_courier_remittances_users_recorded_by_user_id");
+                        .HasConstraintName("fk_delivery_expenses_users_recorded_by_user_id");
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Sales.Order", b =>
                 {
-                    b.HasOne("AlaraERP.Domain.Sales.CourierRemittance", null)
-                        .WithMany()
-                        .HasForeignKey("CourierRemittanceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_orders_courier_remittances_courier_remittance_id");
-
                     b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
@@ -2210,12 +2166,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_orders_customers_customer_id");
-
-                    b.HasOne("AlaraERP.Domain.Sales.DeliveryCompany", null)
-                        .WithMany()
-                        .HasForeignKey("DeliveryCompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_orders_delivery_companies_delivery_company_id");
 
                     b.HasOne("AlaraERP.Domain.Inventory.Warehouse", null)
                         .WithMany()

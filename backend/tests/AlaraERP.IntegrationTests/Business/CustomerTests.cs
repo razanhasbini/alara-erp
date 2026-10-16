@@ -20,13 +20,13 @@ public sealed class CustomerTests(AlaraApiFactory factory) : ApiTestBase(factory
         var second = await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "70123456", "Beirut", "Another address"),
-            null, 0, 0, null, [new OrderLineInput(product.Id, 2)], Confirm: true))).OkJsonAsync<OrderDetailDto>();
+            0, 0, null, [new OrderLineInput(product.Id, 2)], Confirm: true))).OkJsonAsync<OrderDetailDto>();
 
         var customers = await client.GetJsonAsync<PagedResult<CustomerDto>>("/api/customers?search=70%20123%20456");
         Assert.NotNull(first.CustomerId);
         Assert.Equal(first.CustomerId, second.CustomerId);
         var customer = Assert.Single(customers.Items);
-        Assert.Equal((2, 64m, 0m), (customer.OrderCount, customer.TotalSpent, customer.TotalPaid));
+        Assert.Equal((2, 64m, 64m), (customer.OrderCount, customer.TotalSpent, customer.TotalPaid)); // paid when sold
     }
 
     [Fact]
@@ -42,18 +42,18 @@ public sealed class CustomerTests(AlaraApiFactory factory) : ApiTestBase(factory
         async Task<OrderDetailDto> Order(int quantity) => await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.WhatsApp, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput(customer.Name, customer.Phone, customer.City, null),
-            null, 0, 0, null, [new OrderLineInput(product.Id, quantity)], Confirm: true, CustomerId: customer.Id)))
+            0, 0, null, [new OrderLineInput(product.Id, quantity)], Confirm: true, CustomerId: customer.Id)))
             .OkJsonAsync<OrderDetailDto>();
 
         var paid = await Order(1);
-        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new ShipOrderRequest(null, null, null, null))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{paid.Id}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
         await Order(2);
 
         var analytics = await client.GetJsonAsync<CustomerAnalyticsDto>("/api/analytics/customers");
         var row = Assert.Single(analytics.Customers);
         Assert.Equal(customer.Id, row.CustomerId);
-        Assert.Equal((2, 1, 75m, 25m, 37.50m),
+        Assert.Equal((2, 1, 75m, 75m, 37.50m), // both orders were paid when sold
             (row.OrderCount, row.RepeatOrders, row.TotalOrdered, row.TotalPaid, row.AverageOrderValue));
         Assert.NotNull(row.AverageDaysBetweenOrders);
     }

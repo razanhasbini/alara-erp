@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/bin
+**/obj
+frontend/node_modules
+frontend/dist
+frontend/.vite
+**/*.user
+**/.DS_Store
+App_Data

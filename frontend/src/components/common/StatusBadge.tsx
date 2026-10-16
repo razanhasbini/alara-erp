@@ -30,7 +30,7 @@ export const OrderStatusPill = ({ status }: { status: OrderStatus }) => (
   <Pill tone={orderTone[status]} className={status === "Cancelled" ? "line-through decoration-1" : undefined}>{orderLabel[status] ?? status}</Pill>
 )
 
-const paymentTone: Record<PaymentStatus, Tone> = { Unpaid: "neutral", CollectedByCourier: "amber", Paid: "green", Void: "neutral" }
+const paymentTone: Record<PaymentStatus, Tone> = { Unpaid: "neutral", Paid: "green", Void: "neutral" }
 export const PaymentStatusPill = ({ status }: { status: PaymentStatus }) => (
   <Pill tone={paymentTone[status]} dot={false}>{humanize(status)}</Pill>
 )

@@ -18,16 +18,14 @@ public sealed record OrderSummary(
 /// <summary>Money figures, each with a precise definition (shown in the UI as the metric's tooltip).</summary>
 public sealed record FinanceSummary(
     string Currency,
-    /// <summary>Σ grand total of orders whose payment status is Paid (cash in hand).</summary>
+    /// <summary>Σ grand total of paid orders. An order is paid the moment it is sold.</summary>
     decimal CollectedRevenue,
     /// <summary>Same as above, restricted to orders paid this calendar month (business time zone).</summary>
     decimal CollectedThisMonth,
-    /// <summary>Σ grand total of delivered COD orders whose cash is still with the courier.</summary>
-    decimal AwaitingRemittance,
     /// <summary>Σ grand total of Confirmed + Shipped orders (not yet delivered).</summary>
     decimal OpenOrderValue,
-    /// <summary>Σ courier fees on paid orders.</summary>
-    decimal CourierFeesPaid);
+    /// <summary>Σ independently recorded delivery expenses.</summary>
+    decimal DeliveryCosts);
 
 public sealed record DailyPoint(DateOnly Date, int Orders, decimal Value);
 
@@ -114,9 +112,8 @@ public sealed class DashboardService(
             options.Value.BaseCurrency,
             await paid.SumAsync(o => o.GrandTotal, ct),
             await paid.Where(o => o.PaidAt >= monthStart).SumAsync(o => o.GrandTotal, ct),
-            await db.Orders.Where(o => o.PaymentStatus == PaymentStatus.CollectedByCourier).SumAsync(o => o.GrandTotal, ct),
             await db.Orders.Where(o => o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped).SumAsync(o => o.GrandTotal, ct),
-            await paid.SumAsync(o => o.CourierFee ?? 0, ct));
+            await db.DeliveryExpenses.SumAsync(e => e.Amount, ct));
     }
 
     private async Task<IReadOnlyList<DailyPoint>> DailyAsync(CancellationToken ct)

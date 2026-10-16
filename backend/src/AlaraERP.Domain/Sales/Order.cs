@@ -59,19 +59,13 @@ public sealed class Order : IAuditable
     public string? RecipientCity { get; private set; }
     public string? RecipientAddress { get; private set; }
 
-    public Guid? DeliveryCompanyId { get; private set; }
-    public string? TrackingNumber { get; private set; }
-
     public decimal Subtotal { get; private set; }
     public decimal DiscountTotal { get; private set; }
     /// <summary>Delivery fee charged to the customer.</summary>
     public decimal ShippingTotal { get; private set; }
-    /// <summary>What the delivery company charges ÀLara Line; deducted from the cash it remits.</summary>
-    public decimal? CourierFee { get; private set; }
     public decimal GrandTotal { get; private set; }
     public string CurrencyCode { get; private set; } = "";
 
-    public Guid? CourierRemittanceId { get; private set; }
     public string? Notes { get; private set; }
     public Guid? CreatedByUserId { get; private set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -114,15 +108,6 @@ public sealed class Order : IAuditable
     }
 
     public void SetNotes(string? notes) => Notes = Clean(notes);
-
-    public void SetDelivery(Guid? deliveryCompanyId, string? trackingNumber, decimal? courierFee)
-    {
-        EnsureNotFinal("change delivery details of");
-        if (courierFee is { } fee) Guard.NotNegative(fee, "Courier fee");
-        DeliveryCompanyId = deliveryCompanyId;
-        TrackingNumber = Clean(trackingNumber);
-        CourierFee = courierFee is { } f ? Guard.Money(f) : null;
-    }
 
     /// <summary>Lines, discount and delivery fee can only change while the order is a draft (no stock reserved).</summary>
     public void ReplaceLines(IReadOnlyList<OrderItem> items, decimal discountTotal, decimal shippingTotal,
@@ -210,9 +195,6 @@ public sealed class Order : IAuditable
     {
         if (!CanTransition(Status, target))
             throw new DomainException("orders.invalid_transition", $"An order cannot go from {Status} to {target}.");
-        if (target is OrderStatus.Cancelled or OrderStatus.Returned && PaymentStatus == PaymentStatus.Paid)
-            throw new DomainException("orders.paid_cannot_cancel",
-                "This order is already paid. Refunds are not supported yet; resolve the payment before cancelling.");
         if (target == OrderStatus.Confirmed && _items.Count == 0)
             throw new DomainException("orders.no_items", "An order needs at least one item.");
 
@@ -223,57 +205,30 @@ public sealed class Order : IAuditable
             case OrderStatus.Confirmed: ConfirmedAt = at; break;
             case OrderStatus.Reserved: ConfirmedAt = null; break;
             case OrderStatus.Shipped: ShippedAt = at; break;
-            case OrderStatus.Delivered:
-                DeliveredAt = at;
-                if (PaymentMethod == PaymentMethod.CashOnDelivery && PaymentStatus == PaymentStatus.Unpaid)
-                {
-                    // With a delivery company the cash is with the courier until remitted; otherwise staff collected it.
-                    if (DeliveryCompanyId is null)
-                        SetPaymentStatus(PaymentStatus.Paid, userId, at, "Cash received on delivery by ÀLara Line staff.");
-                    else
-                        SetPaymentStatus(PaymentStatus.CollectedByCourier, userId, at, "Cash collected by the courier on delivery.");
-                }
-                break;
-            case OrderStatus.Cancelled: CancelledAt = at; VoidUnpaid(userId, at); break;
-            case OrderStatus.Returned: ReturnedAt = at; VoidUnpaid(userId, at); break;
+            case OrderStatus.Delivered: DeliveredAt = at; break;
+            case OrderStatus.Cancelled: CancelledAt = at; break;
+            case OrderStatus.Returned: ReturnedAt = at; break;
         }
         _history.Add(new OrderHistoryEntry(Id, OrderEventType.Status, previous.ToString(), target.ToString(), notes, userId, at));
+
+        // Selling is the sale: the order is paid at once. Undoing the sale
+        // makes it unpaid again; a cancelled or returned order's money is taken back out (Void).
+        switch (target)
+        {
+            case OrderStatus.Confirmed: SetPaymentStatus(PaymentStatus.Paid, userId, at, null); break;
+            case OrderStatus.Reserved when PaymentStatus == PaymentStatus.Paid: SetPaymentStatus(PaymentStatus.Unpaid, userId, at, null); break;
+            case OrderStatus.Cancelled or OrderStatus.Returned: SetPaymentStatus(PaymentStatus.Void, userId, at, null); break;
+        }
     }
 
     // ---- payment -------------------------------------------------------------------------
 
-    /// <summary>Records a direct payment (non-COD methods).</summary>
-    public void MarkPaid(Guid? userId, DateTimeOffset at, string? notes)
-    {
-        if (PaymentMethod == PaymentMethod.CashOnDelivery)
-            throw new DomainException("orders.cod_paid_via_remittance",
-                "Cash-on-delivery orders are marked paid when the courier remits the cash.");
-        if (Status is OrderStatus.Cancelled or OrderStatus.Returned || PaymentStatus != PaymentStatus.Unpaid)
-            throw new DomainException("orders.cannot_mark_paid", $"A {Status} order with payment {PaymentStatus} cannot be marked paid.");
-        SetPaymentStatus(PaymentStatus.Paid, userId, at, notes);
-    }
-
-    /// <summary>The courier handed over the cash for this delivered COD order.</summary>
-    public void MarkRemitted(Guid remittanceId, Guid? userId, DateTimeOffset at)
-    {
-        if (PaymentStatus != PaymentStatus.CollectedByCourier || CourierRemittanceId is not null)
-            throw new DomainException("remittances.order_not_collectable",
-                $"Order {OrderNumber} is not awaiting remittance (payment status {PaymentStatus}).");
-        CourierRemittanceId = remittanceId;
-        SetPaymentStatus(PaymentStatus.Paid, userId, at, "Cash remitted by the courier.");
-    }
-
-    private void VoidUnpaid(Guid? userId, DateTimeOffset at)
-    {
-        if (PaymentStatus is PaymentStatus.Unpaid or PaymentStatus.CollectedByCourier)
-            SetPaymentStatus(PaymentStatus.Void, userId, at, null);
-    }
-
     private void SetPaymentStatus(PaymentStatus status, Guid? userId, DateTimeOffset at, string? notes)
     {
+        if (status == PaymentStatus) return;
         var previous = PaymentStatus;
         PaymentStatus = status;
-        if (status == PaymentStatus.Paid) PaidAt = at;
+        PaidAt = status == PaymentStatus.Paid ? at : null;
         _history.Add(new OrderHistoryEntry(Id, OrderEventType.Payment, previous.ToString(), status.ToString(), notes, userId, at));
     }
 

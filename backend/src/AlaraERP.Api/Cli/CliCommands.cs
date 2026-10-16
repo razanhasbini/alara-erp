@@ -1,6 +1,7 @@
 using AlaraERP.Infrastructure.Identity;
 using AlaraERP.Infrastructure.Persistence;
 using AlaraERP.Infrastructure.Seeding;
+using AlaraERP.Application.Common.Security;
 using Npgsql;
 
 namespace AlaraERP.Api.Cli;
@@ -11,7 +12,7 @@ namespace AlaraERP.Api.Cli;
 /// </summary>
 public static class CliCommands
 {
-    public static readonly string[] Names = ["migrate", "bootstrap-admin", "provision-user", "import-catalog"];
+    public static readonly string[] Names = ["migrate", "initialize", "bootstrap-admin", "provision-user", "import-catalog"];
 
     public static async Task<int?> TryRunAsync(WebApplication app, string[] args)
     {
@@ -28,6 +29,9 @@ public static class CliCommands
             {
                 case "migrate":
                     await MigrateAsync(app, config, cts.Token);
+                    return 0;
+                case "initialize":
+                    await InitializeAsync(app, config, cts.Token);
                     return 0;
                 case "bootstrap-admin":
                     return await BootstrapAdminAsync(app, config, cts.Token) ? 0 : 1;
@@ -76,6 +80,50 @@ public static class CliCommands
             ?? throw new InvalidOperationException("Connection string 'Default' has no Username.");
 
         await app.Services.GetRequiredService<DatabaseMigrator>().MigrateAsync(ownerConnection, appRole, ct);
+    }
+
+    /// <summary>
+    /// Idempotent container startup: update the schema, optionally import the packaged catalogue, and create
+    /// configured initial accounts only when they do not exist. Existing passwords are never reset on restart.
+    /// </summary>
+    private static async Task InitializeAsync(WebApplication app, IConfiguration config, CancellationToken ct)
+    {
+        await MigrateAsync(app, config, ct);
+
+        await using var scope = app.Services.CreateAsyncScope();
+        if (config.GetValue<bool>("Bootstrap:ImportCatalog"))
+        {
+            var path = config["Bootstrap:CatalogPath"] ?? "/app/data/catalog/alaraline-catalog.json";
+            var result = await scope.ServiceProvider.GetRequiredService<CatalogImporter>()
+                .ImportAsync(Path.GetFullPath(path), ct);
+            Console.WriteLine($"Catalogue ready: {result.CategoriesCreated} categories, {result.ProductsCreated} products, " +
+                              $"{result.BundlesCreated} bundles created; {result.Skipped} already existed.");
+        }
+
+        await EnsureConfiguredUserAsync(scope.ServiceProvider, config.GetSection("Bootstrap:SuperAdmin"),
+            SystemRoles.SuperAdmin, ct);
+        await EnsureConfiguredUserAsync(scope.ServiceProvider, config.GetSection("Bootstrap:Employee"),
+            SystemRoles.SalesEmployee, ct);
+    }
+
+    private static async Task EnsureConfiguredUserAsync(IServiceProvider services, IConfigurationSection section,
+        string defaultRole, CancellationToken ct)
+    {
+        var userName = section["UserName"];
+        var email = section["Email"];
+        var password = section["Password"];
+        if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(email) || string.IsNullOrEmpty(password))
+            return;
+
+        var users = services.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<AppUser>>();
+        if (await users.FindByNameAsync(userName.Trim()) is not null || await users.FindByEmailAsync(email.Trim()) is not null)
+            return;
+
+        await services.GetRequiredService<UserProvisioner>().RunAsync(new ProvisionUserOptions(
+            userName, email, password,
+            section["FirstName"] ?? userName,
+            section["LastName"] ?? "",
+            section["Role"] ?? defaultRole), ct);
     }
 
     private static async Task<bool> BootstrapAdminAsync(WebApplication app, IConfiguration config, CancellationToken ct)

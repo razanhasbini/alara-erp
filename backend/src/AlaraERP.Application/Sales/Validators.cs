@@ -88,23 +88,23 @@ public sealed class UpdateOrderRequestValidator : AbstractValidator<UpdateOrderR
     }
 }
 
-public sealed class UpdateDeliveryRequestValidator : AbstractValidator<UpdateDeliveryRequest>
+public sealed class UpdateRecipientRequestValidator : AbstractValidator<UpdateRecipientRequest>
 {
-    public UpdateDeliveryRequestValidator()
+    public UpdateRecipientRequestValidator()
     {
         RuleFor(x => x.Recipient).NotNull().SetValidator(new RecipientInputValidator());
-        RuleFor(x => x.TrackingNumber).MaximumLength(100);
-        RuleFor(x => x.CourierFee).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).When(x => x.CourierFee.HasValue);
         RuleFor(x => x.Notes).MaximumLength(2000);
     }
 }
 
-public sealed class ShipOrderRequestValidator : AbstractValidator<ShipOrderRequest>
+public sealed class DeliveryExpenseRequestValidator : AbstractValidator<DeliveryExpenseRequest>
 {
-    public ShipOrderRequestValidator()
+    public DeliveryExpenseRequestValidator()
     {
-        RuleFor(x => x.TrackingNumber).MaximumLength(100);
-        RuleFor(x => x.CourierFee).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).When(x => x.CourierFee.HasValue);
+        RuleFor(x => x.DeliveryCompanyId).NotEmpty();
+        RuleFor(x => x.IncurredOn).NotEmpty();
+        RuleFor(x => x.Amount).GreaterThan(0).PrecisionScale(12, 2, true);
+        RuleFor(x => x.DeliveryCount).InclusiveBetween(1, 100_000);
         RuleFor(x => x.Notes).MaximumLength(2000);
     }
 }
@@ -115,16 +115,5 @@ public sealed class DeliveryCompanyRequestValidator : AbstractValidator<Delivery
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.Phone).MaximumLength(40);
-    }
-}
-
-public sealed class CreateRemittanceRequestValidator : AbstractValidator<CreateRemittanceRequest>
-{
-    public CreateRemittanceRequestValidator()
-    {
-        RuleFor(x => x.DeliveryCompanyId).NotEmpty();
-        RuleFor(x => x.OrderIds).NotEmpty().WithMessage("Select at least one order.")
-            .Must(ids => ids is null || ids.Distinct().Count() == ids.Count).WithMessage("An order is selected twice.");
-        RuleFor(x => x.Notes).MaximumLength(2000);
     }
 }

@@ -48,15 +48,15 @@ export function DashboardPage() {
 
       {(finance || orders) && (
         <FigureRow>
-          {finance && <Figure label="Cash collected" value={money(finance.collectedThisMonth)} sub={`${money(finance.collectedRevenue)} all time`}
-            hint="Sum of order totals (incl. delivery fee) whose payment is Paid — cash actually received — paid this calendar month. Cancelled, returned and unpaid orders are excluded." />}
-          {finance && <Figure label="With couriers" value={money(finance.awaitingRemittance)} tone={finance.awaitingRemittance > 0 ? "warn" : undefined}
-            sub={<Link to="/deliveries" className="hover:underline">Record hand-overs →</Link>}
-            hint="Delivered cash-on-delivery orders whose cash the courier has not handed over yet (gross, before courier fees)." />}
+          {finance && <Figure label="Sales this month" value={money(finance.collectedThisMonth)} sub={`${money(finance.collectedRevenue)} all time`}
+            hint="Order totals (incl. delivery fee) of orders sold this calendar month. An order counts as paid the moment it's sold; reserved, cancelled and returned orders are excluded." />}
+          {finance && <Figure label="Delivery costs" value={money(finance.deliveryCosts)}
+            sub={<Link to="/deliveries" className="hover:underline">Deliveries →</Link>}
+            hint="Delivery costs recorded by a manager (all time). They are tracked separately from customer orders." />}
           {orders && <Figure label="To pack" value={number(orders.awaitingShipment)} sub={<Link to="/orders?status=Reserved" className="hover:underline">{orders.reserved} reserved →</Link>}
-            hint="Sold orders (stock deducted) not yet handed to a courier. Reserved orders hold stock but aren't sold yet." />}
+            hint="Sold orders (stock deducted) that have not shipped yet. Reserved orders hold stock but aren't sold yet." />}
           {orders && <Figure label="Out for delivery" value={number(orders.outForDelivery)} sub={`${orders.createdToday} new today`}
-            hint="Orders handed to a courier and not yet marked delivered or returned." />}
+            hint="Orders marked as shipped and not yet marked delivered or returned." />}
           {!finance && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
           {!finance && catalog && <Figure label="Active products" value={number(catalog.activeProducts)} sub={`${catalog.activeBundles} bundles`} hint="Individual products currently for sale." />}
         </FigureRow>

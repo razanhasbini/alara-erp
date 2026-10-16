@@ -15,9 +15,9 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
 {
     private static readonly DateOnly Soon = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(2);
 
-    private static async Task ShipAndDeliverAsync(ErpClient client, Guid orderId, Guid? courierId = null, decimal? courierFee = null)
+    private static async Task ShipAndDeliverAsync(ErpClient client, Guid orderId)
     {
-        (await client.PostAsync($"/api/orders/{orderId}/ship", new ShipOrderRequest(courierId, null, courierFee, null))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/api/orders/{orderId}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{orderId}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
     }
 
@@ -30,9 +30,11 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         await s.ReceiveAsync(warehouse.Id, mask.Id, 2, Soon, "OLD", unitCost: 5m);          // ships first (expires first)
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, Scenario.InAYear, "NEW", unitCost: 8m);
         var courier = await (await client.PostAsync("/api/delivery-companies", new DeliveryCompanyRequest("Wakilni", null))).OkJsonAsync<DeliveryCompanyDto>();
-        var order = await (await s.CreateOrderAsync(warehouse.Id, confirm: true, deliveryCompanyId: courier.Id, lines: (mask.Id, 3))).OkJsonAsync<OrderDetailDto>();
+        var order = await (await s.CreateOrderAsync(warehouse.Id, confirm: true, lines: (mask.Id, 3))).OkJsonAsync<OrderDetailDto>();
+        (await client.PostAsync("/api/delivery-expenses",
+            new DeliveryExpenseRequest(courier.Id, DateOnly.FromDateTime(DateTime.UtcNow), 1m, 1, null))).EnsureSuccessStatusCode();
 
-        await ShipAndDeliverAsync(client, order.Id, courier.Id, courierFee: 1m);
+        await ShipAndDeliverAsync(client, order.Id);
         var summary = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
 
         var t = summary.Totals;
@@ -44,13 +46,9 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         Assert.Equal(75.0m, t.GrossMarginPercent);
         Assert.Equal(3m, t.DeliveryResult);      // $4 fee charged − $1 courier fee
         Assert.Equal(57m, t.Profit);
-        Assert.Equal(0m, t.CashReceived);        // cash is still with the courier
+        Assert.Equal(76m, t.CashReceived);       // paid when sold: $72 goods + $4 delivery fee
         Assert.Equal(0, t.UncostedUnits);
         Assert.Equal(72m, summary.Series.Single(p => p.Orders > 0).NetSales);
-
-        (await client.PostAsync("/api/courier-remittances", new CreateRemittanceRequest(courier.Id, [order.Id], null, null))).EnsureSuccessStatusCode();
-        var after = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
-        Assert.Equal(75m, after.Totals.CashReceived); // $76 collected − $1 the courier kept
     }
 
     [Fact]
@@ -63,7 +61,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var order = await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", "Hamra"),
-            null, DiscountTotal: 3m, ShippingTotal: 0m, Notes: null,
+            DiscountTotal: 3m, ShippingTotal: 0m, Notes: null,
             Items: [new OrderLineInput(mask.Id, Quantity: 2, LineDiscount: 5m)], Confirm: true)))
             .OkJsonAsync<OrderDetailDto>();
         await ShipAndDeliverAsync(client, order.Id);
@@ -237,7 +235,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
         var returned = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
-        (await client.PostAsync($"/api/orders/{returned.Id}/ship", new ShipOrderRequest(null, null, null, null))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/api/orders/{returned.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{returned.Id}/return", new TransitionRequest(null))).EnsureSuccessStatusCode();
         await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2)); // confirmed: cost is estimated from reserved stock
 

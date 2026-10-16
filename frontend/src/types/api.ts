@@ -264,7 +264,8 @@ export interface Transfer {
 export type OrderStatus = "Draft" | "Reserved" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled" | "Returned"
 export type OrderSource = "WhatsApp" | "Instagram" | "Website" | "Other"
 export type PaymentMethod = "CashOnDelivery" | "Whish" | "Omt" | "BankTransfer" | "Cash"
-export type PaymentStatus = "Unpaid" | "CollectedByCourier" | "Paid" | "Void"
+/** Reserved orders are Unpaid; an order is Paid the moment it is sold; cancelled or returned sales are Void. */
+export type PaymentStatus = "Unpaid" | "Paid" | "Void"
 
 export interface Customer {
   id: string
@@ -298,8 +299,6 @@ export interface OrderListItem {
   itemCount: number
   grandTotal: number
   currencyCode: string
-  deliveryCompanyName: string | null
-  trackingNumber: string | null
   createdAt: string
   createdBy: string | null
   reservedUntil: string | null
@@ -341,16 +340,11 @@ export interface OrderDetail {
   recipientPhone: string
   recipientCity: string | null
   recipientAddress: string | null
-  deliveryCompanyId: string | null
-  deliveryCompanyName: string | null
-  trackingNumber: string | null
   subtotal: number
   discountTotal: number
   shippingTotal: number
-  courierFee: number | null
   grandTotal: number
   currencyCode: string
-  courierRemittanceNumber: string | null
   notes: string | null
   createdByUserId: string | null
   createdBy: string | null
@@ -374,34 +368,22 @@ export interface DeliveryCompany {
   name: string
   phone: string | null
   isActive: boolean
-  awaitingRemittanceOrders: number
-  awaitingRemittanceAmount: number
-  awaitingRemittanceFees: number
+  /** Deliveries covered by recorded cost entries. */
+  deliveryCount: number
+  deliveryCost: number
 }
 
-export interface RemittanceOrder {
+export interface DeliveryExpense {
   id: string
-  orderNumber: string
-  recipientName: string
-  deliveredAt: string | null
-  grandTotal: number
-  courierFee: number | null
-}
-
-export interface Remittance {
-  id: string
-  remittanceNumber: string
   deliveryCompanyId: string
   deliveryCompanyName: string
-  amountCollected: number
-  courierFees: number
-  netAmount: number
-  orderCount: number
-  receivedAt: string
+  incurredOn: string
+  amount: number
+  deliveryCount: number
   notes: string | null
   recordedBy: string | null
   createdAt: string
-  orders: RemittanceOrder[]
+  updatedAt: string
 }
 
 // ---- dashboard / settings -----------------------------------------------------------------
@@ -413,8 +395,8 @@ export interface Dashboard {
     delivered: number; cancelled: number; returned: number; createdToday: number
   } | null
   finance: {
-    currency: string; collectedRevenue: number; collectedThisMonth: number; awaitingRemittance: number
-    openOrderValue: number; courierFeesPaid: number
+    currency: string; collectedRevenue: number; collectedThisMonth: number
+    openOrderValue: number; deliveryCosts: number
   } | null
   dailyOrders: { date: string; orders: number; value: number }[] | null
   bySource: { source: OrderSource; orders: number; value: number }[] | null
@@ -454,7 +436,7 @@ export interface AnalyticsSummary {
   includesCosts: boolean
   totals: {
     orders: number; unitsSold: number; grossSales: number; discounts: number; netSales: number; averageOrderValue: number
-    deliveryFees: number; courierFees: number | null; deliveryResult: number | null
+    deliveryFees: number; deliveryCosts: number | null; deliveryResult: number | null
     costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null; profit: number | null
     cashReceived: number; uncostedUnits: number
   }

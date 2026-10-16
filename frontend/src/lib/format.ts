@@ -58,7 +58,7 @@ export function daysUntil(value: string): number {
 
 /** "CashOnDelivery" → "Cash on delivery", "WhatsApp" stays. */
 export function humanize(value: string): string {
-  const special: Record<string, string> = { WhatsApp: "WhatsApp", Omt: "OMT", CollectedByCourier: "With courier" }
+  const special: Record<string, string> = { WhatsApp: "WhatsApp", Omt: "OMT" }
   if (special[value]) return special[value]
   const spaced = value.replace(/([a-z])([A-Z])/g, "$1 $2")
   return spaced.charAt(0) + spaced.slice(1).toLowerCase()

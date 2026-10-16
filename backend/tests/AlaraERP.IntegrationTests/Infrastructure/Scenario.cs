@@ -47,11 +47,11 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
 
     /// <summary>confirm = sell now; otherwise the order is reserved for a day.</summary>
     public async Task<HttpResponseMessage> CreateOrderAsync(Guid warehouseId, bool confirm, decimal discount = 0,
-        decimal? shipping = null, Guid? deliveryCompanyId = null, params (Guid ProductId, int Quantity)[] lines) =>
+        decimal? shipping = null, params (Guid ProductId, int Quantity)[] lines) =>
         await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.WhatsApp, warehouseId, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", "Hamra, Bliss St."),
-            deliveryCompanyId, discount, shipping, null,
+            discount, shipping, null,
             lines.Select(l => new OrderLineInput(l.ProductId, l.Quantity)).ToList(), confirm,
             ReserveUntil: confirm ? null : DateTimeOffset.UtcNow.AddDays(1)));
 

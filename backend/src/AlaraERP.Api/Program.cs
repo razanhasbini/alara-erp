@@ -8,6 +8,7 @@ using AlaraERP.Application.Common;
 using AlaraERP.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,6 +35,13 @@ builder.Services
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi();
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Railway's reverse proxy address is dynamic. Only the headers named above are accepted.
+    o.KnownIPNetworks.Clear();
+    o.KnownProxies.Clear();
+});
 
 // ---- Authentication: Identity cookie, HttpOnly, SameSite=Strict -------------------------------
 builder.Services
@@ -91,11 +99,19 @@ if (await CliCommands.TryRunAsync(app, args) is { } exitCode)
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
     app.UseHttpsRedirection();
+}
+
+var servesSpa = File.Exists(Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html"));
+if (servesSpa)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
 }
 
 app.UseAuthentication();
@@ -106,13 +122,22 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
 
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().ExcludeFromDescription();
 
-// Opening the API address in a browser should point people to the app, not show a bare 401.
-app.MapGet("/", (IConfiguration cfg) => Results.Text(
-        $"ÀLara Line ERP API is running. Open the app at {cfg["App:FrontendUrl"] ?? "the frontend address"}.\n",
-        "text/plain; charset=utf-8"))
-    .AllowAnonymous()
-    .ExcludeFromDescription();
+if (servesSpa)
+{
+    // Client-side routes such as /orders/123 must return the SPA after a browser refresh.
+    app.MapFallbackToFile("index.html").AllowAnonymous().ExcludeFromDescription();
+}
+else
+{
+    // In split local development, opening the API address points people to the Vite app.
+    app.MapGet("/", (IConfiguration cfg) => Results.Text(
+            $"ÀLara Line ERP API is running. Open the app at {cfg["App:FrontendUrl"] ?? "the frontend address"}.\n",
+            "text/plain; charset=utf-8"))
+        .AllowAnonymous()
+        .ExcludeFromDescription();
+}
 
 await app.RunAsync();
 return 0;

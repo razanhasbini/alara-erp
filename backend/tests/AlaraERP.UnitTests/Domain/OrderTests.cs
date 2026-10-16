@@ -63,30 +63,26 @@ public sealed class OrderTests
     }
 
     [Fact]
-    public void Cod_delivered_by_a_courier_awaits_remittance_and_cancelled_orders_are_void()
+    public void Selling_pays_the_order_at_once_and_undoing_or_cancelling_the_sale_takes_the_money_back()
     {
         var delivered = NewOrder();
-        delivered.SetDelivery(Guid.NewGuid(), "WB-1", 2m);
         delivered.TransitionTo(OrderStatus.Confirmed, null, Now);
-        delivered.TransitionTo(OrderStatus.Shipped, null, Now);
-        delivered.TransitionTo(OrderStatus.Delivered, null, Now);
+        var paidWhenSold = (delivered.PaymentStatus, delivered.PaidAt);
+        delivered.TransitionTo(OrderStatus.Shipped, null, Now.AddDays(1));
+        delivered.TransitionTo(OrderStatus.Delivered, null, Now.AddDays(2));
 
-        var cancelled = NewOrder();
-        cancelled.TransitionTo(OrderStatus.Cancelled, null, Now);
+        var backToReserved = NewOrder();
+        backToReserved.TransitionTo(OrderStatus.Confirmed, null, Now);
+        backToReserved.Reserve(Now.AddDays(3), null, Now);
 
-        Assert.Equal(PaymentStatus.CollectedByCourier, delivered.PaymentStatus);
-        Assert.Equal(PaymentStatus.Void, cancelled.PaymentStatus);
-    }
+        var cancelledSale = NewOrder();
+        cancelledSale.TransitionTo(OrderStatus.Confirmed, null, Now);
+        cancelledSale.TransitionTo(OrderStatus.Cancelled, null, Now);
 
-    [Fact]
-    public void Paid_orders_cannot_be_cancelled_and_cod_cannot_be_marked_paid_directly()
-    {
-        var prepaid = NewOrder(PaymentMethod.Whish);
-        prepaid.MarkPaid(null, Now, "Whish transfer");
-        var cod = NewOrder();
-
-        Assert.Equal("orders.paid_cannot_cancel", Assert.Throws<DomainException>(() => prepaid.TransitionTo(OrderStatus.Cancelled, null, Now)).Code);
-        Assert.Equal("orders.cod_paid_via_remittance", Assert.Throws<DomainException>(() => cod.MarkPaid(null, Now, null)).Code);
+        Assert.Equal((PaymentStatus.Paid, (DateTimeOffset?)Now), paidWhenSold);
+        Assert.Equal((PaymentStatus.Paid, (DateTimeOffset?)Now), (delivered.PaymentStatus, delivered.PaidAt)); // delivery changes nothing
+        Assert.Equal((PaymentStatus.Unpaid, (DateTimeOffset?)null), (backToReserved.PaymentStatus, backToReserved.PaidAt));
+        Assert.Equal((PaymentStatus.Void, (DateTimeOffset?)null), (cancelledSale.PaymentStatus, cancelledSale.PaidAt));
     }
 
     [Fact]

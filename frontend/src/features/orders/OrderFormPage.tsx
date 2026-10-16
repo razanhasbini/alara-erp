@@ -128,7 +128,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
       const body = {
         source, warehouseId: effectiveWarehouse, paymentMethod, customerId,
         recipient: { name: name.trim(), phone: phone.trim(), city: city.trim() || null, address: address.trim() || null },
-        deliveryCompanyId: null, discountTotal: Number(discount) || 0, shippingTotal: Number(shippingValue) || 0,
+        discountTotal: Number(discount) || 0, shippingTotal: Number(shippingValue) || 0,
         notes: notes.trim() || null,
         items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity, lineDiscount: line.isGift ? 0 : Number(line.discount) || 0, isGift: line.isGift })),
       }

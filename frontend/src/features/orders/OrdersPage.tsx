@@ -70,18 +70,17 @@ export function OrdersPage() {
       ? [{ key: "until", header: "Reserved until", cell: (o: OrderListItem) => <ReservedUntil until={o.reservedUntil} /> } satisfies Column<OrderListItem>]
       : [{ key: "status", header: "Status", cell: (o: OrderListItem) => <OrderStatusPill status={o.status} /> } satisfies Column<OrderListItem>]),
     { key: "payment", header: "Payment", hideOnMobile: true, cell: (o) => <PaymentStatusPill status={o.paymentStatus} /> },
-    { key: "courier", header: "Courier", hideOnMobile: true, cell: (o) => <div className="text-xs">{o.deliveryCompanyName ?? <span className="text-muted-foreground">—</span>}{o.trackingNumber && <div className="code text-muted-foreground">{o.trackingNumber}</div>}</div> },
   ]
 
   return (
     <>
       <PageHeader title="Orders" description={customerId ? "Complete order history for the selected customer."
         : reservedView ? "Stock held for customers who haven't bought yet. Nothing here counts as a sale until you mark it as sold."
-        : "WhatsApp, Instagram and website orders. Selling deducts stock immediately; shipping details are added later."}
+        : "WhatsApp, Instagram and website orders. Selling records payment and deducts stock immediately."}
         actions={can(P.orders.create) && <Button asChild><Link to="/orders/new"><Plus /> New order</Link></Button>} />
       {customerId && <div className="mb-3 flex items-center gap-2 rounded-md border border-hairline bg-card px-3 py-2 text-sm">Showing one customer's orders. <Link to="/customers" className="font-medium text-primary hover:underline">Back to customers</Link></div>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Order no., name, phone, tracking" />
+        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Order no., customer name or phone" />
         <Segmented label="Status" value={["open", "all", "Reserved", "Delivered", "Cancelled", "Returned"].includes(status) ? status : "all"} onChange={(v) => set({ status: v === "open" ? "" : v })}
           options={[{ value: "open", label: "Open" }, { value: "Reserved", label: "Reserved" }, { value: "Delivered", label: "Delivered" }, { value: "Cancelled", label: "Cancelled" }, { value: "Returned", label: "Returned" }, { value: "all", label: "All" }]} />
         {!reservedView && <Select value={["Draft", "Confirmed", "Shipped"].includes(status) ? status : "any"} onValueChange={(v) => set({ status: v === "any" ? "" : v })}>

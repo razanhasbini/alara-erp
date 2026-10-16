@@ -34,7 +34,7 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         var response = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
-            new RecipientInput("Nour Haddad", "+961 3 111 222", "Saida", null), null, 5m, null, "Gift wrap",
+            new RecipientInput("Nour Haddad", "+961 3 111 222", "Saida", null), 5m, null, "Gift wrap",
             [new OrderLineInput(shop.Shampoo.Id, 2, 1.50m), new OrderLineInput(shop.Duo.Id, 1)], ReserveUntil: Scenario.Tomorrow));
 
         var order = await response.OkJsonAsync<OrderDetailDto>();
@@ -84,12 +84,12 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var response = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Other, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Gift Recipient", "+961 70 444 555", "Beirut", null),
-            null, 5m, 25m, "Includes a complimentary gift",
+            5m, 25m, "Includes a complimentary gift",
             [new OrderLineInput(shop.Shampoo.Id, 1), new OrderLineInput(shop.Shampoo.Id, 2, IsGift: true), new OrderLineInput(shop.Duo.Id, 1, IsGift: true)],
             Confirm: true));
 
         var order = await response.OkJsonAsync<OrderDetailDto>();
-        Assert.Equal((OrderStatus.Confirmed, PaymentStatus.Unpaid), (order.Status, order.PaymentStatus));
+        Assert.Equal((OrderStatus.Confirmed, PaymentStatus.Paid), (order.Status, order.PaymentStatus));
         Assert.Equal((15m, 5m, 25m, 35m), (order.Subtotal, order.DiscountTotal, order.ShippingTotal, order.GrandTotal));
         Assert.All(order.Items.Where(line => line.IsGift), line => Assert.Equal((0m, 0m, 0m), (line.UnitPrice, line.LineDiscount, line.LineTotal)));
         Assert.Equal(16, (await shop.S.StockAsync(shop.Shampoo.Id)).OnHand);
@@ -129,7 +129,7 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         Assert.Equal(("Bundle ALR-SET-DUO", 33m, 2), (line.ProductName, line.UnitPrice, line.Components.Count));
 
         // Confirmation used the snapshot: the leave-in is untouched, and shipping changes no stock.
-        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new ShipOrderRequest(null, "TRK-1", null, null))).EnsureSuccessStatusCode();
+        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         Assert.Equal(5, (await shop.S.StockAsync(extra.Id)).OnHand);
         Assert.Equal(19, (await shop.S.StockAsync(shop.Shampoo.Id)).OnHand);
     }
@@ -143,9 +143,9 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 3));
         Assert.Equal((9, 0), ((await shop.S.StockAsync(shop.Mask.Id)).OnHand, (await shop.S.StockAsync(shop.Mask.Id)).Reserved));
 
-        var shipped = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new ShipOrderRequest(null, null, null, null)))
+        var shipped = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new TransitionRequest(null)))
             .OkJsonAsync<OrderDetailDto>();
-        var again = await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new ShipOrderRequest(null, null, null, null));
+        var again = await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new TransitionRequest(null));
         var delivered = await shop.Client.PostAsync($"/api/orders/{order.Id}/deliver", new TransitionRequest(null));
 
         Assert.Equal(OrderStatus.Shipped, shipped.Status);
@@ -196,7 +196,7 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     {
         var shop = await OpenShopAsync();
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Duo.Id, 2));
-        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new ShipOrderRequest(null, null, null, null))).EnsureSuccessStatusCode();
+        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
 
         var cancel = await shop.Client.PostAsync($"/api/orders/{order.Id}/cancel", new TransitionRequest(null));
         var returned = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/return", new TransitionRequest("Customer refused")))
@@ -224,6 +224,7 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         Assert.Equal("orders.not_editable", await editWhileSold.ProblemCodeAsync());
         Assert.Equal(OrderStatus.Reserved, reserved.Status);
         Assert.Null(reserved.ConfirmedAt);                                  // no longer a sale
+        Assert.Equal((PaymentStatus.Paid, PaymentStatus.Unpaid), (order.PaymentStatus, reserved.PaymentStatus)); // the money is taken back out
         Assert.Equal((10, 4), (mask.OnHand, mask.Reserved));                // back on the shelf, held for the customer
         Assert.Equal((OrderStatus.Reserved, 28.00m), (edited.Status, edited.GrandTotal));
         Assert.Equal((10, 1), (afterEdit.OnHand, afterEdit.Reserved));      // the hold follows the edited lines
@@ -243,7 +244,9 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         Assert.Equal((OrderStatus.Reserved, 10, 3, 7), (order.Status, held.OnHand, held.Reserved, held.Available));
         Assert.Equal(0, analyticsBefore.Totals.Orders);                       // reserved is not a sale
-        Assert.Equal(OrderStatus.Confirmed, sold.Status);
+        Assert.Equal(PaymentStatus.Unpaid, order.PaymentStatus);
+        Assert.Equal((OrderStatus.Confirmed, PaymentStatus.Paid), (sold.Status, sold.PaymentStatus)); // selling = paid
+        Assert.Equal(76m, analyticsAfter.Totals.CashReceived);              // paid at sale: 3 × $24 + $4 delivery fee
         Assert.Equal((7, 0, 7), (after.OnHand, after.Reserved, after.Available)); // hold became a deduction, once
         Assert.Equal((1, 72m), (analyticsAfter.Totals.Orders, analyticsAfter.Totals.NetSales));
     }
@@ -282,10 +285,10 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     {
         var shop = await OpenShopAsync();
         var past = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(OrderSource.WhatsApp, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
-            new RecipientInput("A", "+961 70 000 000", null, null), null, 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
+            new RecipientInput("A", "+961 70 000 000", null, null), 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
             ReserveUntil: DateTimeOffset.UtcNow.AddMinutes(-5)));
         var both = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(OrderSource.WhatsApp, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
-            new RecipientInput("A", "+961 70 000 000", null, null), null, 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
+            new RecipientInput("A", "+961 70 000 000", null, null), 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
             Confirm: true, ReserveUntil: Scenario.Tomorrow));
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 1));
         var later = DateTimeOffset.UtcNow.AddDays(3);
@@ -300,38 +303,35 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Cash_on_delivery_flows_from_courier_to_remittance()
+    public async Task Sold_orders_are_paid_at_once_and_delivery_costs_are_recorded_separately()
     {
         var shop = await OpenShopAsync();
         var courier = await (await shop.Client.PostAsync("/api/delivery-companies", new DeliveryCompanyRequest("Fast Lebanon", "+961 1 000 000")))
             .OkJsonAsync<DeliveryCompanyDto>();
-        var a = await (await shop.S.CreateOrderAsync(shop.Warehouse.Id, true, deliveryCompanyId: courier.Id, lines: (shop.Mask.Id, 1))).OkJsonAsync<OrderDetailDto>();
-        var b = await (await shop.S.CreateOrderAsync(shop.Warehouse.Id, true, deliveryCompanyId: courier.Id, lines: (shop.Shampoo.Id, 2))).OkJsonAsync<OrderDetailDto>();
+        var a = await (await shop.S.CreateOrderAsync(shop.Warehouse.Id, true, lines: (shop.Mask.Id, 1))).OkJsonAsync<OrderDetailDto>();
+        var b = await (await shop.S.CreateOrderAsync(shop.Warehouse.Id, true, lines: (shop.Shampoo.Id, 2))).OkJsonAsync<OrderDetailDto>();
+        Assert.All(new[] { a, b }, o => Assert.Equal(PaymentStatus.Paid, o.PaymentStatus));
+
         foreach (var o in new[] { a, b })
         {
-            (await shop.Client.PostAsync($"/api/orders/{o.Id}/ship", new ShipOrderRequest(null, $"WB-{o.OrderNumber}", 2.5m, null))).EnsureSuccessStatusCode();
+            (await shop.Client.PostAsync($"/api/orders/{o.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
             var delivered = await (await shop.Client.PostAsync($"/api/orders/{o.Id}/deliver", new TransitionRequest(null))).OkJsonAsync<OrderDetailDto>();
-            Assert.Equal(PaymentStatus.CollectedByCourier, delivered.PaymentStatus);
+            Assert.Equal((PaymentStatus.Paid, o.PaidAt), (delivered.PaymentStatus, delivered.PaidAt)); // delivery doesn't touch payment
         }
-        var awaiting = await shop.Client.GetJsonAsync<List<RemittanceOrderDto>>($"/api/delivery-companies/{courier.Id}/awaiting-remittance");
-        Assert.Equal(2, awaiting.Count);
+        (await shop.Client.PostAsync("/api/delivery-expenses",
+            new DeliveryExpenseRequest(courier.Id, DateOnly.FromDateTime(DateTime.UtcNow), 5m, 2, "Two deliveries")))
+            .EnsureSuccessStatusCode();
+        var costs = await shop.Client.GetJsonAsync<DeliveryCompanyDto>($"/api/delivery-companies/{courier.Id}");
 
-        var remittance = await (await shop.Client.PostAsync("/api/courier-remittances",
-            new CreateRemittanceRequest(courier.Id, [a.Id, b.Id], null, "Weekly hand-over"))).OkJsonAsync<RemittanceDto>();
-        var twice = await shop.Client.PostAsync("/api/courier-remittances", new CreateRemittanceRequest(courier.Id, [a.Id], null, null));
-
-        Assert.Equal((62.00m, 5.00m, 57.00m, 2), (remittance.AmountCollected, remittance.CourierFees, remittance.NetAmount, remittance.OrderCount));
-        Assert.Equal("remittances.order_not_collectable", await twice.ProblemCodeAsync());
-        var paid = await shop.Client.GetJsonAsync<OrderDetailDto>($"/api/orders/{a.Id}");
-        Assert.Equal((PaymentStatus.Paid, remittance.RemittanceNumber), (paid.PaymentStatus, paid.CourierRemittanceNumber));
+        Assert.Equal((2, 5.00m), (costs.DeliveryCount, costs.DeliveryCost));
     }
 
     [Fact]
-    public async Task Delivery_by_own_staff_marks_cash_on_delivery_paid_immediately()
+    public async Task A_sold_order_is_paid_when_sold_and_stays_paid_through_delivery()
     {
         var shop = await OpenShopAsync();
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 1));
-        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new ShipOrderRequest(null, null, null, null))).EnsureSuccessStatusCode();
+        (await shop.Client.PostAsync($"/api/orders/{order.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
 
         var delivered = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/deliver", new TransitionRequest(null))).OkJsonAsync<OrderDetailDto>();
 
@@ -406,12 +406,11 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         Assert.Equal(HttpStatusCode.Forbidden, (await stockKeeper.GetAsync("/api/orders")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await viewer.PostAsync($"/api/orders/{order.Id}/confirm", new TransitionRequest(null))).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await sales.PostAsync($"/api/orders/{order.Id}/mark-paid", new TransitionRequest(null))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await sales.PostAsync($"/api/orders/{order.Id}/confirm", new TransitionRequest(null))).StatusCode);
     }
 
     private static UpdateOrderRequest Update(Shop shop, params (Guid ProductId, int Quantity)[] lines) => new(
         OrderSource.WhatsApp, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
-        new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", null), null, 0m, 4m, null,
+        new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", null), 0m, 4m, null,
         lines.Select(l => new OrderLineInput(l.ProductId, l.Quantity)).ToList());
 }

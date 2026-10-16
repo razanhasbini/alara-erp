@@ -26,7 +26,7 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         var orders = await SalesOrders(start, end)
             .Select(o => new
             {
-                o.Id, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal, o.ShippingTotal, o.CourierFee,
+                o.Id, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal, o.ShippingTotal,
                 GrossSales = o.Items.Sum(i => i.UnitPrice * i.Quantity),
                 LineDiscounts = o.Items.Sum(i => i.LineDiscount),
             })
@@ -39,8 +39,15 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
 
         var paid = await db.Orders.AsNoTracking()
             .Where(o => o.PaymentStatus == PaymentStatus.Paid && o.PaidAt >= start && o.PaidAt < end)
-            .Select(o => new { o.PaidAt, Net = o.GrandTotal - (o.CourierRemittanceId != null ? (o.CourierFee ?? 0) : 0) })
+            .Select(o => new { o.PaidAt, Net = o.GrandTotal })
             .ToListAsync(ct);
+
+        var deliveryExpenses = costs
+            ? await db.DeliveryExpenses.AsNoTracking()
+                .Where(e => e.IncurredOn >= from && e.IncurredOn <= to)
+                .Select(e => new { e.IncurredOn, e.Amount })
+                .ToListAsync(ct)
+            : [];
 
         var rows = orders.Select(o =>
         {
@@ -50,7 +57,7 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
             {
                 Period = PeriodOf(clock.ToBusinessDate(o.ConfirmedAt!.Value), query.GroupBy),
                 o.Source, o.GrossSales, Discounts = o.LineDiscounts + o.DiscountTotal, Net = net,
-                o.ShippingTotal, Courier = o.CourierFee ?? 0,
+                o.ShippingTotal,
                 c.Units, c.Cost, c.Uncosted, Gross = net - c.Cost,
             };
         }).ToList();
@@ -59,22 +66,24 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         {
             var inPeriod = rows.Where(r => r.Period == p.Key).ToList();
             var gross = inPeriod.Sum(r => r.Gross);
+            var deliveryCost = deliveryExpenses.Where(e => PeriodOf(e.IncurredOn, query.GroupBy) == p.Key).Sum(e => e.Amount);
             return new PeriodPoint(p.Start, p.End, inPeriod.Count, inPeriod.Sum(r => r.Units), Guard.Money(inPeriod.Sum(r => r.Net)),
                 costs ? Guard.Money(inPeriod.Sum(r => r.Cost)) : null,
                 costs ? Guard.Money(gross) : null,
-                costs ? Guard.Money(gross + inPeriod.Sum(r => r.ShippingTotal - r.Courier)) : null,
+                costs ? Guard.Money(gross + inPeriod.Sum(r => r.ShippingTotal) - deliveryCost) : null,
                 Guard.Money(paid.Where(x => PeriodOf(clock.ToBusinessDate(x.PaidAt!.Value), query.GroupBy) == p.Key).Sum(x => x.Net)));
         }).ToList();
 
         var netSales = rows.Sum(r => r.Net);
         var cogs = rows.Sum(r => r.Cost);
         var grossProfit = netSales - cogs;
-        var deliveryResult = rows.Sum(r => r.ShippingTotal - r.Courier);
+        var deliveryCosts = deliveryExpenses.Sum(e => e.Amount);
+        var deliveryResult = rows.Sum(r => r.ShippingTotal) - deliveryCosts;
         var totals = new ProfitTotals(
             rows.Count, rows.Sum(r => r.Units), Guard.Money(rows.Sum(r => r.GrossSales)), Guard.Money(rows.Sum(r => r.Discounts)),
             Guard.Money(netSales), rows.Count == 0 ? 0 : Guard.Money(netSales / rows.Count),
             Guard.Money(rows.Sum(r => r.ShippingTotal)),
-            costs ? Guard.Money(rows.Sum(r => r.Courier)) : null,
+            costs ? Guard.Money(deliveryCosts) : null,
             costs ? Guard.Money(deliveryResult) : null,
             costs ? Guard.Money(cogs) : null,
             costs ? Guard.Money(grossProfit) : null,

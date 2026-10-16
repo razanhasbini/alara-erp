@@ -13,7 +13,7 @@ const groupLabel: Record<string, string> = {
 }
 const actionLabel = (p: string) => {
   const a = p.split(".")[1]
-  return ({ manage_pricing: "change prices", manage_thresholds: "set stock alerts", manage_payments: "record payments & courier cash", assign_roles: "assign roles" } as Record<string, string>)[a] ?? a.replace(/_/g, " ")
+  return ({ manage_pricing: "change prices", manage_thresholds: "set stock alerts", manage_payments: "manage order payments", assign_roles: "assign roles" } as Record<string, string>)[a] ?? a.replace(/_/g, " ")
 }
 
 export function RolesPage() {

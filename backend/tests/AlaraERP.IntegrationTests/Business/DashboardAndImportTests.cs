@@ -13,14 +13,14 @@ namespace AlaraERP.IntegrationTests.Business;
 public sealed class DashboardAndImportTests(AlaraApiFactory factory) : ApiTestBase(factory)
 {
     [Fact]
-    public async Task Dashboard_reflects_real_records_and_counts_only_collected_cash_as_revenue()
+    public async Task Dashboard_reflects_real_records_and_counts_every_sold_order_as_collected()
     {
         var (client, s) = await ManagerAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10);
         var paid = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
-        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new ShipOrderRequest(null, null, null, null))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{paid.Id}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
         await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2)); // open
         var cancelled = await s.OrderAsync(warehouse.Id, confirm: false, (mask.Id, 1));
@@ -30,7 +30,7 @@ public sealed class DashboardAndImportTests(AlaraApiFactory factory) : ApiTestBa
 
         Assert.Equal(1, dashboard.Catalog!.ActiveProducts);
         Assert.Equal((3, 1, 1, 1), (dashboard.Orders!.Total, dashboard.Orders.AwaitingShipment, dashboard.Orders.Delivered, dashboard.Orders.Cancelled));
-        Assert.Equal(28.00m, dashboard.Finance!.CollectedRevenue); // 24 + 4 delivery
+        Assert.Equal(80.00m, dashboard.Finance!.CollectedRevenue); // both sold orders are paid: (24 + 4) + (2×24 + 4)
         Assert.Equal(52.00m, dashboard.Finance.OpenOrderValue);   // 2×24 + 4
         Assert.Equal((7, 0), (dashboard.Inventory!.UnitsOnHand, dashboard.Inventory.UnitsReserved));
         Assert.Equal(80.00m, dashboard.DailyOrders!.Sum(d => d.Value)); // delivered 28 + open 52; the cancelled order is excluded

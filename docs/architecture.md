@@ -94,10 +94,10 @@ Standard ASP.NET Identity tables renamed to snake_case: `users, roles, user_role
 | orders.view | ✓ | ✓ | | ✓ | ✓ |
 | orders.create / update | ✓ | ✓ | | ✓ | |
 | orders.cancel | ✓ | ✓ | | ✓ | |
-| orders.manage_payments (cash collection / remittance) | ✓ | ✓ | | | |
+| orders.manage_payments | ✓ | ✓ | | | |
 | delivery_companies.manage | ✓ | ✓ | | | |
 | reports.view | ✓ | ✓ | | | ✓ |
-| costs.view | ✓ | ✓ | | | |
+| costs.view | ✓ | | | | |
 | users.view | ✓ | ✓ | | | |
 | users.create / update / assign_roles | ✓ | | | | |
 
@@ -137,12 +137,12 @@ Adjustment reasons: `Damaged, Expired, CountCorrection, Lost, Sample/Gift, Other
 
 ### 4.4 Sales — schema `sales`
 - **customers** — durable identity and contact defaults (`name, phone, email, city, address, notes, is_active`). `normalized_phone` is unique and treats common Lebanese local/international formats as the same number. Existing orders are backfilled by phone.
-- **orders** — status, payment status, source, warehouse, `customer_id`, totals (snapshots), recipient snapshot (name, phone, city, address), delivery company, tracking number, delivery fee charged, courier fee, timestamps per milestone. The snapshot preserves the original delivery details after a customer profile changes.
+- **orders** — status, payment status, source, warehouse, `customer_id`, totals (snapshots), recipient snapshot (name, phone, city, address), delivery fee charged, and timestamps per milestone. The snapshot preserves the recipient details after a customer profile changes.
 - **order_items** — product/bundle snapshot (name, type, unit price, discount, line total, gift flag).
 - **order_item_components** — bundle composition snapshot at order time (component id, name, qty per bundle, total qty, allocated revenue). Reservations and shipment use this snapshot, so later bundle edits never affect existing orders. Allocated revenue lets product reports split a bundle sale across its components.
 - **order_history** — status and payment changes (old → new, who, when, notes). Generalises the proposed `order_status_history` so payment changes are audited in the same place.
 - **delivery_companies** — name, phone, active.
-- **courier_remittances** — a cash hand-over from a delivery company (amount, date, who recorded it), linked to the orders it settles.
+- **delivery_expenses** — standalone delivery-company costs (date, amount, number of deliveries covered, notes, who recorded it). They are deliberately not linked to orders.
 
 **Order lifecycle**
 
@@ -153,7 +153,7 @@ stateDiagram-v2
     Reserved --> Confirmed: mark as sold (deduct held stock)
     Reserved --> Cancelled: cancel (release hold)
     Confirmed --> Reserved: back to reserved (return stock, hold it again)
-    Confirmed --> Shipped: record shipping details
+    Confirmed --> Shipped: mark shipped
     Confirmed --> Cancelled: cancel (return stock)
     Shipped --> Delivered: delivered
     Shipped --> Returned: refused / failed (stock back to same batches)
@@ -169,9 +169,9 @@ stateDiagram-v2
 - A shortage error lists the Reserved orders holding the product (`GET /api/orders/reserved-stock` gives the same to the order form).
 - Delivered → Returned is **not** allowed in the MVP (no returns policy yet).
 
-**Payment** (separate from fulfilment)
+**Payment**
 - `payment_method`: `CashOnDelivery` (default) — enum is ready for `Whish, OMT, BankTransfer, Cash` once confirmed.
-- `payment_status`: `Unpaid → CollectedByCourier → Paid` for COD (Delivered sets CollectedByCourier; a remittance sets Paid). Non-COD methods: `Unpaid → Paid`. Cancelled/Returned orders → `Void`.
+- `payment_status`: Reserved orders are `Unpaid`; selling changes them to `Paid` immediately in the same transaction as the stock deduction. Cancelled/Returned orders are `Void`; moving a sold order back to Reserved makes it `Unpaid` again.
 - Delivery fee default: config `Erp:DefaultDeliveryFee` = 4.00 USD, editable per order (e.g. free delivery).
 
 Order numbers: PostgreSQL sequence → `AL-000001`.
@@ -179,7 +179,6 @@ Order numbers: PostgreSQL sequence → `AL-000001`.
 ### 4.5 Dashboard and analytics
 Read-only aggregation endpoints. Metric definitions:
 - **Collected revenue** = Σ grand_total of orders with `payment_status = Paid`.
-- **Delivered, awaiting cash** = Σ grand_total of Delivered orders with `CollectedByCourier` (owed by couriers).
 - **Open order value** = Confirmed + Shipped.
 - Cancelled/Returned/Draft/Reserved are never counted as revenue.
 - Inventory: total units on hand, by warehouse, low-stock products (available ≤ threshold), expired / expiring batches.
@@ -188,8 +187,8 @@ Analytics uses the inclusive Beirut business-date range supplied by the UI:
 - A sale is recognised on `confirmed_at`; cancelled and returned orders are excluded. Confirmation records the exact FEFO batch costs immediately.
 - **Gross sales** = unit price × quantity before line/order discounts. **Net sales** excludes delivery fees.
 - **Cost of goods** comes from the unit-cost snapshots on the actual FEFO shipment movements.
-- **Gross profit** = net sales − cost of goods. **Profit after delivery** also adds delivery fees charged and subtracts courier fees.
-- **Cash received** is grouped by `paid_at`; courier remittances are net of the courier fee retained.
+- **Gross profit** = net sales − cost of goods. **Profit after delivery** also adds delivery fees charged and subtracts standalone delivery expenses.
+- **Cash received** is grouped by `paid_at`; an order becomes paid when it is sold.
 - Day, ISO-week and month grouping are supported. Cost and profit values require `costs.view`; `reports.view` alone exposes sales totals only.
 - Customer loyalty uses the same selected date range and exposes order count, repeat orders, total ordered, total paid, average order value, and average days between confirmed orders. The UI lets the user choose the ranking measure instead of hiding it in an opaque score.
 
@@ -428,15 +427,11 @@ erDiagram
         varchar recipient_phone "indexed"
         varchar recipient_city
         text recipient_address
-        uuid delivery_company_id FK "nullable"
-        varchar tracking_number
         numeric subtotal "12,2"
         numeric discount_total "12,2"
         numeric shipping_total "12,2 charged to customer"
-        numeric courier_fee "12,2 nullable, paid to courier"
         numeric grand_total "12,2"
         char currency_code
-        uuid courier_remittance_id FK "nullable"
         text notes
         uuid created_by_user_id FK
         timestamptz created_at
@@ -487,18 +482,16 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
-    courier_remittances {
+    delivery_expenses {
         uuid id PK
-        varchar remittance_number UK
         uuid delivery_company_id FK
-        numeric amount_collected "12,2 = sum of linked orders"
-        numeric courier_fees "12,2"
-        numeric net_amount "12,2 handed over"
-        int order_count
-        timestamptz received_at
+        date incurred_on
+        numeric amount "12,2"
+        int delivery_count
         text notes
         uuid recorded_by_user_id FK
         timestamptz created_at
+        timestamptz updated_at
     }
     customers ||--o{ orders : places
     orders ||--|{ order_items : contains
@@ -507,9 +500,7 @@ erDiagram
     orders ||--o{ stock_reservations : reserves
     products ||--o{ order_items : "sold as"
     warehouses ||--o{ orders : fulfils
-    delivery_companies ||--o{ orders : delivers
-    delivery_companies ||--o{ courier_remittances : remits
-    courier_remittances ||--o{ orders : settles
+    delivery_companies ||--o{ delivery_expenses : incurs
     users ||--o{ orders : created
 ```
 
@@ -544,7 +535,7 @@ GET          /api/notifications (?unreadOnly) · /unread-count · /channels
 POST         /api/notifications/{id}/read · /read-all · /{id}/resend-whatsapp
 GET          /api/orders/{id}/history
 GET/POST/PUT /api/delivery-companies
-GET/POST     /api/courier-remittances   (+ GET /api/courier-remittances/outstanding)
+GET/POST/PUT/DELETE /api/delivery-expenses
 
 GET          /api/dashboard/summary | /recent-orders | /recent-movements | /inventory-by-warehouse
 GET          /api/analytics/summary | /products
@@ -585,7 +576,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 |---|---|---|
 | 1 | Payment methods | COD only in UI; enum already supports Whish / OMT / bank transfer / cash. |
 | 2 | Order edits | Items editable only while Reserved; move a sold order back to Reserved to edit. |
-| 3 | Returns after delivery | Not supported (no returns policy yet). Courier refusal → Returned is supported. |
+| 3 | Returns after delivery | Not supported (no returns policy yet). A refused or failed shipment → Returned is supported. |
 | 4 | Expiry warning window | 60 days, configurable. Expired stock blocks shipment, must be written off. |
 | 5 | Discounts | Line discounts and order discount allowed for `orders.create`; no approval limits. |
 | 6 | Delivery fee | Flat 4.00 USD default per order, editable. |
@@ -613,7 +604,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 **Phase C — Business modules**
 - [x] Catalog: categories, products, bundles, images, availability + tests
 - [x] Inventory: warehouses, settings/thresholds, batches, receipts, adjustments, transfers, movements, reservations + tests (incl. concurrency)
-- [x] Sales: orders, state machine, reservation/shipment/return integration, delivery companies, remittances + tests
+- [x] Sales: orders, state machine, reservation/shipment/return integration, delivery companies, standalone costs + tests
 - [x] Dashboard endpoints + tests
 - [x] Dev seed (real catalogue)
 - [x] Architecture tests (layer/module rules)
@@ -631,8 +622,8 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 ## 11. Changes made during implementation
 
 - **`stock_movements.reference_number`.** The ledger stores the human-readable document number, so Inventory never has to query Sales just to display "AL-000123".
-- **COD without a courier.** A cash-on-delivery order delivered by ÀLara Line staff (no delivery company) becomes `Paid` on delivery. With a courier it becomes `CollectedByCourier` until a remittance is recorded.
-- **Remittances** store `amount_collected`, `courier_fees` (from the orders' courier fees), `net_amount` and `order_count`.
+- **Paid on sale.** Every sold order becomes `Paid` immediately; fulfilment stages never alter payment.
+- **Standalone delivery costs.** Managers record delivery invoices or period costs separately. Analytics subtracts them by incurred date without coupling them to orders.
 - **Order list** accepts `statuses=` (repeatable) for the "open" view (Confirmed, Shipped); `sort=reservedUntil` orders the Reserved view by deadline.
 - **Recipient phones** are stored normalised (`+96170123456`), so searches match however the number was typed.
 - **Paid orders cannot be cancelled or returned** until refunds are supported. This only affects non-COD prepaid orders.
