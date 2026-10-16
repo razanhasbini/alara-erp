@@ -6,7 +6,7 @@ namespace AlaraERP.Domain.Sales;
 public sealed record OrderRecipient(string Name, string Phone, string? City, string? Address);
 
 /// <summary>
-/// A customer order. Owns its lines (price/name/SKU snapshots), totals and audit history, and enforces
+/// A customer order. Owns its lines (name/type/price snapshots), totals and audit history, and enforces
 /// the status and payment state machines. Stock effects of transitions are orchestrated by the
 /// application layer through the Inventory module.
 /// </summary>
@@ -51,6 +51,7 @@ public sealed class Order : IAuditable
     public PaymentStatus PaymentStatus { get; private set; }
     public OrderSource Source { get; private set; }
     public Guid WarehouseId { get; private set; }
+    public Guid? CustomerId { get; private set; }
 
     public string RecipientName { get; private set; } = "";
     public string RecipientPhone { get; private set; } = "";
@@ -98,6 +99,12 @@ public sealed class Order : IAuditable
         RecipientPhone = NormalizePhone(Required(recipient.Phone, "Recipient phone"));
         RecipientCity = Clean(recipient.City);
         RecipientAddress = Clean(recipient.Address);
+    }
+
+    public void SetCustomer(Guid customerId)
+    {
+        EnsureNotFinal("change the customer of");
+        CustomerId = customerId;
     }
 
     public void SetNotes(string? notes) => Notes = Clean(notes);
@@ -236,26 +243,27 @@ public sealed class Order : IAuditable
     }
 }
 
-/// <summary>An order line. Name, SKU, type and price are snapshots taken when the line was added.</summary>
+/// <summary>An order line. Name, type and price are snapshots taken when the line was added.</summary>
 public sealed class OrderItem
 {
     private readonly List<OrderItemComponent> _components = [];
 
     private OrderItem() { }
 
-    public OrderItem(Guid orderId, Guid productId, string productName, string sku, ProductType productType,
+    public OrderItem(Guid orderId, Guid productId, string productName, ProductType productType,
         int quantity, decimal unitPrice, decimal lineDiscount,
-        IReadOnlyList<(Guid ProductId, string Name, string Sku, int QuantityPerBundle)> bundleComponents)
+        IReadOnlyList<(Guid ProductId, string Name, int QuantityPerBundle, decimal UnitPrice)> bundleComponents,
+        bool isGift = false)
     {
         Id = Guid.CreateVersion7();
         OrderId = orderId;
         ProductId = productId;
         ProductName = productName;
-        Sku = sku;
         ProductType = productType;
+        IsGift = isGift;
         Quantity = Guard.Positive(quantity, $"Quantity of '{productName}'");
-        UnitPrice = Guard.Money(Guard.NotNegative(unitPrice, "Unit price"));
-        LineDiscount = Guard.Money(Guard.NotNegative(lineDiscount, $"Discount on '{productName}'"));
+        UnitPrice = isGift ? 0 : Guard.Money(Guard.NotNegative(unitPrice, "Unit price"));
+        LineDiscount = isGift ? 0 : Guard.Money(Guard.NotNegative(lineDiscount, $"Discount on '{productName}'"));
         var gross = Guard.Money(UnitPrice * Quantity);
         if (LineDiscount > gross)
             throw new DomainException("orders.line_discount_exceeds_total", $"The discount on '{productName}' exceeds the line total.");
@@ -265,8 +273,22 @@ public sealed class OrderItem
         {
             if (bundleComponents.Count == 0)
                 throw new DomainException("bundles.empty", $"Bundle '{productName}' has no components.");
-            _components.AddRange(bundleComponents.Select(c =>
-                new OrderItemComponent(Id, c.ProductId, c.Name, c.Sku, c.QuantityPerBundle, c.QuantityPerBundle * Quantity)));
+            // Split the bundle's line total across its components in proportion to their full prices,
+            // so per-product profit reports can attribute bundle revenue. The last component takes the rounding remainder.
+            var weights = bundleComponents.Select(c => c.UnitPrice * c.QuantityPerBundle).ToList();
+            var totalWeight = weights.Sum();
+            var allocated = 0m;
+            for (var i = 0; i < bundleComponents.Count; i++)
+            {
+                var c = bundleComponents[i];
+                var share = i == bundleComponents.Count - 1
+                    ? LineTotal - allocated
+                    : Guard.Money(totalWeight > 0
+                        ? LineTotal * weights[i] / totalWeight
+                        : LineTotal * c.QuantityPerBundle / bundleComponents.Sum(x => x.QuantityPerBundle));
+                allocated += share;
+                _components.Add(new OrderItemComponent(Id, c.ProductId, c.Name, c.QuantityPerBundle, c.QuantityPerBundle * Quantity, share));
+            }
         }
     }
 
@@ -274,8 +296,8 @@ public sealed class OrderItem
     public Guid OrderId { get; private set; }
     public Guid ProductId { get; private set; }
     public string ProductName { get; private set; } = "";
-    public string Sku { get; private set; } = "";
     public ProductType ProductType { get; private set; }
+    public bool IsGift { get; private set; }
     public int Quantity { get; private set; }
     public decimal UnitPrice { get; private set; }
     public decimal LineDiscount { get; private set; }
@@ -288,14 +310,14 @@ public sealed class OrderItemComponent
 {
     private OrderItemComponent() { }
 
-    internal OrderItemComponent(Guid orderItemId, Guid componentProductId, string componentName, string componentSku,
-        int quantityPerBundle, int totalQuantity)
+    internal OrderItemComponent(Guid orderItemId, Guid componentProductId, string componentName,
+        int quantityPerBundle, int totalQuantity, decimal allocatedRevenue)
     {
         Id = Guid.CreateVersion7();
+        AllocatedRevenue = allocatedRevenue;
         OrderItemId = orderItemId;
         ComponentProductId = componentProductId;
         ComponentName = componentName;
-        ComponentSku = componentSku;
         QuantityPerBundle = quantityPerBundle;
         TotalQuantity = totalQuantity;
     }
@@ -304,9 +326,10 @@ public sealed class OrderItemComponent
     public Guid OrderItemId { get; private set; }
     public Guid ComponentProductId { get; private set; }
     public string ComponentName { get; private set; } = "";
-    public string ComponentSku { get; private set; } = "";
     public int QuantityPerBundle { get; private set; }
     public int TotalQuantity { get; private set; }
+    /// <summary>This component's share of the bundle line total (for per-product revenue and profit).</summary>
+    public decimal AllocatedRevenue { get; private set; }
 }
 
 /// <summary>Append-only audit of status and payment changes.</summary>

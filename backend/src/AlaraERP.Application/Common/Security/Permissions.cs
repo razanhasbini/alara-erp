@@ -52,6 +52,12 @@ public static class Permissions
         public const string View = "reports.view";
     }
 
+    /// <summary>Purchase costs, cost of goods and profit. Deliberately separate from reports.view.</summary>
+    public static class Costs
+    {
+        public const string View = "costs.view";
+    }
+
     public static class Users
     {
         public const string View = "users.view";

@@ -11,7 +11,7 @@ namespace AlaraERP.Api.Cli;
 /// </summary>
 public static class CliCommands
 {
-    public static readonly string[] Names = ["migrate", "bootstrap-admin", "import-catalog"];
+    public static readonly string[] Names = ["migrate", "bootstrap-admin", "provision-user", "import-catalog"];
 
     public static async Task<int?> TryRunAsync(WebApplication app, string[] args)
     {
@@ -31,6 +31,19 @@ public static class CliCommands
                     return 0;
                 case "bootstrap-admin":
                     return await BootstrapAdminAsync(app, config, cts.Token) ? 0 : 1;
+                case "provision-user":
+                    if (args.Length < 6)
+                        throw new InvalidOperationException("Usage: provision-user <username> <email> <first-name> <last-name> <role>");
+                    var password = PromptSecret("Password: ");
+                    if (PromptSecret("Repeat password: ") != password)
+                        throw new InvalidOperationException("Passwords do not match.");
+                    await using (var scope = app.Services.CreateAsyncScope())
+                    {
+                        await scope.ServiceProvider.GetRequiredService<UserProvisioner>().RunAsync(
+                            new ProvisionUserOptions(args[1], args[2], password, args[3], args[4], args[5]), cts.Token);
+                    }
+                    Console.WriteLine($"Account '{args[1]}' is ready.");
+                    return 0;
                 case "import-catalog":
                     if (args.Length < 2)
                         throw new InvalidOperationException("Usage: import-catalog <path-to-catalog.json>");
@@ -96,7 +109,7 @@ public static class CliCommands
     private static string PromptSecret(string label)
     {
         if (Console.IsInputRedirected)
-            throw new InvalidOperationException("Set Bootstrap:AdminPassword via user-secrets or run interactively.");
+            throw new InvalidOperationException("Run this command interactively to enter the password securely.");
         Console.Write(label);
         var chars = new List<char>();
         while (true)

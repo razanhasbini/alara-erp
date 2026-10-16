@@ -5,6 +5,7 @@ import type { Availability, Category, DeliveryCompany, ErpSettings, Warehouse } 
 /** Query keys grouped by module so mutations can invalidate whole areas. */
 export const qk = {
   settings: ["settings"] as const,
+  features: ["settings", "features"] as const,
   dashboard: ["dashboard"] as const,
   categories: (includeInactive = false) => ["catalog", "categories", includeInactive] as const,
   products: (params: object) => ["catalog", "products", params] as const,
@@ -20,11 +21,14 @@ export const qk = {
   transfer: (id: string) => ["inventory", "transfer", id] as const,
   orders: (params: object) => ["sales", "orders", params] as const,
   order: (id: string) => ["sales", "order", id] as const,
+  customers: (params: object) => ["sales", "customers", params] as const,
+  customer: (id: string) => ["sales", "customer", id] as const,
   deliveryCompanies: (includeInactive = false) => ["sales", "delivery-companies", includeInactive] as const,
   awaiting: (companyId: string) => ["sales", "awaiting", companyId] as const,
   remittances: (params: object) => ["sales", "remittances", params] as const,
   users: (params: object) => ["identity", "users", params] as const,
   roles: ["identity", "roles"] as const,
+  analytics: (kind: string, params: object) => ["analytics", kind, params] as const,
 }
 
 export const useSettings = () =>

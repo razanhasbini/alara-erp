@@ -22,7 +22,8 @@ export function OrdersPage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const search = params.get("search") ?? ""
-  const status = (params.get("status") ?? "open") as OrderStatus | "open" | "all"
+  const customerId = params.get("customerId") ?? ""
+  const status = (params.get("status") ?? (customerId ? "all" : "open")) as OrderStatus | "open" | "all"
   const paymentStatus = (params.get("payment") ?? "") as PaymentStatus | ""
   const source = (params.get("source") ?? "") as OrderSource | ""
   const page = Number(params.get("page") ?? 1)
@@ -36,7 +37,7 @@ export function OrdersPage() {
 
   // "Open" = needs action: drafts, confirmed (to pack) and shipped (out for delivery).
   const query = {
-    search, page, pageSize: 25, paymentStatus: paymentStatus || undefined, source: source || undefined,
+    search, page, pageSize: 25, customerId: customerId || undefined, paymentStatus: paymentStatus || undefined, source: source || undefined,
     status: status === "open" || status === "all" ? undefined : status,
     statuses: status === "open" ? ["Draft", "Confirmed", "Shipped"] : undefined,
   }
@@ -47,7 +48,7 @@ export function OrdersPage() {
   })
 
   const columns: Column<OrderListItem>[] = [
-    { key: "number", header: "Order", cell: (o) => <div><div className="code font-semibold">{o.orderNumber}</div><div className="text-xs text-muted-foreground">{when(o.createdAt)}</div></div> },
+    { key: "number", header: "Order", cell: (o) => <div><span className="code font-semibold">{o.orderNumber}</span><div className="text-xs text-muted-foreground">{when(o.createdAt)}</div></div> },
     { key: "customer", header: "Customer", cell: (o) => <div className="min-w-0"><div className="truncate">{o.recipientName}</div><div className="text-xs text-muted-foreground">{o.recipientPhone}{o.recipientCity && ` · ${o.recipientCity}`}</div></div> },
     { key: "source", header: "Channel", hideOnMobile: true, cell: (o) => <span className="text-muted-foreground">{o.source}</span> },
     { key: "items", header: "Items", align: "right", hideOnMobile: true, cell: (o) => <span className="tabular">{o.itemCount}</span> },
@@ -59,8 +60,9 @@ export function OrdersPage() {
 
   return (
     <>
-      <PageHeader title="Orders" description="WhatsApp, Instagram and website orders. Confirming reserves stock; shipping deducts it."
+      <PageHeader title="Orders" description={customerId ? "Complete order history for the selected customer." : "WhatsApp, Instagram and website orders. Confirmation deducts stock immediately; shipping details are added later."}
         actions={can(P.orders.create) && <Button asChild><Link to="/orders/new"><Plus /> New order</Link></Button>} />
+      {customerId && <div className="mb-3 flex items-center gap-2 rounded-md border border-hairline bg-card px-3 py-2 text-sm">Showing one customer's orders. <Link to="/customers" className="font-medium text-primary hover:underline">Back to customers</Link></div>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Order no., name, phone, tracking" />
         <Segmented label="Status" value={["open", "all", "Delivered", "Cancelled", "Returned"].includes(status) ? status : "all"} onChange={(v) => set({ status: v === "open" ? "" : v })}

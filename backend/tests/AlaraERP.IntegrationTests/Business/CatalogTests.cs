@@ -10,12 +10,12 @@ namespace AlaraERP.IntegrationTests.Business;
 
 public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
 {
-    private static CreateProductRequest Individual(string sku, decimal price, decimal? compareAt = null) =>
-        new(ProductType.Individual, "Curl Defining Shampoo", sku, null, null, null, null, null, null, null,
+    private static CreateProductRequest Individual(string key, decimal price, decimal? compareAt = null) =>
+        new(ProductType.Individual, $"Curl Defining Shampoo {key}", null, null, null, null, null, null, null,
             250, SizeUnit.Ml, 300, price, compareAt, null);
 
     [Fact]
-    public async Task Creates_a_product_with_normalised_sku_and_generated_slug()
+    public async Task Creates_a_product_with_generated_slug()
     {
         var (client, _) = await ManagerAsync();
 
@@ -23,23 +23,23 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var product = await response.ReadJsonAsync<ProductDetailDto>();
-        Assert.Equal("ALR-CO-SHAM", product.Sku);
-        Assert.Equal("curl-defining-shampoo", product.Slug);
+        Assert.Equal("curl-defining-shampoo-alr-co-sham", product.Slug);
         Assert.Equal(16.00m, product.SellingPrice);
         Assert.Equal(250m, product.SizeValue);
         Assert.True(product.IsActive);
     }
 
     [Fact]
-    public async Task Duplicate_sku_is_rejected_regardless_of_case()
+    public async Task Duplicate_names_get_distinct_generated_slugs()
     {
         var (client, _) = await ManagerAsync();
-        (await client.PostAsync("/api/products", Individual("ALR-DUP", 10m))).EnsureSuccessStatusCode();
+        var first = await (await client.PostAsync("/api/products", Individual("ALR-DUP", 10m))).OkJsonAsync<ProductDetailDto>();
 
         var response = await client.PostAsync("/api/products", Individual("alr-dup", 12m));
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("products.duplicate_sku", await response.ProblemCodeAsync());
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var second = await response.ReadJsonAsync<ProductDetailDto>();
+        Assert.NotEqual(first.Slug, second.Slug);
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var shampoo = await s.ProductAsync("ALR-T-SHAM", 16m);
         var inner = await s.BundleAsync("ALR-T-INNER", 15m, (shampoo.Id, 1));
 
-        var nested = await client.PostAsync("/api/products", new CreateProductRequest(ProductType.Bundle, "Outer", "ALR-T-OUTER",
+        var nested = await client.PostAsync("/api/products", new CreateProductRequest(ProductType.Bundle, "Outer",
             null, null, null, null, null, null, null, null, null, null, 20m, null, [new BundleItemInput(inner.Id, 1)]));
         var repeated = await client.PutAsync($"/api/products/{inner.Id}/bundle-items",
             new ReplaceBundleItemsRequest([new BundleItemInput(shampoo.Id, 1), new BundleItemInput(shampoo.Id, 2)]));
@@ -139,7 +139,7 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
         {
             var p = await s.ProductAsync($"ALR-MIST-{i}", 20m, name: $"Hair Mist {i}");
             var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{p.Id}");
-            (await client.PutAsync($"/api/products/{p.Id}", new UpdateProductRequest(detail.Name, detail.Sku, null, hair.Id,
+            (await client.PutAsync($"/api/products/{p.Id}", new UpdateProductRequest(detail.Name, null, hair.Id,
                 null, null, null, null, null, null, null, null, detail.SellingPrice, null))).EnsureSuccessStatusCode();
         }
         await s.ProductAsync("ALR-BRUSH", 13m, name: "Curly Hair Brush");
@@ -154,12 +154,15 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Sales_and_inventory_staff_cannot_edit_the_catalogue()
+    public async Task Sales_staff_manage_the_catalogue_but_inventory_staff_cannot()
     {
         using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
         using var stock = await SignedInAsAsync(SystemRoles.InventoryManager);
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await sales.PostAsync("/api/products", Individual("ALR-X", 1m))).StatusCode);
+        var product = await (await sales.PostAsync("/api/products", Individual("ALR-X", 1m))).OkJsonAsync<ProductDetailDto>();
+        Assert.Equal(HttpStatusCode.OK, (await sales.PutAsync($"/api/products/{product.Id}", new UpdateProductRequest(
+            "Updated product", null, null, null, null, null, null, null, null, null, null, product.SellingPrice, null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await sales.DeleteAsync($"/api/products/{product.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await stock.PostAsync("/api/products", Individual("ALR-Y", 1m))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await sales.GetAsync("/api/products")).StatusCode);
     }
@@ -188,7 +191,9 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         (await client.PutAsync($"/api/products/{product.Id}/images/{secondImage.Id}/primary", new { })).EnsureSuccessStatusCode();
         var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}");
+        var listed = await client.GetJsonAsync<PagedResult<ProductListItemDto>>("/api/products?search=ALR-IMG");
         Assert.Equal(secondImage.Id, detail.Images.Single(i => i.IsPrimary).Id);
+        Assert.Equal(secondImage.Id, Assert.Single(listed.Items).PrimaryImageId);
     }
 
     private static Task<HttpResponseMessage> UploadAsync(ErpClient client, Guid productId, byte[] bytes, string name, string type)

@@ -41,6 +41,18 @@ public sealed class StockBalanceTests
     }
 
     [Fact]
+    public void Receiving_more_of_a_batch_at_a_different_cost_averages_by_units()
+    {
+        var batch = new Batch(Guid.NewGuid(), "L1", null, DateTimeOffset.UtcNow);
+        batch.ApplyReceivedCost(0, 10, 4.00m);
+        batch.ApplyReceivedCost(10, 30, 6.00m);
+        Assert.Equal(5.50m, batch.UnitCost);
+
+        batch.ApplyReceivedCost(40, 5, null); // no cost given: unchanged
+        Assert.Equal(5.50m, batch.UnitCost);
+    }
+
+    [Fact]
     public void Batch_expiry_is_compared_against_the_business_date()
     {
         var batch = new Batch(Guid.NewGuid(), "L1", new DateOnly(2026, 10, 15), DateTimeOffset.UtcNow);
@@ -54,7 +66,7 @@ public sealed class ProductTests
     [Fact]
     public void Prices_are_rounded_to_cents_and_compare_at_must_not_undercut()
     {
-        var product = new Product(ProductType.Individual, "Mask", "mask", "ALR-MASK", 24.005m, null);
+        var product = new Product(ProductType.Individual, "Mask", "mask", 24.005m, null);
         Assert.Equal(24.01m, product.SellingPrice);
         Assert.Equal("products.invalid_compare_at_price",
             Assert.Throws<DomainException>(() => product.SetPricing(30m, 25m)).Code);
@@ -63,15 +75,15 @@ public sealed class ProductTests
     [Fact]
     public void Only_bundles_have_components()
     {
-        var shampoo = new Product(ProductType.Individual, "Shampoo", "s", "S", 15m, null);
-        var other = new Product(ProductType.Individual, "Mask", "m", "M", 24m, null);
+        var shampoo = new Product(ProductType.Individual, "Shampoo", "s", 15m, null);
+        var other = new Product(ProductType.Individual, "Mask", "m", 24m, null);
         Assert.Equal("bundles.not_a_bundle", Assert.Throws<DomainException>(() => shampoo.ReplaceBundleItems([(other, 1)])).Code);
     }
 
     [Fact]
     public void Removing_the_primary_image_promotes_the_next_one()
     {
-        var product = new Product(ProductType.Individual, "Mask", "m", "M", 24m, null);
+        var product = new Product(ProductType.Individual, "Mask", "m", 24m, null);
         var first = product.AddImage("products/a/1.png", "image/png", 10);
         var second = product.AddImage("products/a/2.png", "image/png", 10);
 

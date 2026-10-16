@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { api, errorMessage } from "@/lib/api"
 import { humanize } from "@/lib/format"
+import { useSettings } from "@/lib/queries"
 import type { AdjustmentReason } from "@/types/api"
 
 export interface AdjustTarget {
@@ -25,6 +26,8 @@ const reasons: AdjustmentReason[] = ["CountCorrection", "Damaged", "Expired", "L
 /** Manual stock correction. Every adjustment needs a reason and is written to the movement ledger. */
 export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const { data: settings } = useSettings()
+  const expiryEnabled = settings?.expiryDatesEnabled ?? false
   const decrease = target.direction === "decrease"
   const [quantity, setQuantity] = useState("1")
   const [reason, setReason] = useState<AdjustmentReason>(target.batch?.isExpired ? "Expired" : "CountCorrection")
@@ -35,7 +38,8 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
   const qtyError = !/^\d+$/.test(quantity) || qty < 1 ? "Enter a whole number above zero."
     : decrease && target.batch && qty > target.batch.onHand ? `This batch has ${target.batch.onHand}.` : undefined
   const notesError = reason === "Other" && !notes.trim() ? "Explain the adjustment." : undefined
-  const expiryError = !decrease && target.tracksExpiry && !expiry ? "This product tracks expiry dates." : undefined
+  const expiryError = expiryEnabled && !decrease && target.tracksExpiry && !expiry ? "This product tracks expiry dates." : undefined
+  const availableReasons = expiryEnabled ? reasons : reasons.filter((value) => value !== "Expired")
 
   const save = useMutation({
     mutationFn: () => api("/api/inventory/adjustments", {
@@ -43,7 +47,7 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
       body: {
         warehouseId: target.warehouseId, productId: target.productId, quantityChange: decrease ? -qty : qty, reason,
         notes: notes.trim() || null, batchId: target.batch?.id ?? null,
-        batchNumber: !decrease && batchNumber.trim() ? batchNumber.trim() : null, expiryDate: !decrease && expiry ? expiry : null,
+        batchNumber: !decrease && batchNumber.trim() ? batchNumber.trim() : null, expiryDate: expiryEnabled && !decrease && expiry ? expiry : null,
       },
     }),
     onSuccess: async () => {
@@ -72,18 +76,18 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
             <Field label="Reason" htmlFor="adj-reason" required>
               <Select value={reason} onValueChange={(v) => setReason(v as AdjustmentReason)}>
                 <SelectTrigger id="adj-reason" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>{reasons.map((r) => <SelectItem key={r} value={r}>{r === "SampleOrGift" ? "Sample / gift" : humanize(r)}</SelectItem>)}</SelectContent>
+                <SelectContent>{availableReasons.map((r) => <SelectItem key={r} value={r}>{r === "SampleOrGift" ? "Sample / gift" : humanize(r)}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
           </div>
           {!decrease && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className={expiryEnabled ? "grid grid-cols-2 gap-4" : "grid gap-4"}>
               <Field label="Batch number" htmlFor="adj-batch" hint="Existing or new; blank = today's adjustment batch.">
                 <Input id="adj-batch" className="font-mono" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} />
               </Field>
-              <Field label="Expiry date" htmlFor="adj-expiry" error={expiryError} required={target.tracksExpiry}>
+              {expiryEnabled && <Field label="Expiry date" htmlFor="adj-expiry" error={expiryError} required={target.tracksExpiry}>
                 <Input id="adj-expiry" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
-              </Field>
+              </Field>}
             </div>
           )}
           <Field label="Notes" htmlFor="adj-notes" error={notesError} required={reason === "Other"}>

@@ -35,8 +35,16 @@ const Toaster = ({ ...props }: ToasterProps) => {
         } as React.CSSProperties
       }
       toastOptions={{
+        duration: 6000,
         classNames: {
-          toast: "cn-toast",
+          toast: "cn-toast !w-[min(26rem,calc(100vw-2rem))] !gap-3 !rounded-lg !border !px-4 !py-3.5 !shadow-lg",
+          title: "!text-sm !font-semibold !leading-5",
+          description: "!text-sm !leading-5 !text-current/80",
+          icon: "![&_svg]:size-5",
+          success: "!border-tone-green/30 !bg-tone-green-bg !text-tone-green",
+          warning: "!border-tone-amber/30 !bg-tone-amber-bg !text-tone-amber",
+          error: "!border-tone-red/30 !bg-tone-red-bg !text-tone-red",
+          info: "!border-tone-blue/30 !bg-tone-blue-bg !text-tone-blue",
         },
       }}
       {...props}

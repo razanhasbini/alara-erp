@@ -15,21 +15,24 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
     public async Task<WarehouseDto> WarehouseAsync(string code = "MAIN") =>
         await (await client.PostAsync("/api/warehouses", new WarehouseRequest($"Warehouse {code}", code, null))).OkJsonAsync<WarehouseDto>();
 
-    public async Task<ProductDetailDto> ProductAsync(string sku, decimal price, bool tracksExpiry = true, string? name = null)
+    public async Task<ProductDetailDto> ProductAsync(string key, decimal price, bool tracksExpiry = true, string? name = null, decimal? standardCost = null)
     {
         var product = await (await client.PostAsync("/api/products", new CreateProductRequest(
-            ProductType.Individual, name ?? $"Product {sku}", sku, null, null, null, null, null, null, null,
-            null, null, null, price, null, null))).OkJsonAsync<ProductDetailDto>();
+            Type: ProductType.Individual, Name: name ?? $"Product {key}", Slug: null, CategoryId: null, Barcode: null,
+            ShortDescription: null, Description: null, HowToUse: null, Ingredients: null, SizeValue: null, SizeUnit: null,
+            WeightGrams: null, SellingPrice: price, CompareAtPrice: null, BundleItems: null, StandardCost: standardCost))).OkJsonAsync<ProductDetailDto>();
         if (!tracksExpiry)
             (await client.PutAsync($"/api/inventory/settings/{product.Id}", new UpdateInventorySettingsRequest(0, false)))
                 .EnsureSuccessStatusCode();
         return product;
     }
 
-    public async Task<ProductDetailDto> BundleAsync(string sku, decimal price, params (Guid ProductId, int Quantity)[] items) =>
+    public async Task<ProductDetailDto> BundleAsync(string key, decimal price, params (Guid ProductId, int Quantity)[] items) =>
         await (await client.PostAsync("/api/products", new CreateProductRequest(
-            ProductType.Bundle, $"Bundle {sku}", sku, null, null, null, null, null, null, null, null, null, null, price, null,
-            items.Select(i => new BundleItemInput(i.ProductId, i.Quantity)).ToList()))).OkJsonAsync<ProductDetailDto>();
+            Type: ProductType.Bundle, Name: $"Bundle {key}", Slug: null, CategoryId: null, Barcode: null,
+            ShortDescription: null, Description: null, HowToUse: null, Ingredients: null, SizeValue: null, SizeUnit: null,
+            WeightGrams: null, SellingPrice: price, CompareAtPrice: null,
+            BundleItems: items.Select(i => new BundleItemInput(i.ProductId, i.Quantity)).ToList()))).OkJsonAsync<ProductDetailDto>();
 
     public async Task<ReceiptDto> ReceiveAsync(Guid warehouseId, Guid productId, int quantity, DateOnly? expiry = null,
         string? batch = null, decimal? unitCost = null) =>

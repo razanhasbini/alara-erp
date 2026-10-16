@@ -83,7 +83,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     }
   }
 
-  if (res.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/me") unauthorizedHandler?.()
+  if (res.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/development-login" && path !== "/api/auth/me") unauthorizedHandler?.()
   if (!res.ok) throw await toApiError(res)
   if (res.status === 204) return undefined as T
   const type = res.headers.get("content-type") ?? ""

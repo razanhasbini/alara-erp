@@ -9,6 +9,7 @@ public sealed record LoginResult(LoginOutcome Outcome, CurrentUserDto? User = nu
 public interface IAuthService
 {
     Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken ct);
+    Task<LoginResult> DevelopmentLoginAsync(CancellationToken ct);
     Task LogoutAsync();
     Task<CurrentUserDto> GetCurrentUserAsync(Guid userId, CancellationToken ct);
     Task ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken ct);

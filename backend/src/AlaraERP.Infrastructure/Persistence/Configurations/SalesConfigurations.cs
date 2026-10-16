@@ -7,6 +7,25 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AlaraERP.Infrastructure.Persistence.Configurations;
 
+internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
+{
+    public void Configure(EntityTypeBuilder<Customer> b)
+    {
+        b.ToTable("customers", Schemas.Sales);
+        b.HasKey(c => c.Id);
+        b.Property(c => c.Name).HasMaxLength(150).IsRequired();
+        b.Property(c => c.Phone).HasMaxLength(40).IsRequired();
+        b.Property(c => c.NormalizedPhone).HasMaxLength(40).IsRequired();
+        b.Property(c => c.Email).HasMaxLength(254);
+        b.Property(c => c.City).HasMaxLength(100);
+        b.Property(c => c.Address).HasMaxLength(1000);
+        b.Property(c => c.Notes).HasMaxLength(2000);
+        b.HasIndex(c => c.NormalizedPhone).IsUnique();
+        b.HasIndex(c => c.Name);
+        b.HasIndex(c => c.IsActive);
+    }
+}
+
 internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
     public void Configure(EntityTypeBuilder<Order> b)
@@ -40,9 +59,11 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.HasIndex(o => new { o.Status, o.CreatedAt });
         b.HasIndex(o => o.CreatedAt);
         b.HasIndex(o => o.RecipientPhone);
+        b.HasIndex(o => o.CustomerId);
         b.HasIndex(o => new { o.DeliveryCompanyId, o.PaymentStatus });
 
         b.HasOne<Warehouse>().WithMany().HasForeignKey(o => o.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Customer>().WithMany().HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<DeliveryCompany>().WithMany().HasForeignKey(o => o.DeliveryCompanyId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<CourierRemittance>().WithMany().HasForeignKey(o => o.CourierRemittanceId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<AppUser>().WithMany().HasForeignKey(o => o.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
@@ -66,7 +87,7 @@ internal sealed class OrderItemConfiguration : IEntityTypeConfiguration<OrderIte
         });
         b.HasKey(i => i.Id);
         b.Property(i => i.ProductName).HasMaxLength(200).IsRequired();
-        b.Property(i => i.Sku).HasMaxLength(80).IsRequired();
+        b.Property(i => i.IsGift).IsRequired();
         b.Property(i => i.ProductType).HasConversion<string>().HasMaxLength(20);
         b.Property(i => i.UnitPrice).HasPrecision(12, 2);
         b.Property(i => i.LineDiscount).HasPrecision(12, 2);
@@ -88,7 +109,7 @@ internal sealed class OrderItemComponentConfiguration : IEntityTypeConfiguration
         });
         b.HasKey(c => c.Id);
         b.Property(c => c.ComponentName).HasMaxLength(200).IsRequired();
-        b.Property(c => c.ComponentSku).HasMaxLength(80).IsRequired();
+        b.Property(c => c.AllocatedRevenue).HasPrecision(12, 2);
         b.HasIndex(c => c.ComponentProductId);
         b.HasOne<Product>().WithMany().HasForeignKey(c => c.ComponentProductId).OnDelete(DeleteBehavior.Restrict);
     }

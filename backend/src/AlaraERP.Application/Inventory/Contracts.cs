@@ -7,13 +7,13 @@ namespace AlaraERP.Application.Inventory.Contracts;
 /// </summary>
 public interface IStockReservationService
 {
-    /// <summary>Reserves the given quantities in one warehouse, or throws if any product is short.</summary>
+    /// <summary>Stages the quantities needed by an order, or throws if any product is short.</summary>
     Task ReserveAsync(Guid orderId, Guid warehouseId, IReadOnlyDictionary<Guid, int> quantities, CancellationToken ct);
 
     /// <summary>Releases the order's active reservations (cancel / reopen). No-op if there are none.</summary>
     Task ReleaseAsync(Guid orderId, CancellationToken ct);
 
-    /// <summary>Deducts reserved stock from non-expired batches (FEFO) and records shipment movements.</summary>
+    /// <summary>Deducts staged stock from non-expired batches (FEFO). Called during confirmation; a later shipping call is a compatibility no-op.</summary>
     Task ShipAsync(Guid orderId, string orderNumber, CancellationToken ct);
 
     /// <summary>Puts shipped units back into the batches they left from (courier return).</summary>

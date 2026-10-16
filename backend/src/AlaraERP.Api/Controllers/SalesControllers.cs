@@ -1,12 +1,40 @@
 using AlaraERP.Api.Security;
 using AlaraERP.Application.Common;
 using AlaraERP.Application.Dashboard;
+using AlaraERP.Application.Inventory;
 using AlaraERP.Application.Sales;
+using AlaraERP.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using static AlaraERP.Application.Common.Security.Permissions;
 
 namespace AlaraERP.Api.Controllers;
+
+[Route("api/customers")]
+public sealed class CustomersController(CustomerService customers) : ApiControllerBase
+{
+    [HttpGet]
+    [HasPermission(Orders.View)]
+    public Task<PagedResult<CustomerDto>> List([FromQuery] CustomerListQuery query, CancellationToken ct) => customers.ListAsync(query, ct);
+
+    [HttpGet("{id:guid}")]
+    [HasPermission(Orders.View)]
+    public Task<CustomerDto> Get(Guid id, CancellationToken ct) => customers.GetAsync(id, ct);
+
+    [HttpPost]
+    [HasPermission(Orders.Create)]
+    [ProducesResponseType<CustomerDto>(201)]
+    public async Task<IActionResult> Create(CustomerRequest request, CancellationToken ct)
+    {
+        var customer = await customers.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(Get), new { id = customer.Id }, customer);
+    }
+
+    [HttpPut("{id:guid}")]
+    [HasPermission(Orders.Update)]
+    public Task<CustomerDto> Update(Guid id, CustomerRequest request, CancellationToken ct) => customers.UpdateAsync(id, request, ct);
+}
 
 [Route("api/orders")]
 public sealed class OrdersController(OrderService orders) : ApiControllerBase
@@ -19,7 +47,7 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     [HasPermission(Orders.View)]
     public Task<OrderDetailDto> Get(Guid id, CancellationToken ct) => orders.GetAsync(id, ct);
 
-    /// <summary>Creates a draft, or with <c>confirm: true</c> a confirmed order with stock reserved.</summary>
+    /// <summary>Creates a draft, or with <c>confirm: true</c> confirms it and deducts stock immediately.</summary>
     [HttpPost]
     [HasPermission(Orders.Create)]
     [ProducesResponseType<OrderDetailDto>(201)]
@@ -133,16 +161,26 @@ public sealed class DashboardController(DashboardService dashboard) : ApiControl
 }
 
 [Route("api/settings")]
-public sealed class SettingsController(IOptions<ErpOptions> options) : ApiControllerBase
+public sealed class SettingsController(IOptions<ErpOptions> options, InventoryFeatureService features) : ApiControllerBase
 {
     public sealed record ErpSettingsDto(string BaseCurrency, string TimeZone, decimal DefaultDeliveryFee, int ExpiryWarningDays,
-        IReadOnlyList<string> EnabledPaymentMethods);
+        bool ExpiryDatesEnabled, IReadOnlyList<string> EnabledPaymentMethods);
 
     [HttpGet]
-    public ErpSettingsDto Get()
+    public async Task<ErpSettingsDto> Get(CancellationToken ct)
     {
         var o = options.Value;
         // Only cash on delivery is offered until the business confirms other methods.
-        return new ErpSettingsDto(o.BaseCurrency, o.TimeZone, o.DefaultDeliveryFee, o.ExpiryWarningDays, ["CashOnDelivery"]);
+        return new ErpSettingsDto(o.BaseCurrency, o.TimeZone, o.DefaultDeliveryFee, o.ExpiryWarningDays,
+            await features.ExpiryDatesEnabledAsync(ct), ["CashOnDelivery"]);
     }
+
+    [HttpGet("features")]
+    [Authorize(Roles = SystemRoles.SuperAdmin)]
+    public Task<InventoryFeatureSettingsDto> GetFeatures(CancellationToken ct) => features.GetAsync(ct);
+
+    [HttpPut("features/expiry-dates")]
+    [Authorize(Roles = SystemRoles.SuperAdmin)]
+    public Task<InventoryFeatureSettingsDto> SetExpiryDates(UpdateExpiryDatesRequest request, CancellationToken ct) =>
+        features.SetExpiryDatesAsync(request.Enabled, ct);
 }

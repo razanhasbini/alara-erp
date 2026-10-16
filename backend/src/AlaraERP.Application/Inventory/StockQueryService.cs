@@ -1,4 +1,5 @@
 using AlaraERP.Application.Common;
+using AlaraERP.Application.Common.Security;
 using AlaraERP.Domain.Catalog;
 using AlaraERP.Domain.Inventory;
 using Microsoft.EntityFrameworkCore;
@@ -6,7 +7,8 @@ using Microsoft.Extensions.Options;
 
 namespace AlaraERP.Application.Inventory;
 
-public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, IUserDirectory users, IOptions<ErpOptions> options)
+public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, IUserDirectory users, IOptions<ErpOptions> options,
+    ICurrentUser currentUser, InventoryFeatureService features)
 {
     private int WarningDays => options.Value.ExpiryWarningDays;
 
@@ -16,13 +18,14 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var today = clock.Today;
         var warnUntil = today.AddDays(WarningDays);
         var warehouseId = query.WarehouseId;
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
 
         var products = db.Products.AsNoTracking().Where(p => p.Type == ProductType.Individual);
         if (!query.IncludeInactive) products = products.Where(p => p.IsActive);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = Text.ContainsPattern(query.Search);
-            products = products.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\") || EF.Functions.Like(p.Sku.ToLower(), term, "\\"));
+            products = products.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\"));
         }
         if (query.CategoryId is { } categoryId)
             products = products.Where(p => p.CategoryId == categoryId
@@ -30,7 +33,7 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
 
         var rows = products.Select(p => new
         {
-            p.Id, p.Name, p.Sku, p.IsActive,
+            p.Id, p.Name, p.IsActive,
             CategoryName = db.Categories.Where(c => c.Id == p.CategoryId).Select(c => c.Name).FirstOrDefault(),
             OnHand = db.StockBalances.Where(b => b.ProductId == p.Id && (warehouseId == null || b.WarehouseId == warehouseId))
                 .Sum(b => (int?)b.QuantityOnHand) ?? 0,
@@ -38,26 +41,27 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
                 .Sum(b => (int?)b.QuantityReserved) ?? 0,
             Threshold = db.ProductInventorySettings.Where(s => s.ProductId == p.Id).Select(s => (int?)s.LowStockThreshold).FirstOrDefault()
                         ?? InventorySettingsService.DefaultThreshold,
-            NearestExpiry = db.BatchBalances
+            NearestExpiry = expiryEnabled ? db.BatchBalances
                 .Where(bb => bb.QuantityOnHand > 0 && bb.Batch!.ProductId == p.Id && (warehouseId == null || bb.WarehouseId == warehouseId)
                              && bb.Batch.ExpiryDate >= today)
-                .Min(bb => bb.Batch!.ExpiryDate),
-            ExpiringUnits = db.BatchBalances
+                .Min(bb => bb.Batch!.ExpiryDate) : null,
+            ExpiringUnits = expiryEnabled ? db.BatchBalances
                 .Where(bb => bb.Batch!.ProductId == p.Id && (warehouseId == null || bb.WarehouseId == warehouseId)
                              && bb.Batch.ExpiryDate >= today && bb.Batch.ExpiryDate <= warnUntil)
-                .Sum(bb => (int?)bb.QuantityOnHand) ?? 0,
-            ExpiredUnits = db.BatchBalances
+                .Sum(bb => (int?)bb.QuantityOnHand) ?? 0 : 0,
+            ExpiredUnits = expiryEnabled ? db.BatchBalances
                 .Where(bb => bb.Batch!.ProductId == p.Id && (warehouseId == null || bb.WarehouseId == warehouseId)
                              && bb.Batch.ExpiryDate < today)
-                .Sum(bb => (int?)bb.QuantityOnHand) ?? 0,
+                .Sum(bb => (int?)bb.QuantityOnHand) ?? 0 : 0,
         });
 
         rows = query.Filter switch
         {
             StockFilter.Out => rows.Where(r => r.OnHand - r.Reserved <= 0),
             StockFilter.Low => rows.Where(r => r.OnHand - r.Reserved > 0 && r.OnHand - r.Reserved <= r.Threshold),
-            StockFilter.Expiring => rows.Where(r => r.ExpiringUnits > 0),
-            StockFilter.Expired => rows.Where(r => r.ExpiredUnits > 0),
+            StockFilter.Expiring when expiryEnabled => rows.Where(r => r.ExpiringUnits > 0),
+            StockFilter.Expired when expiryEnabled => rows.Where(r => r.ExpiredUnits > 0),
+            StockFilter.Expiring or StockFilter.Expired => rows.Where(_ => false),
             _ => rows,
         };
         rows = query.Sort switch
@@ -65,7 +69,6 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
             "available" => rows.OrderBy(r => r.OnHand - r.Reserved).ThenBy(r => r.Name),
             "-available" => rows.OrderByDescending(r => r.OnHand - r.Reserved).ThenBy(r => r.Name),
             "expiry" => rows.OrderBy(r => r.NearestExpiry == null).ThenBy(r => r.NearestExpiry).ThenBy(r => r.Name),
-            "sku" => rows.OrderBy(r => r.Sku),
             "-name" => rows.OrderByDescending(r => r.Name),
             _ => rows.OrderBy(r => r.Name),
         };
@@ -73,7 +76,7 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var total = await rows.CountAsync(ct);
         var items = await rows.Skip(page.Skip).Take(page.SafePageSize).ToListAsync(ct);
         return new PagedResult<StockRowDto>(
-            items.Select(r => new StockRowDto(r.Id, r.Name, r.Sku, r.CategoryName, r.IsActive, r.OnHand, r.Reserved,
+            items.Select(r => new StockRowDto(r.Id, r.Name, r.CategoryName, r.IsActive, r.OnHand, r.Reserved,
                 r.OnHand - r.Reserved, r.Threshold, StatusOf(r.OnHand - r.Reserved, r.Threshold),
                 r.NearestExpiry, r.ExpiringUnits, r.ExpiredUnits)).ToList(),
             page.SafePage, page.SafePageSize, total);
@@ -82,7 +85,7 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
     public async Task<ProductStockDto> GetProductStockAsync(Guid productId, CancellationToken ct)
     {
         var product = await db.Products.AsNoTracking().Where(p => p.Id == productId)
-                          .Select(p => new { p.Id, p.Name, p.Sku, p.Type }).FirstOrDefaultAsync(ct)
+                          .Select(p => new { p.Id, p.Name, p.Type, p.StandardCost }).FirstOrDefaultAsync(ct)
                       ?? throw new NotFoundException("Product", productId);
         if (product.Type == ProductType.Bundle)
             throw new Domain.Common.DomainException("inventory.bundle_not_stocked",
@@ -100,22 +103,46 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
             .ToListAsync(ct);
 
         var today = clock.Today;
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
         var batches = await (from bb in db.BatchBalances.AsNoTracking()
                              join w in db.Warehouses on bb.WarehouseId equals w.Id
                              where bb.Batch!.ProductId == productId && bb.QuantityOnHand > 0
-                             select new { bb.BatchId, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate, w.Id, w.Code, bb.QuantityOnHand })
+                             select new { bb.BatchId, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate, bb.Batch.UnitCost, w.Id, w.Code, bb.QuantityOnHand })
             .ToListAsync(ct);
 
         var onHand = warehouses.Sum(w => w.OnHand);
         var reserved = warehouses.Sum(w => w.Reserved);
-        return new ProductStockDto(product.Id, product.Name, product.Sku, settings, onHand, reserved, onHand - reserved,
+        var canSeeCosts = currentUser.HasPermission(Permissions.Costs.View);
+
+        ProductCostDto? cost = null;
+        if (canSeeCosts)
+        {
+            var lastReceipt = await (from l in db.StockReceipts.SelectMany(r => r.Lines, (r, l) => new { r.ReceivedAt, l.ProductId, l.UnitCost })
+                                     where l.ProductId == productId && l.UnitCost != null
+                                     orderby l.ReceivedAt descending
+                                     select new { l.UnitCost, l.ReceivedAt }).FirstOrDefaultAsync(ct);
+            var costed = batches.Select(b => (b.QuantityOnHand, Cost: b.UnitCost ?? product.StandardCost)).ToList();
+            var costedUnits = costed.Where(c => c.Cost is not null).Sum(c => c.QuantityOnHand);
+            var value = costed.Where(c => c.Cost is not null).Sum(c => c.QuantityOnHand * c.Cost!.Value);
+            var uncostedUnits = costed.Where(c => c.Cost is null).Sum(c => c.QuantityOnHand);
+            var fullyCosted = uncostedUnits == 0;
+            cost = new ProductCostDto(product.StandardCost,
+                costedUnits > 0 && fullyCosted ? Math.Round(value / costedUnits, 4) : batches.Count == 0 ? product.StandardCost : null,
+                lastReceipt?.UnitCost, lastReceipt?.ReceivedAt,
+                costedUnits > 0 && fullyCosted ? Math.Round(value, 2) : null,
+                uncostedUnits);
+        }
+
+        return new ProductStockDto(product.Id, product.Name, settings, onHand, reserved, onHand - reserved,
             StatusOf(onHand - reserved, settings.LowStockThreshold),
             warehouses,
             batches.OrderBy(b => b.ExpiryDate is null).ThenBy(b => b.ExpiryDate).ThenBy(b => b.Code)
-                .Select(b => new BatchStockDto(b.BatchId, b.BatchNumber, b.ExpiryDate, b.Id, b.Code, b.QuantityOnHand,
-                    b.ExpiryDate is { } e && e < today,
-                    b.ExpiryDate is { } d ? d.DayNumber - today.DayNumber : null))
-                .ToList());
+                .Select(b => new BatchStockDto(b.BatchId, b.BatchNumber, expiryEnabled ? b.ExpiryDate : null, b.Id, b.Code, b.QuantityOnHand,
+                    expiryEnabled && b.ExpiryDate is { } e && e < today,
+                    expiryEnabled && b.ExpiryDate is { } d ? d.DayNumber - today.DayNumber : null,
+                    canSeeCosts ? b.UnitCost : null))
+                .ToList(),
+            cost);
     }
 
     /// <summary>
@@ -166,14 +193,17 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
                           join pr in db.Products on m.ProductId equals pr.Id
                           join b in db.Batches on m.BatchId equals b.Id
                           orderby m.CreatedAt descending, m.Id descending
-                          select new { m, w.Code, pr.Name, pr.Sku, b.BatchNumber, b.ExpiryDate })
+                          select new { m, w.Code, pr.Name, b.BatchNumber, b.ExpiryDate })
             .Skip(page.Skip).Take(page.SafePageSize).ToListAsync(ct);
 
         var names = await users.GetDisplayNamesAsync(rows.Select(r => r.m.PerformedByUserId), ct);
+        var withCosts = currentUser.HasPermission(Permissions.Costs.View);
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
         return new PagedResult<MovementDto>(rows.Select(r => new MovementDto(
-                r.m.Id, r.m.CreatedAt, r.m.WarehouseId, r.Code, r.m.ProductId, r.Name, r.Sku, r.BatchNumber, r.ExpiryDate,
+                r.m.Id, r.m.CreatedAt, r.m.WarehouseId, r.Code, r.m.ProductId, r.Name, r.BatchNumber, expiryEnabled ? r.ExpiryDate : null,
                 r.m.Type, r.m.QuantityChange, r.m.Reason, r.m.ReferenceType, r.m.ReferenceId, r.m.ReferenceNumber, r.m.Notes,
-                r.m.PerformedByUserId is { } u ? names.GetValueOrDefault(u) : null)).ToList(),
+                r.m.PerformedByUserId is { } u ? names.GetValueOrDefault(u) : null,
+                withCosts ? r.m.UnitCost : null)).ToList(),
             page.SafePage, page.SafePageSize, total);
     }
 
@@ -209,13 +239,14 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var warehouse = await db.Warehouses.AsNoTracking().Where(w => w.Id == receipt.WarehouseId).Select(w => w.Name).FirstAsync(ct);
         var lines = await LineDetailsAsync(receipt.Lines.Select(l => (l.ProductId, l.BatchId)), ct);
         var names = await users.GetDisplayNamesAsync([receipt.PerformedByUserId], ct);
+        var canSeeCosts = currentUser.HasPermission(Permissions.Costs.View);
 
         var dtoLines = receipt.Lines.Select(l =>
         {
-            var (name, sku, batch, expiry) = lines[(l.ProductId, l.BatchId)];
-            return new ReceiptLineDto(l.ProductId, name, sku, l.BatchId, batch, expiry, l.Quantity, l.UnitCost);
+            var (name, batch, expiry) = lines[(l.ProductId, l.BatchId)];
+            return new ReceiptLineDto(l.ProductId, name, l.BatchId, batch, expiry, l.Quantity, canSeeCosts ? l.UnitCost : null);
         }).OrderBy(l => l.ProductName).ThenBy(l => l.BatchNumber).ToList();
-        var costed = receipt.Lines.All(l => l.UnitCost.HasValue);
+        var costed = canSeeCosts && receipt.Lines.All(l => l.UnitCost.HasValue);
         return new ReceiptDto(receipt.Id, receipt.ReceiptNumber, receipt.WarehouseId, warehouse, receipt.SupplierName,
             receipt.SupplierReference, receipt.ReceivedAt, receipt.Notes,
             receipt.PerformedByUserId is { } u ? names.GetValueOrDefault(u) : null, receipt.CreatedAt,
@@ -253,8 +284,8 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
             transfer.CreatedAt, transfer.Lines.Sum(l => l.Quantity),
             transfer.Lines.Select(l =>
                 {
-                    var (name, sku, batch, expiry) = lines[(l.ProductId, l.BatchId)];
-                    return new TransferLineDto(l.ProductId, name, sku, l.BatchId, batch, expiry, l.Quantity);
+                    var (name, batch, expiry) = lines[(l.ProductId, l.BatchId)];
+                    return new TransferLineDto(l.ProductId, name, l.BatchId, batch, expiry, l.Quantity);
                 })
                 .OrderBy(l => l.ProductName).ThenBy(l => l.ExpiryDate is null).ThenBy(l => l.ExpiryDate).ThenBy(l => l.BatchNumber)
                 .ToList());
@@ -263,17 +294,18 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
     internal static StockStatus StatusOf(int available, int threshold) =>
         available <= 0 ? StockStatus.Out : available <= threshold ? StockStatus.Low : StockStatus.InStock;
 
-    private async Task<Dictionary<(Guid, Guid), (string Name, string Sku, string Batch, DateOnly? Expiry)>> LineDetailsAsync(
+    private async Task<Dictionary<(Guid, Guid), (string Name, string Batch, DateOnly? Expiry)>> LineDetailsAsync(
         IEnumerable<(Guid ProductId, Guid BatchId)> keys, CancellationToken ct)
     {
         var list = keys.Distinct().ToList();
         var productIds = list.Select(k => k.ProductId).ToList();
         var batchIds = list.Select(k => k.BatchId).ToList();
         var products = await db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => (p.Name, p.Sku), ct);
+            .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
         var batches = await db.Batches.AsNoTracking().Where(b => batchIds.Contains(b.Id))
             .ToDictionaryAsync(b => b.Id, b => (b.BatchNumber, b.ExpiryDate), ct);
-        return list.ToDictionary(k => k, k => (products[k.ProductId].Name, products[k.ProductId].Sku,
-            batches[k.BatchId].BatchNumber, batches[k.BatchId].ExpiryDate));
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
+        return list.ToDictionary(k => k, k => (products[k.ProductId],
+            batches[k.BatchId].BatchNumber, expiryEnabled ? batches[k.BatchId].ExpiryDate : null));
     }
 }

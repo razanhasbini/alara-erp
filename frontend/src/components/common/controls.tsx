@@ -46,7 +46,7 @@ export function Field({ label, htmlFor, error, hint, children, className, requir
       </Label>
       {children}
       {error ? (
-        <p id={`${htmlFor}-error`} role="alert" className="text-xs text-destructive">{error}</p>
+        <p id={`${htmlFor}-error`} role="alert" className="text-sm font-medium text-destructive">{error}</p>
       ) : hint ? (
         <p className="text-xs text-muted-foreground">{hint}</p>
       ) : null}

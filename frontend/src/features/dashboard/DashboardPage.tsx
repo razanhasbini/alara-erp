@@ -1,16 +1,15 @@
-import { useState, type ReactNode } from "react"
+import { useState } from "react"
 import { Link } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from "recharts"
-import { Info } from "lucide-react"
 import { useAuth } from "@/auth/auth"
 import { Section } from "@/components/common/page"
 import { OrderStatusPill, PaymentStatusPill, Pill } from "@/components/common/StatusBadge"
 import { ErrorState, FullPageSpinner } from "@/components/common/states"
-import { Tooltip as Hint, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Figure, FigureRow } from "@/components/common/figures"
 import { api } from "@/lib/api"
 import { dateOnly, daysUntil, money, number, when } from "@/lib/format"
-import { qk } from "@/lib/queries"
+import { qk, useSettings } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Dashboard } from "@/types/api"
 import { MovementReferenceLink } from "@/features/inventory/MovementReferenceLink"
@@ -24,29 +23,10 @@ function greeting() {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"
 }
 
-/** A headline figure with its exact definition one hover away. */
-function Figure({ label, value, hint, sub, tone }: { label: string; value: ReactNode; hint: string; sub?: ReactNode; tone?: "warn" | "bad" }) {
-  return (
-    <div className="min-w-0 px-3 py-4 first:pl-0 md:px-5">
-      <div className="flex items-center gap-1">
-        <span className="eyebrow">{label}</span>
-        <Hint>
-          <TooltipTrigger asChild><button type="button" aria-label={`How "${label}" is calculated`} className="text-muted-foreground/70 hover:text-foreground"><Info className="size-3" /></button></TooltipTrigger>
-          <TooltipContent className="max-w-64">{hint}</TooltipContent>
-        </Hint>
-      </div>
-      <div className={cn("font-display mt-1 truncate text-[1.45rem] leading-none tabular md:text-[1.9rem]", tone === "warn" && "text-tone-amber", tone === "bad" && "text-tone-red")}>{value}</div>
-      {sub && <div className="mt-1.5 text-xs text-muted-foreground">{sub}</div>}
-    </div>
-  )
-}
-
-function FigureRow({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] divide-hairline border-y border-hairline md:grid-cols-[repeat(4,minmax(0,1fr))] md:divide-x [&>*:nth-child(n+3)]:border-t [&>*:nth-child(n+3)]:border-hairline md:[&>*:nth-child(n+3)]:border-t-0">{children}</div>
-}
-
 export function DashboardPage() {
   const { user } = useAuth()
+  const { data: settings } = useSettings()
+  const expiryEnabled = settings?.expiryDatesEnabled ?? false
   const [today] = useState(() => ({
     greeting: greeting(),
     label: new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Beirut" }).format(new Date()),
@@ -86,7 +66,7 @@ export function DashboardPage() {
           <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved for orders`} hint="Physical units on hand across warehouses." />
           <Figure label="Low stock" value={number(inventory.lowStockCount)} tone={inventory.lowStockCount ? "warn" : undefined} hint="Products whose available quantity is at or below their alert threshold (but above zero)." />
           <Figure label="Out of stock" value={number(inventory.outOfStockCount)} tone={inventory.outOfStockCount ? "bad" : undefined} hint="Active products with nothing available to sell." />
-          <Figure label="Expiring" value={number(inventory.expiringUnits)} tone={inventory.expiringUnits ? "warn" : undefined} hint={`Units in batches expiring within ${inventory.expiryWarningDays} days.`} />
+          {expiryEnabled && <Figure label="Expiring" value={number(inventory.expiringUnits)} tone={inventory.expiringUnits ? "warn" : undefined} hint={`Units in batches expiring within ${inventory.expiryWarningDays} days.`} />}
         </FigureRow>
       )}
 
@@ -131,15 +111,15 @@ export function DashboardPage() {
 
         {inventory && (
           <Section title="Stock to watch" actions={<Link to="/inventory?filter=Low" className="text-xs text-muted-foreground hover:text-foreground">Inventory →</Link>}>
-            <div className="grid grid-cols-3 border-b border-hairline text-center">
-              {[["Low", inventory.lowStockCount, "Low"], ["Out", inventory.outOfStockCount, "Out"], [`Expiring ≤ ${inventory.expiryWarningDays}d`, inventory.expiringUnits, "Expiring"]].map(([l, v, f]) => (
+            <div className={cn("grid border-b border-hairline text-center", expiryEnabled ? "grid-cols-3" : "grid-cols-2")}>
+              {[["Low", inventory.lowStockCount, "Low"], ["Out", inventory.outOfStockCount, "Out"], ...(expiryEnabled ? [[`Expiring ≤ ${inventory.expiryWarningDays}d`, inventory.expiringUnits, "Expiring"]] : [])].map(([l, v, f]) => (
                 <Link key={l as string} to={`/inventory?filter=${f}`} className="px-2 py-3 hover:bg-accent">
                   <div className={cn("font-display text-xl tabular", (v as number) > 0 && (f === "Out" ? "text-tone-red" : "text-tone-amber"))}>{number(v as number)}</div>
                   <div className="eyebrow">{l}</div>
                 </Link>
               ))}
             </div>
-            {inventory.expiredUnits > 0 && (
+            {expiryEnabled && inventory.expiredUnits > 0 && (
               <Link to="/inventory?filter=Expired" className="block border-b border-hairline bg-tone-red-bg px-4 py-2 text-sm text-tone-red">
                 {inventory.expiredUnits} expired unit(s) are still on hand — write them off.
               </Link>
@@ -151,7 +131,7 @@ export function DashboardPage() {
                   <span className="shrink-0 tabular text-tone-amber">{p.available} left <span className="text-muted-foreground">/ alert {p.threshold}</span></span>
                 </li>
               ))}
-              {inventory.expiring.map((b) => (
+              {expiryEnabled && inventory.expiring.map((b) => (
                 <li key={`${b.productId}-${b.batchNumber}-${b.warehouseCode}`} className="flex justify-between gap-3 px-4 py-2">
                   <span className="truncate">{b.name} <span className="code text-muted-foreground">{b.batchNumber}</span></span>
                   <span className="shrink-0 tabular">{b.units} · <span className={daysUntil(b.expiryDate) < 0 ? "text-tone-red" : "text-tone-amber"}>{dateOnly(b.expiryDate)}</span></span>
@@ -164,7 +144,7 @@ export function DashboardPage() {
                   </Link>
                 </li>
               )}
-              {inventory.lowStock.length === 0 && inventory.expiring.length === 0 && inventory.outOfStockCount === 0 && (
+              {inventory.lowStock.length === 0 && (!expiryEnabled || inventory.expiring.length === 0) && inventory.outOfStockCount === 0 && (
                 <li className="px-4 py-6 text-center text-muted-foreground">Nothing needs attention.</li>
               )}
             </ul>

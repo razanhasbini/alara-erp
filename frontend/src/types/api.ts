@@ -59,7 +59,6 @@ export interface Category {
 export interface ProductListItem {
   id: string
   name: string
-  sku: string
   type: ProductType
   categoryId: string | null
   categoryName: string | null
@@ -74,7 +73,6 @@ export interface ProductListItem {
 export interface BundleItem {
   componentProductId: string
   name: string
-  sku: string
   quantity: number
   unitPrice: number
   isActive: boolean
@@ -93,7 +91,6 @@ export interface ProductDetail {
   type: ProductType
   name: string
   slug: string
-  sku: string
   barcode: string | null
   categoryId: string | null
   categoryName: string | null
@@ -106,6 +103,8 @@ export interface ProductDetail {
   weightGrams: number | null
   sellingPrice: number
   compareAtPrice: number | null
+  /** Only present for employees with costs.view. */
+  standardCost: number | null
   isActive: boolean
   bundleItems: BundleItem[]
   componentsValue: number | null
@@ -133,7 +132,6 @@ export type StockFilter = "All" | "Low" | "Out" | "Expiring" | "Expired"
 export interface StockRow {
   productId: string
   name: string
-  sku: string
   categoryName: string | null
   isActive: boolean
   onHand: number
@@ -157,7 +155,6 @@ export interface InventorySettings {
 export interface ProductStock {
   productId: string
   name: string
-  sku: string
   settings: InventorySettings
   onHand: number
   reserved: number
@@ -173,7 +170,17 @@ export interface ProductStock {
     onHand: number
     isExpired: boolean
     daysToExpiry: number | null
+    unitCost: number | null
   }[]
+  /** Only present for employees with costs.view. */
+  cost: {
+    standardCost: number | null
+    averageCost: number | null
+    lastReceiptCost: number | null
+    lastReceivedAt: string | null
+    stockValue: number | null
+    uncostedUnits: number
+  } | null
 }
 
 export interface Availability {
@@ -192,7 +199,6 @@ export interface Movement {
   warehouseCode: string
   productId: string
   productName: string
-  sku: string
   batchNumber: string
   expiryDate: string | null
   type: MovementType
@@ -203,6 +209,7 @@ export interface Movement {
   referenceNumber: string | null
   notes: string | null
   performedBy: string | null
+  unitCost: number | null
 }
 
 export interface ReceiptSummary {
@@ -230,7 +237,7 @@ export interface Receipt {
   createdAt: string
   totalUnits: number
   totalCost: number | null
-  lines: { productId: string; productName: string; sku: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number; unitCost: number | null }[]
+  lines: { productId: string; productName: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number; unitCost: number | null }[]
 }
 
 export interface Transfer {
@@ -245,7 +252,7 @@ export interface Transfer {
   performedBy: string | null
   createdAt: string
   totalUnits: number
-  lines: { productId: string; productName: string; sku: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number }[]
+  lines: { productId: string; productName: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number }[]
 }
 
 // ---- sales --------------------------------------------------------------------------------
@@ -253,6 +260,25 @@ export type OrderStatus = "Draft" | "Confirmed" | "Shipped" | "Delivered" | "Can
 export type OrderSource = "WhatsApp" | "Instagram" | "Website" | "Other"
 export type PaymentMethod = "CashOnDelivery" | "Whish" | "Omt" | "BankTransfer" | "Cash"
 export type PaymentStatus = "Unpaid" | "CollectedByCourier" | "Paid" | "Void"
+
+export interface Customer {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  city: string | null
+  address: string | null
+  notes: string | null
+  isActive: boolean
+  orderCount: number
+  totalSpent: number
+  totalPaid: number
+  averageOrderValue: number
+  firstOrderAt: string | null
+  lastOrderAt: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export interface OrderListItem {
   id: string
@@ -277,13 +303,13 @@ export interface OrderItem {
   id: string
   productId: string
   productName: string
-  sku: string
   productType: ProductType
+  isGift: boolean
   quantity: number
   unitPrice: number
   lineDiscount: number
   lineTotal: number
-  components: { productId: string; name: string; sku: string; quantityPerBundle: number; totalQuantity: number }[]
+  components: { productId: string; name: string; quantityPerBundle: number; totalQuantity: number }[]
 }
 
 export interface OrderHistoryEntry {
@@ -304,6 +330,7 @@ export interface OrderDetail {
   source: OrderSource
   warehouseId: string
   warehouseName: string
+  customerId: string | null
   recipientName: string
   recipientPhone: string
   recipientCity: string | null
@@ -388,8 +415,8 @@ export interface Dashboard {
     unitsOnHand: number; unitsReserved: number; lowStockCount: number; outOfStockCount: number
     expiredUnits: number; expiringUnits: number; expiryWarningDays: number
     byWarehouse: { warehouseId: string; code: string; name: string; onHand: number; reserved: number }[]
-    lowStock: { productId: string; name: string; sku: string; available: number; threshold: number }[]
-    expiring: { productId: string; name: string; sku: string; batchNumber: string; expiryDate: string; warehouseCode: string; units: number }[]
+    lowStock: { productId: string; name: string; available: number; threshold: number }[]
+    expiring: { productId: string; name: string; batchNumber: string; expiryDate: string; warehouseCode: string; units: number }[]
   } | null
   recentMovements: Movement[] | null
 }
@@ -399,5 +426,71 @@ export interface ErpSettings {
   timeZone: string
   defaultDeliveryFee: number
   expiryWarningDays: number
+  expiryDatesEnabled: boolean
   enabledPaymentMethods: PaymentMethod[]
+}
+
+export interface FeatureSettings {
+  expiryDatesEnabled: boolean
+  updatedAt: string | null
+}
+
+// ---- analytics -----------------------------------------------------------------------------
+export type Grouping = "Day" | "Week" | "Month"
+
+export interface AnalyticsSummary {
+  from: string
+  to: string
+  groupBy: Grouping
+  currency: string
+  includesCosts: boolean
+  totals: {
+    orders: number; unitsSold: number; grossSales: number; discounts: number; netSales: number; averageOrderValue: number
+    deliveryFees: number; courierFees: number | null; deliveryResult: number | null
+    costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null; profit: number | null
+    cashReceived: number; uncostedUnits: number
+  }
+  series: { periodStart: string; periodEnd: string; orders: number; unitsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; profit: number | null; cashReceived: number }[]
+  byChannel: { source: OrderSource; orders: number; netSales: number; grossProfit: number | null }[]
+}
+
+export interface ProductProfit {
+  productId: string; name: string; categoryName: string | null; isActive: boolean
+  sellingPrice: number; standardCost: number | null; averageCost: number | null; unitMargin: number | null; unitMarginPercent: number | null
+  unitsSold: number; unitsSoldInBundles: number; netSales: number; costOfGoods: number | null; grossProfit: number | null
+  grossMarginPercent: number | null; uncostedUnits: number
+}
+
+export interface BundleProfit {
+  productId: string; name: string; isActive: boolean; sellingPrice: number
+  componentsCost: number | null; unitMargin: number | null; unitMarginPercent: number | null
+  setsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null
+}
+
+export interface ProductAnalytics {
+  from: string; to: string; currency: string; includesCosts: boolean
+  products: ProductProfit[]
+  bundles: BundleProfit[]
+}
+
+export interface CustomerLoyalty {
+  customerId: string
+  name: string
+  phone: string
+  city: string | null
+  orderCount: number
+  repeatOrders: number
+  totalOrdered: number
+  totalPaid: number
+  averageOrderValue: number
+  averageDaysBetweenOrders: number | null
+  firstOrderAt: string
+  lastOrderAt: string
+}
+
+export interface CustomerAnalytics {
+  from: string
+  to: string
+  currency: string
+  customers: CustomerLoyalty[]
 }

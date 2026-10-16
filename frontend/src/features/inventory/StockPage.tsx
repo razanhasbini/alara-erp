@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { api, errorMessage } from "@/lib/api"
-import { dateOnly, daysUntil } from "@/lib/format"
+import { cost as fmtCost, dateOnly, daysUntil, money } from "@/lib/format"
 import { P } from "@/lib/permissions"
 import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
@@ -32,6 +32,8 @@ export function StockPage() {
   const productId = params.get("product")
   const { data: warehouses } = useWarehouses()
   const { data: settings } = useSettings()
+  const expiryEnabled = settings?.expiryDatesEnabled ?? false
+  const effectiveFilter: StockFilter = !expiryEnabled && (filter === "Expiring" || filter === "Expired") ? "All" : filter
 
   const set = useCallback((patch: Record<string, string | null>) => setParams((prev) => {
     const next = new URLSearchParams(prev)
@@ -40,19 +42,19 @@ export function StockPage() {
     return next
   }, { replace: true }), [setParams])
 
-  const query = { search, warehouseId: warehouseId || undefined, filter: filter === "All" ? undefined : filter, page, pageSize: 50 }
+  const query = { search, warehouseId: warehouseId || undefined, filter: effectiveFilter === "All" ? undefined : effectiveFilter, page, pageSize: 50 }
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: qk.stock(query), queryFn: () => api<Paged<StockRow>>("/api/inventory", { query }), placeholderData: keepPreviousData,
   })
 
   const columns: Column<StockRow>[] = [
-    { key: "product", header: "Product", cell: (r) => <div><div className="font-medium">{r.name}</div><div className="code text-muted-foreground">{r.sku}</div></div> },
+    { key: "product", header: "Product", cell: (r) => <div className="font-medium">{r.name}</div> },
     { key: "onHand", header: "On hand", align: "right", cell: (r) => <span className="tabular">{r.onHand}</span> },
     { key: "reserved", header: "Reserved", align: "right", hideOnMobile: true, cell: (r) => <span className="tabular text-muted-foreground">{r.reserved || "—"}</span> },
     { key: "available", header: "Available", align: "right", cell: (r) => <span className={cn("tabular font-semibold", r.available <= 0 && "text-tone-red")}>{r.available}</span> },
     { key: "threshold", header: "Alert at", align: "right", hideOnMobile: true, cell: (r) => <span className="tabular text-muted-foreground">{r.lowStockThreshold || "—"}</span> },
     { key: "status", header: "Status", cell: (r) => <StockStatusPill status={r.status} /> },
-    {
+    ...(expiryEnabled ? [{
       key: "expiry", header: "Next expiry", hideOnMobile: true,
       cell: (r) => (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -62,7 +64,7 @@ export function StockPage() {
             : r.expiredUnits === 0 && <span className="text-muted-foreground">—</span>}
         </div>
       ),
-    },
+    } as Column<StockRow>] : []),
   ]
 
   return (
@@ -73,7 +75,7 @@ export function StockPage() {
           {can(P.inventory.receive) && <Button asChild><Link to="/inventory/receipts/new"><PackagePlus /> Receive stock</Link></Button>}
         </>} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search product or SKU" />
+        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search product" />
         {(warehouses?.length ?? 0) > 1 && (
           <Select value={warehouseId || "all"} onValueChange={(v) => set({ warehouse: v === "all" ? null : v })}>
             <SelectTrigger className="h-8 w-44 bg-card" aria-label="Warehouse"><SelectValue /></SelectTrigger>
@@ -83,14 +85,14 @@ export function StockPage() {
             </SelectContent>
           </Select>
         )}
-        <Segmented label="Stock filter" value={filter} onChange={(v) => set({ filter: v === "All" ? null : v })}
+        <Segmented label="Stock filter" value={effectiveFilter} onChange={(v) => set({ filter: v === "All" ? null : v })}
           options={[{ value: "All", label: "All" }, { value: "Low", label: "Low" }, { value: "Out", label: "Out" },
-            { value: "Expiring", label: "Expiring" }, { value: "Expired", label: "Expired" }]} />
+            ...(expiryEnabled ? [{ value: "Expiring", label: "Expiring" }, { value: "Expired", label: "Expired" }] : [])]} />
       </div>
       <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.productId} loading={isLoading} error={error} onRetry={refetch}
         onRowClick={(r) => set({ product: r.productId })}
-        empty={<EmptyState title={filter === "All" ? "No products" : "Nothing in this view"}>
-          {filter === "All" ? "Products appear here once they exist in the catalogue." : "Good news — no product matches this filter."}</EmptyState>}
+        empty={<EmptyState title={effectiveFilter === "All" ? "No products" : "Nothing in this view"}>
+          {effectiveFilter === "All" ? "Products appear here once they exist in the catalogue." : "Good news — no product matches this filter."}</EmptyState>}
         footer={data && data.totalCount > 0 && <Pager page={data.page} pageSize={data.pageSize} total={data.totalCount} onPage={(p) => set({ page: String(p) })} />} />
       <ProductStockSheet productId={productId} onClose={() => set({ product: null })} />
     </>
@@ -99,6 +101,8 @@ export function StockPage() {
 
 function ProductStockSheet({ productId, onClose }: { productId: string | null; onClose: () => void }) {
   const { can } = useAuth()
+  const { data: settings } = useSettings()
+  const expiryEnabled = settings?.expiryDatesEnabled ?? false
   const [adjust, setAdjust] = useState<AdjustTarget | null>(null)
   const { data, isLoading, error } = useQuery({
     queryKey: qk.productStock(productId ?? ""), queryFn: () => api<ProductStock>(`/api/inventory/products/${productId}`), enabled: !!productId,
@@ -112,7 +116,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
           <>
             <SheetHeader>
               <SheetTitle className="font-display text-xl">{data.name}</SheetTitle>
-              <SheetDescription className="code">{data.sku}</SheetDescription>
+              <SheetDescription>Current stock by warehouse and batch</SheetDescription>
             </SheetHeader>
             <div className="grid gap-6 px-4 pb-6">
               <div className="grid grid-cols-3 border-y border-hairline py-3 text-center">
@@ -132,7 +136,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
                 <div className="mb-2 flex items-center justify-between">
                   <p className="eyebrow">Batches</p>
                   {can(P.inventory.adjust) && data.warehouses[0] && (
-                    <Button size="xs" variant="outline" onClick={() => setAdjust({ productId: data.productId, productName: data.name, tracksExpiry: data.settings.tracksExpiry, warehouseId: data.warehouses[0].warehouseId, direction: "increase" })}>
+                    <Button size="xs" variant="outline" onClick={() => setAdjust({ productId: data.productId, productName: data.name, tracksExpiry: expiryEnabled && data.settings.tracksExpiry, warehouseId: data.warehouses[0].warehouseId, direction: "increase" })}>
                       <SlidersHorizontal /> Add units
                     </Button>
                   )}
@@ -145,15 +149,16 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
                       <li key={`${b.batchId}-${b.warehouseId}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                         <div>
                           <div className="code">{b.batchNumber} <span className="text-muted-foreground">· {b.warehouseCode}</span></div>
-                          <div className={cn("text-xs", b.isExpired ? "text-tone-red" : b.daysToExpiry !== null && b.daysToExpiry <= 60 ? "text-tone-amber" : "text-muted-foreground")}>
+                          {expiryEnabled && <div className={cn("text-xs", b.isExpired ? "text-tone-red" : b.daysToExpiry !== null && b.daysToExpiry <= 60 ? "text-tone-amber" : "text-muted-foreground")}>
                             {b.expiryDate ? `${b.isExpired ? "Expired" : "Expires"} ${dateOnly(b.expiryDate)}${!b.isExpired && b.daysToExpiry !== null ? ` · ${b.daysToExpiry} days` : ""}` : "No expiry"}
-                          </div>
+                          </div>}
                         </div>
                         <div className="flex items-center gap-2">
+                          {b.unitCost !== null && <span className="text-xs tabular text-muted-foreground" title="Unit cost of this batch">{fmtCost(b.unitCost)}</span>}
                           <span className="tabular font-medium">{b.onHand}</span>
                           {can(P.inventory.adjust) && (
                             <Button size="xs" variant="ghost" onClick={() => setAdjust({
-                              productId: data.productId, productName: data.name, tracksExpiry: data.settings.tracksExpiry, warehouseId: b.warehouseId,
+                              productId: data.productId, productName: data.name, tracksExpiry: expiryEnabled && data.settings.tracksExpiry, warehouseId: b.warehouseId,
                               direction: "decrease", batch: { id: b.batchId, number: b.batchNumber, onHand: b.onHand, isExpired: b.isExpired },
                             })}>Remove</Button>
                           )}
@@ -163,6 +168,14 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
                   </ul>
                 )}
               </div>
+
+              {data.cost && (
+                <div className="grid grid-cols-3 gap-2 rounded-md bg-secondary/50 px-3 py-2.5 text-center text-xs">
+                  <div><div className="tabular text-sm font-medium">{fmtCost(data.cost.averageCost)}</div><div className="text-muted-foreground">avg unit cost</div></div>
+                  <div><div className="tabular text-sm font-medium">{money(data.cost.stockValue)}</div><div className="text-muted-foreground">stock value</div></div>
+                  <div><div className="tabular text-sm font-medium">{fmtCost(data.cost.lastReceiptCost)}</div><div className="text-muted-foreground">last invoice</div></div>
+                </div>
+              )}
 
               <SettingsEditor stock={data} />
 
@@ -180,6 +193,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
 
 function SettingsEditor({ stock }: { stock: ProductStock }) {
   const { can } = useAuth()
+  const { data: settings } = useSettings()
   const queryClient = useQueryClient()
   const [threshold, setThreshold] = useState(String(stock.settings.lowStockThreshold))
   const [tracksExpiry, setTracksExpiry] = useState(stock.settings.tracksExpiry)
@@ -197,9 +211,9 @@ function SettingsEditor({ stock }: { stock: ProductStock }) {
         hint={editable ? undefined : "Only managers can change this."}>
         <Input id="threshold" inputMode="numeric" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!editable} className="w-28 tabular" />
       </Field>
-      <label className="flex items-center gap-2 text-sm">
+      {settings?.expiryDatesEnabled && <label className="flex items-center gap-2 text-sm">
         <Switch checked={tracksExpiry} onCheckedChange={setTracksExpiry} disabled={!editable} /> Track expiry dates for this product
-      </label>
+      </label>}
       {editable && <div><SubmitButton size="sm" pending={save.isPending} disabled={!valid}>Save</SubmitButton></div>}
     </form>
   )

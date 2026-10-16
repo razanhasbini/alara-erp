@@ -6,5 +6,6 @@ export const P = {
   orders: { view: "orders.view", create: "orders.create", update: "orders.update", cancel: "orders.cancel", payments: "orders.manage_payments" },
   delivery: { manage: "delivery_companies.manage" },
   reports: { view: "reports.view" },
+  costs: { view: "costs.view" },
   users: { view: "users.view", create: "users.create", update: "users.update", assignRoles: "users.assign_roles" },
 } as const

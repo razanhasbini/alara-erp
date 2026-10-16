@@ -17,7 +17,7 @@ public sealed class OrderTests
     }
 
     private static OrderItem Line(Order order, decimal price, int qty, decimal discount = 0) =>
-        new(order.Id, Guid.NewGuid(), "Item", "SKU", ProductType.Individual, qty, price, discount, []);
+        new(order.Id, Guid.NewGuid(), "Item", ProductType.Individual, qty, price, discount, []);
 
     [Fact]
     public void Totals_are_computed_from_lines_discount_and_delivery()
@@ -25,6 +25,20 @@ public sealed class OrderTests
         var order = NewOrder();
         Assert.Equal((50m, 5m, 4m, 49m), (order.Subtotal, order.DiscountTotal, order.ShippingTotal, order.GrandTotal));
         Assert.Equal("+96170123456", order.RecipientPhone);
+    }
+
+    [Fact]
+    public void Gift_lines_are_free_but_remain_part_of_a_regular_order()
+    {
+        var order = new Order("AL-GIFT", OrderSource.Other, Guid.NewGuid(),
+            new OrderRecipient("Diana", "70123456", null, null), PaymentMethod.CashOnDelivery,
+            "USD", null, Now);
+        var gift = new OrderItem(order.Id, Guid.NewGuid(), "Gift mask", ProductType.Individual, 2, 24m, 3m, [], isGift: true);
+        order.ReplaceLines([Line(order, 10m, 1), gift], 0, 0, order.WarehouseId, order.Source, order.PaymentMethod);
+
+        Assert.True(gift.IsGift);
+        Assert.Equal((0m, 0m, 0m), (gift.UnitPrice, gift.LineDiscount, gift.LineTotal));
+        Assert.Equal((10m, PaymentStatus.Unpaid), (order.GrandTotal, order.PaymentStatus));
     }
 
     [Theory]
@@ -96,9 +110,9 @@ public sealed class OrderTests
             PaymentMethod.CashOnDelivery, "USD", null, Now);
         order.ReplaceLines(
         [
-            new OrderItem(order.Id, shampoo, "Shampoo", "S", ProductType.Individual, 2, 15m, 0, []),
-            new OrderItem(order.Id, Guid.NewGuid(), "Duo", "D", ProductType.Bundle, 3, 33m, 0,
-                [(shampoo, "Shampoo", "S", 1), (mask, "Mask", "M", 2)]),
+            new OrderItem(order.Id, shampoo, "Shampoo", ProductType.Individual, 2, 15m, 0, []),
+            new OrderItem(order.Id, Guid.NewGuid(), "Duo", ProductType.Bundle, 3, 33m, 0,
+                [(shampoo, "Shampoo", 1, 15m), (mask, "Mask", 2, 24m)]),
         ], 0, 0, order.WarehouseId, order.Source, order.PaymentMethod);
 
         var needs = order.StockRequirements();
@@ -106,5 +120,21 @@ public sealed class OrderTests
         Assert.Equal(5, needs[shampoo]);
         Assert.Equal(6, needs[mask]);
         Assert.Equal(2, needs.Count);
+    }
+
+    [Fact]
+    public void Bundle_revenue_is_split_across_components_by_full_price_and_adds_up_exactly()
+    {
+        var order = new Order("AL-3", OrderSource.Website, Guid.NewGuid(), new OrderRecipient("A", "123456", null, null),
+            PaymentMethod.CashOnDelivery, "USD", null, Now);
+        // Full Treatment Set: $75 for components worth 15+15+17+24+36 = $107.
+        var set = new OrderItem(order.Id, Guid.NewGuid(), "Full Treatment Set", ProductType.Bundle, 2, 75m, 0,
+        [
+            (Guid.NewGuid(), "Shampoo", 1, 15m), (Guid.NewGuid(), "Conditioner", 1, 15m), (Guid.NewGuid(), "Leave-in", 1, 17m),
+            (Guid.NewGuid(), "Mask", 1, 24m), (Guid.NewGuid(), "Pro-Edition", 1, 36m),
+        ]);
+
+        Assert.Equal(150m, set.Components.Sum(c => c.AllocatedRevenue));
+        Assert.Equal(Math.Round(150m * 36 / 107, 2), set.Components.Single(c => c.ComponentName == "Pro-Edition").AllocatedRevenue);
     }
 }

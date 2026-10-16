@@ -50,8 +50,6 @@ export function ProfilePage() {
           <Facts items={[
             ["Name", `${user.firstName} ${user.lastName}`],
             ["Email", user.email],
-            ["Roles", user.roles.join(", ") || "—"],
-            ["Permissions", <span key="perms" className="text-muted-foreground">{user.permissions.length} granted</span>],
           ]} />
         </Section>
         <Section title="Change password" bodyClassName="p-4">

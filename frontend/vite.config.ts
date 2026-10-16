@@ -10,7 +10,7 @@ const apiTarget = process.env.ALARA_API_URL ?? "http://localhost:5190"
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
   },
   test: { environment: "node", include: ["src/**/*.test.ts"] },
   server: {

@@ -9,7 +9,12 @@ using AlaraERP.Api.Security;
 namespace AlaraERP.Api.Controllers;
 
 [Route("api/auth")]
-public sealed class AuthController(IAuthService auth, ICurrentUser currentUser, IAntiforgery antiforgery) : ApiControllerBase
+public sealed class AuthController(
+    IAuthService auth,
+    ICurrentUser currentUser,
+    IAntiforgery antiforgery,
+    IConfiguration configuration,
+    IWebHostEnvironment environment) : ApiControllerBase
 {
     public sealed record CsrfTokenResponse(string Token);
 
@@ -38,8 +43,25 @@ public sealed class AuthController(IAuthService auth, ICurrentUser currentUser, 
             LoginOutcome.Succeeded => Ok(result.User),
             LoginOutcome.LockedOut => ProblemWithCode(401, "auth.locked_out", "Account temporarily locked",
                 "Too many failed sign-in attempts. Try again in 15 minutes or ask an administrator to reset your password."),
-            _ => ProblemWithCode(401, "auth.invalid_credentials", "Sign-in failed", "Incorrect email or password."),
+            _ => ProblemWithCode(401, "auth.invalid_credentials", "Sign-in failed", "Incorrect username or password."),
         };
+    }
+
+    [HttpPost("development-login")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Login)]
+    [ProducesResponseType<CurrentUserDto>(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> DevelopmentLogin(CancellationToken ct)
+    {
+        if (!environment.IsDevelopment() || !configuration.GetValue<bool>("Auth:PasswordlessLogin"))
+            return NotFound();
+
+        var result = await auth.DevelopmentLoginAsync(ct);
+        return result.Outcome == LoginOutcome.Succeeded
+            ? Ok(result.User)
+            : ProblemWithCode(503, "auth.no_development_admin", "No administrator available",
+                "Create an active Super Admin account before using development sign-in.");
     }
 
     [HttpPost("logout")]

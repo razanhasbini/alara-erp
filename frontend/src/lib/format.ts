@@ -67,3 +67,22 @@ export function humanize(value: string): string {
 export function fullName(first?: string | null, last?: string | null) {
   return [first, last].filter(Boolean).join(" ")
 }
+
+export function percent(value: number | null | undefined, digits = 1): string {
+  return value === null || value === undefined ? "—" : `${value.toFixed(digits)}%`
+}
+
+/** Unit costs can carry 4 decimals; show cents unless sub-cent precision matters. */
+export function cost(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—"
+  const cents = Math.round(value * 100) / 100
+  return Math.abs(cents - value) > 0.00001
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(value)
+    : money(value)
+}
+
+/** Add days to a yyyy-MM-dd date. */
+export function addDays(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}

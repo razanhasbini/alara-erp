@@ -35,9 +35,9 @@ public sealed record SourcePoint(OrderSource Source, int Orders, decimal Value);
 
 public sealed record WarehouseUnits(Guid WarehouseId, string Code, string Name, int OnHand, int Reserved);
 
-public sealed record LowStockItem(Guid ProductId, string Name, string Sku, int Available, int Threshold);
+public sealed record LowStockItem(Guid ProductId, string Name, int Available, int Threshold);
 
-public sealed record ExpiryItem(Guid ProductId, string Name, string Sku, string BatchNumber, DateOnly ExpiryDate, string WarehouseCode, int Units);
+public sealed record ExpiryItem(Guid ProductId, string Name, string BatchNumber, DateOnly ExpiryDate, string WarehouseCode, int Units);
 
 public sealed record InventorySummary(
     int UnitsOnHand, int UnitsReserved, int LowStockCount, int OutOfStockCount, int ExpiredUnits, int ExpiringUnits, int ExpiryWarningDays,
@@ -60,7 +60,8 @@ public sealed record DashboardDto(
 
 /// <summary>Live aggregates. Each section is included only if the caller may see that module.</summary>
 public sealed class DashboardService(
-    IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, StockQueryService stockQueries, IOptions<ErpOptions> options)
+    IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, StockQueryService stockQueries,
+    IOptions<ErpOptions> options, InventoryFeatureService features)
 {
     private static readonly OrderStatus[] CountedStatuses = [OrderStatus.Confirmed, OrderStatus.Shipped, OrderStatus.Delivered];
 
@@ -152,6 +153,7 @@ public sealed class DashboardService(
         var warningDays = options.Value.ExpiryWarningDays;
         var today = clock.Today;
         var warnUntil = today.AddDays(warningDays);
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
 
         var byWarehouse = await (from w in db.Warehouses.AsNoTracking()
                                  where w.IsActive
@@ -164,22 +166,22 @@ public sealed class DashboardService(
         var low = await stockQueries.ListStockAsync(new StockListQuery(null, null, null, StockFilter.Low, Sort: "available", PageSize: 8), ct);
         var outOfStock = await stockQueries.ListStockAsync(new StockListQuery(null, null, null, StockFilter.Out, PageSize: 1), ct);
 
-        var batchUnits = db.BatchBalances.AsNoTracking().Where(bb => bb.QuantityOnHand > 0 && bb.Batch!.ExpiryDate != null);
-        var expired = await batchUnits.Where(bb => bb.Batch!.ExpiryDate < today).SumAsync(bb => (int?)bb.QuantityOnHand, ct) ?? 0;
-        var expiring = await batchUnits.Where(bb => bb.Batch!.ExpiryDate >= today && bb.Batch.ExpiryDate <= warnUntil)
-            .SumAsync(bb => (int?)bb.QuantityOnHand, ct) ?? 0;
-        var expiringList = await (from bb in batchUnits
+        var batchUnits = db.BatchBalances.AsNoTracking().Where(bb => expiryEnabled && bb.QuantityOnHand > 0 && bb.Batch!.ExpiryDate != null);
+        var expired = expiryEnabled ? await batchUnits.Where(bb => bb.Batch!.ExpiryDate < today).SumAsync(bb => (int?)bb.QuantityOnHand, ct) ?? 0 : 0;
+        var expiring = expiryEnabled ? await batchUnits.Where(bb => bb.Batch!.ExpiryDate >= today && bb.Batch.ExpiryDate <= warnUntil)
+            .SumAsync(bb => (int?)bb.QuantityOnHand, ct) ?? 0 : 0;
+        var expiringList = expiryEnabled ? await (from bb in batchUnits
                                   join p in db.Products on bb.Batch!.ProductId equals p.Id
                                   join w in db.Warehouses on bb.WarehouseId equals w.Id
                                   where bb.Batch!.ExpiryDate <= warnUntil
                                   orderby bb.Batch!.ExpiryDate
-                                  select new ExpiryItem(p.Id, p.Name, p.Sku, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate!.Value, w.Code, bb.QuantityOnHand))
-            .Take(8).ToListAsync(ct);
+                                  select new ExpiryItem(p.Id, p.Name, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate!.Value, w.Code, bb.QuantityOnHand))
+            .Take(8).ToListAsync(ct) : [];
 
         return new InventorySummary(
             byWarehouse.Sum(w => w.OnHand), byWarehouse.Sum(w => w.Reserved), low.TotalCount, outOfStock.TotalCount,
             expired, expiring, warningDays, byWarehouse,
-            low.Items.Select(i => new LowStockItem(i.ProductId, i.Name, i.Sku, i.Available, i.LowStockThreshold)).ToList(),
+            low.Items.Select(i => new LowStockItem(i.ProductId, i.Name, i.Available, i.LowStockThreshold)).ToList(),
             expiringList);
     }
 }

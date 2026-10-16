@@ -1,7 +1,10 @@
 using System.Net;
 using AlaraERP.Application.Common.Security;
 using AlaraERP.Application.Identity;
+using AlaraERP.Infrastructure.Identity;
 using AlaraERP.IntegrationTests.Infrastructure;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AlaraERP.IntegrationTests.Identity;
 
@@ -20,12 +23,38 @@ public sealed class AuthTests(AlaraApiFactory factory) : ApiTestBase(factory)
         Assert.Equal(employee.Email, me.Email);
         Assert.Equal([SystemRoles.SalesEmployee], me.Roles);
         Assert.Contains(Permissions.Orders.Create, me.Permissions);
+        Assert.Contains(Permissions.Products.Create, me.Permissions);
+        Assert.Contains(Permissions.Products.Update, me.Permissions);
+        Assert.Contains(Permissions.Inventory.Receive, me.Permissions);
         Assert.DoesNotContain(Permissions.Users.View, me.Permissions);
+        Assert.DoesNotContain(Permissions.Reports.View, me.Permissions);
+        Assert.DoesNotContain(Permissions.Inventory.Transfer, me.Permissions);
+        Assert.DoesNotContain(Permissions.Orders.ManagePayments, me.Permissions);
 
         var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("alara.session="));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Login_accepts_a_username_instead_of_an_email_address()
+    {
+        var employee = await CreateEmployeeAsync(SystemRoles.SalesEmployee);
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+            var user = await users.FindByIdAsync(employee.Id.ToString());
+            Assert.NotNull(user);
+            user.UserName = "diana";
+            Assert.True((await users.UpdateAsync(user)).Succeeded);
+        }
+        using var client = NewClient();
+
+        var response = await client.LoginAsync("diana", employee.Password);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(employee.Email, (await response.ReadJsonAsync<CurrentUserDto>()).Email);
     }
 
     [Fact]
@@ -59,6 +88,17 @@ public sealed class AuthTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal("auth.invalid_credentials", await response.ProblemCodeAsync());
+    }
+
+    [Fact]
+    public async Task Development_login_is_not_available_outside_development()
+    {
+        using var client = NewClient();
+        await client.RefreshCsrfAsync();
+
+        var response = await client.PostAsync("/api/auth/development-login");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

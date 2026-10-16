@@ -1,8 +1,8 @@
 import { useState, type ComponentType } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import {
-  ArrowLeftRight, Boxes, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
-  Package, PackageOpen, ShieldCheck, Truck, UserRound, Users, Warehouse,
+  ArrowLeftRight, BarChart3, Boxes, Globe, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
+  ContactRound, Package, PackageOpen, Settings2, ShieldCheck, Truck, UserRound, Users, Warehouse,
 } from "lucide-react"
 import monogram from "@/assets/monogram.png"
 import { useAuth } from "@/auth/auth"
@@ -14,15 +14,23 @@ import { Button } from "@/components/ui/button"
 import { P } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 
-interface NavItem { to: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string; end?: boolean }
+interface NavItem { to: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string; role?: string; end?: boolean; badge?: string }
 
 const NAV: { group: string; items: NavItem[] }[] = [
-  { group: "", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard, end: true }] },
+  { group: "", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, permission: P.reports.view }] },
   {
     group: "Sales",
     items: [
       { to: "/orders", label: "Orders", icon: ClipboardList, permission: P.orders.view },
-      { to: "/deliveries", label: "Deliveries & cash", icon: Truck, permission: P.orders.view },
+      { to: "/customers", label: "Customers", icon: ContactRound, permission: P.orders.view },
+      { to: "/deliveries", label: "Deliveries & cash", icon: Truck, permission: P.orders.payments },
+    ],
+  },
+  {
+    group: "Insights",
+    items: [
+      { to: "/analytics", label: "Sales & profit", icon: BarChart3, permission: P.reports.view },
+      { to: "/website-insights", label: "Website", icon: Globe, permission: P.reports.view, badge: "Soon" },
     ],
   },
   {
@@ -30,7 +38,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/inventory", label: "Inventory", icon: Boxes, permission: P.inventory.view, end: true },
       { to: "/inventory/receipts", label: "Receipts", icon: PackageOpen, permission: P.inventory.view },
-      { to: "/inventory/transfers", label: "Transfers", icon: ArrowLeftRight, permission: P.inventory.view },
+      { to: "/inventory/transfers", label: "Transfers", icon: ArrowLeftRight, permission: P.inventory.transfer },
       { to: "/inventory/movements", label: "Stock movements", icon: History, permission: P.inventory.view },
       { to: "/warehouses", label: "Warehouses", icon: Warehouse, permission: P.inventory.view },
     ],
@@ -48,6 +56,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/employees", label: "Employees", icon: Users, permission: P.users.view },
       { to: "/roles", label: "Roles & permissions", icon: ShieldCheck, permission: P.users.view },
+      { to: "/features", label: "Feature controls", icon: Settings2, role: "Super Admin" },
     ],
   },
 ]
@@ -65,17 +74,17 @@ function Brand() {
 }
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   return (
     <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-4">
       {NAV.map(({ group, items }) => {
-        const visible = items.filter((i) => !i.permission || can(i.permission))
+        const visible = items.filter((i) => (!i.permission || can(i.permission)) && (!i.role || user?.roles.includes(i.role)))
         if (visible.length === 0) return null
         return (
           <div key={group || "home"} className="mt-3 first:mt-0">
             {group && <div className="eyebrow px-2.5 pb-1.5 text-[0.62rem]">{group}</div>}
             <ul className="grid gap-px">
-              {visible.map(({ to, label, icon: Icon, end }) => (
+              {visible.map(({ to, label, icon: Icon, end, badge }) => (
                 <li key={to}>
                   <NavLink to={to} end={end} onClick={onNavigate}
                     className={({ isActive }) => cn(
@@ -86,6 +95,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
                     )}>
                     <Icon className="size-4 shrink-0" />
                     {label}
+                    {badge && <span className="ml-auto rounded-full bg-blush px-1.5 py-px text-[0.6rem] font-semibold tracking-wide text-rose-ink uppercase">{badge}</span>}
                   </NavLink>
                 </li>
               ))}
@@ -109,7 +119,6 @@ function UserMenu() {
           <span className="grid size-7 place-items-center rounded-full bg-foreground text-[0.7rem] font-semibold text-background">{initials.toUpperCase()}</span>
           <span className="hidden leading-tight sm:block">
             <span className="block text-sm font-medium">{user.firstName} {user.lastName}</span>
-            <span className="block text-[0.7rem] text-muted-foreground">{user.roles.join(", ") || "No role"}</span>
           </span>
           <ChevronDown className="size-3.5 text-muted-foreground" />
         </button>

@@ -16,12 +16,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, errorMessage } from "@/lib/api"
 import { dateOnly, dateTime, number } from "@/lib/format"
 import { P } from "@/lib/permissions"
-import { qk, useAvailability, useWarehouses } from "@/lib/queries"
+import { qk, useAvailability, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Paged, Transfer } from "@/types/api"
 
 export function TransfersPage() {
   const { can } = useAuth()
+  const { data: settings } = useSettings()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const page = Number(params.get("page") ?? 1)
@@ -39,7 +40,7 @@ export function TransfersPage() {
   ]
   return (
     <>
-      <PageHeader title="Transfers" description="Stock moved between warehouses. Earliest-expiring batches move first."
+      <PageHeader title="Transfers" description={settings?.expiryDatesEnabled ? "Stock moved between warehouses. Earliest-expiring batches move first." : "Stock moved between warehouses."}
         actions={can(P.inventory.transfer) && (warehouses?.length ?? 0) > 1 && <Button asChild><Link to="/inventory/transfers/new"><ArrowLeftRight /> New transfer</Link></Button>} />
       <DataTable columns={columns} rows={data?.items} rowKey={(t) => t.id} loading={isLoading} error={error} onRetry={refetch}
         onRowClick={(t) => navigate(`/inventory/transfers/${t.id}`)}
@@ -53,6 +54,7 @@ export function TransfersPage() {
 
 export function TransferDetailPage() {
   const { id = "" } = useParams()
+  const { data: settings } = useSettings()
   const { data: t, isLoading, error } = useQuery({ queryKey: qk.transfer(id), queryFn: () => api<Transfer>(`/api/inventory/transfers/${id}`) })
   if (isLoading) return <FullPageSpinner />
   if (error || !t) return <ErrorState error={error} />
@@ -64,7 +66,7 @@ export function TransferDetailPage() {
           <ul className="divide-y divide-hairline">
             {t.lines.map((l) => (
               <li key={`${l.productId}-${l.batchId}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <div><div>{l.productName}</div><div className="code text-muted-foreground">{l.sku} · batch {l.batchNumber}{l.expiryDate && ` · exp. ${dateOnly(l.expiryDate)}`}</div></div>
+                <div><div>{l.productName}</div><div className="text-xs text-muted-foreground">Batch {l.batchNumber}{settings?.expiryDatesEnabled && l.expiryDate && ` · exp. ${dateOnly(l.expiryDate)}`}</div></div>
                 <span className="tabular font-medium">{l.quantity}</span>
               </li>
             ))}
@@ -78,12 +80,13 @@ export function TransferDetailPage() {
   )
 }
 
-interface Line { productId: string; name: string; sku: string; quantity: string }
+interface Line { productId: string; name: string; quantity: string }
 
 export function NewTransferPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: warehouses } = useWarehouses()
+  const { data: settings } = useSettings()
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   const [notes, setNotes] = useState("")
@@ -116,13 +119,13 @@ export function NewTransferPage() {
   return (
     <>
       <PageHeader back={{ to: "/inventory/transfers", label: "Transfers" }} title="New transfer"
-        description="Only unreserved stock can move. Batches are picked automatically, earliest expiry first; expired units never move automatically." />
+        description={settings?.expiryDatesEnabled ? "Only unreserved stock can move. Batches are picked automatically, earliest expiry first; expired units never move automatically." : "Only unreserved stock can move. Available batches are picked automatically."} />
       <form noValidate onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate() }} className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Section title="Products" bodyClassName="grid gap-3 p-4">
           {!from && <p className="text-sm text-muted-foreground">Choose the source warehouse first.</p>}
           {lines.map((l, i) => (
             <div key={l.productId} className="flex items-start gap-3 rounded-md border border-hairline p-3">
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{l.name}</div><div className="code text-muted-foreground">{l.sku}</div></div>
+              <div className="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</div>
               <Field label={`Units · ${available?.[l.productId] ?? "…"} available`} htmlFor={`tq-${l.productId}`} error={errors[i]} className="w-44">
                 <Input id={`tq-${l.productId}`} inputMode="numeric" className="tabular" value={l.quantity}
                   onChange={(e) => setLines((ls) => ls.map((x) => (x.productId === l.productId ? { ...x, quantity: e.target.value } : x)))} />
@@ -131,7 +134,7 @@ export function NewTransferPage() {
             </div>
           ))}
           {from && <ProductPicker type="Individual" warehouseId={from} showAvailability exclude={lines.map((l) => l.productId)}
-            onSelect={(p) => setLines((ls) => [...ls, { productId: p.id, name: p.name, sku: p.sku, quantity: "" }])} />}
+            onSelect={(p) => setLines((ls) => [...ls, { productId: p.id, name: p.name, quantity: "" }])} />}
         </Section>
         <div className="grid content-start gap-6">
           <Section title="Route" bodyClassName="grid gap-4 p-4">

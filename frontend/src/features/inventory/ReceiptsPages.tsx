@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { PackagePlus, X } from "lucide-react"
+import { AlertTriangle, PackagePlus, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { DataTable, Pager, type Column } from "@/components/common/DataTable"
@@ -16,11 +16,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError, errorMessage } from "@/lib/api"
 import { dateOnly, dateTime, money, number, todayIso } from "@/lib/format"
 import { P } from "@/lib/permissions"
-import { qk, useWarehouses } from "@/lib/queries"
-import type { InventorySettings, Paged, Receipt, ReceiptSummary } from "@/types/api"
+import { qk, useSettings, useWarehouses } from "@/lib/queries"
+import type { InventorySettings, Paged, ProductDetail, Receipt, ReceiptSummary } from "@/types/api"
 
 export function ReceiptsPage() {
   const { can } = useAuth()
+  const { data: settings } = useSettings()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const search = params.get("search") ?? ""
@@ -40,7 +41,7 @@ export function ReceiptsPage() {
   ]
   return (
     <>
-      <PageHeader title="Receipts" description="Deliveries received from suppliers, with batch, expiry and cost."
+      <PageHeader title="Receipts" description={settings?.expiryDatesEnabled ? "Deliveries received from suppliers, with batch, expiry and cost." : "Deliveries received from suppliers, with batch and cost."}
         actions={can(P.inventory.receive) && <Button asChild><Link to="/inventory/receipts/new"><PackagePlus /> Receive stock</Link></Button>} />
       <div className="mb-3"><SearchInput value={search} onChange={(v) => setParams(v ? { search: v } : {}, { replace: true })} placeholder="Receipt no., supplier, reference" /></div>
       <DataTable columns={columns} rows={data?.items} rowKey={(r) => r.id} loading={isLoading} error={error} onRetry={refetch}
@@ -54,6 +55,7 @@ export function ReceiptsPage() {
 
 export function ReceiptDetailPage() {
   const { id = "" } = useParams()
+  const { data: settings } = useSettings()
   const { data: r, isLoading, error } = useQuery({ queryKey: qk.receipt(id), queryFn: () => api<Receipt>(`/api/inventory/receipts/${id}`) })
   if (isLoading) return <FullPageSpinner />
   if (error || !r) return <ErrorState error={error} />
@@ -67,8 +69,8 @@ export function ReceiptDetailPage() {
             <tbody>
               {r.lines.map((l) => (
                 <tr key={`${l.productId}-${l.batchId}`} className="border-b border-hairline last:border-0">
-                  <td className="px-4 py-2.5"><Link to={`/products/${l.productId}`} className="hover:underline">{l.productName}</Link><div className="code text-muted-foreground">{l.sku}</div></td>
-                  <td className="px-4 py-2.5"><span className="code">{l.batchNumber}</span><div className="text-xs text-muted-foreground">{l.expiryDate ? `Expires ${dateOnly(l.expiryDate)}` : "No expiry"}</div></td>
+                  <td className="px-4 py-2.5"><Link to={`/products/${l.productId}`} className="hover:underline">{l.productName}</Link></td>
+                  <td className="px-4 py-2.5"><span className="code">{l.batchNumber}</span>{settings?.expiryDatesEnabled && <div className="text-xs text-muted-foreground">{l.expiryDate ? `Expires ${dateOnly(l.expiryDate)}` : "No expiry"}</div>}</td>
                   <td className="px-4 py-2.5 text-right tabular">{l.quantity}</td>
                   <td className="px-4 py-2.5 text-right tabular">{l.unitCost !== null ? money(l.unitCost) : "—"}</td>
                 </tr>
@@ -88,12 +90,14 @@ export function ReceiptDetailPage() {
   )
 }
 
-interface Line { key: string; productId: string; name: string; sku: string; tracksExpiry: boolean; quantity: string; batchNumber: string; expiryDate: string; unitCost: string }
+interface Line { key: string; productId: string; name: string; tracksExpiry: boolean; quantity: string; batchNumber: string; expiryDate: string; unitCost: string }
 
 export function NewReceiptPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: warehouses } = useWarehouses()
+  const { data: globalSettings } = useSettings()
+  const expiryEnabled = globalSettings?.expiryDatesEnabled ?? false
   const [warehouseId, setWarehouseId] = useState("")
   const [supplierName, setSupplierName] = useState("")
   const [supplierReference, setSupplierReference] = useState("")
@@ -101,17 +105,21 @@ export function NewReceiptPage() {
   const [notes, setNotes] = useState("")
   const [lines, setLines] = useState<Line[]>([])
   const [submitted, setSubmitted] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const effectiveWarehouse = warehouseId || warehouses?.[0]?.id || ""
 
-  const addProduct = async (p: { id: string; name: string; sku: string }) => {
-    const settings = await api<InventorySettings>(`/api/inventory/settings/${p.id}`).catch(() => null)
-    setLines((ls) => [...ls, { key: crypto.randomUUID(), productId: p.id, name: p.name, sku: p.sku, tracksExpiry: settings?.tracksExpiry ?? true,
-      quantity: "", batchNumber: "", expiryDate: "", unitCost: "" }])
+  const addProduct = async (p: { id: string; name: string }) => {
+    const [settings, detail] = await Promise.all([
+      api<InventorySettings>(`/api/inventory/settings/${p.id}`).catch(() => null),
+      api<ProductDetail>(`/api/products/${p.id}`).catch(() => null), // standardCost is only returned to cost-viewers
+    ])
+    setLines((ls) => [...ls, { key: crypto.randomUUID(), productId: p.id, name: p.name, tracksExpiry: settings?.tracksExpiry ?? true,
+      quantity: "", batchNumber: "", expiryDate: "", unitCost: detail?.standardCost != null ? String(detail.standardCost) : "" }])
   }
   const update = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   const lineErrors = (l: Line) => ({
     quantity: !/^\d+$/.test(l.quantity) || Number(l.quantity) < 1 ? "Required" : undefined,
-    expiryDate: l.tracksExpiry && !l.expiryDate ? "Required" : l.expiryDate && l.expiryDate < todayIso() ? "In the past" : undefined,
+    expiryDate: !expiryEnabled ? undefined : l.tracksExpiry && !l.expiryDate ? "Required" : l.expiryDate && l.expiryDate < todayIso() ? "In the past" : undefined,
     unitCost: l.unitCost && !/^\d{1,8}(\.\d{1,4})?$/.test(l.unitCost) ? "Invalid" : undefined,
   })
   const hasErrors = lines.some((l) => Object.values(lineErrors(l)).some(Boolean))
@@ -125,46 +133,75 @@ export function NewReceiptPage() {
         warehouseId: effectiveWarehouse, supplierName: supplierName || null, supplierReference: supplierReference || null,
         receivedAt: receivedOn === todayIso() ? null : new Date(`${receivedOn}T12:00:00`).toISOString(), notes: notes || null,
         lines: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: l.unitCost ? Number(l.unitCost) : null,
-          batchNumber: l.batchNumber.trim() || null, expiryDate: l.expiryDate || null })),
+          batchNumber: l.batchNumber.trim() || null, expiryDate: expiryEnabled && l.expiryDate ? l.expiryDate : null })),
       },
     }),
     onSuccess: async (r) => {
+      setFormError(null)
       await queryClient.invalidateQueries({ queryKey: ["inventory"] })
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       toast.success(`${r.receiptNumber} recorded · ${r.totalUnits} units`)
       navigate(`/inventory/receipts/${r.id}`)
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : errorMessage(e)),
+    onError: (e) => {
+      const message = e instanceof ApiError ? e.message : errorMessage(e)
+      setFormError(message)
+      toast.error(message)
+    },
   })
+
+  const submit = () => {
+    setSubmitted(true)
+    setFormError(null)
+    let message: string | null = null
+    if (!effectiveWarehouse) message = "There is no active warehouse. Create one under Warehouses first."
+    else if (lines.length === 0) message = "Add at least one product before recording the receipt."
+    else if (hasErrors) {
+      const missingUnits = lines.some((l) => !!lineErrors(l).quantity)
+      const missingExpiry = lines.some((l) => !!lineErrors(l).expiryDate)
+      const invalidCost = lines.some((l) => !!lineErrors(l).unitCost)
+      const fields = [missingUnits && "units", missingExpiry && "expiry dates", invalidCost && "unit costs"].filter(Boolean)
+      message = `Complete the highlighted ${fields.join(", ")} before recording the receipt.`
+    }
+    if (message) {
+      setFormError(message)
+      toast.error(message)
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("[aria-invalid='true']")?.focus())
+      return
+    }
+    save.mutate()
+  }
 
   return (
     <>
       <PageHeader back={{ to: "/inventory/receipts", label: "Receipts" }} title="Receive stock"
-        description="Record a delivery. Each line goes into a batch; products that track expiry need the date printed on the pack." />
-      <form noValidate onSubmit={(e) => {
-        e.preventDefault(); setSubmitted(true)
-        if (!effectiveWarehouse) return void toast.error("There is no active warehouse. Create one under Warehouses first.")
-        if (lines.length && !hasErrors) save.mutate()
-      }}
+        description={expiryEnabled ? "Record a delivery. Each line goes into a batch; products that track expiry need the date printed on the pack." : "Record a supplier delivery and add its units to stock."} />
+      {formError && (
+        <div role="alert" className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
+          <div><p className="font-semibold">Receipt not recorded</p><p className="mt-0.5 text-foreground">{formError}</p></div>
+        </div>
+      )}
+      <form noValidate onSubmit={(e) => { e.preventDefault(); submit() }}
         className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Section title="Products received" bodyClassName="grid gap-3 p-4">
           {lines.length === 0 && <p className="text-sm text-muted-foreground">Add the products in this delivery.</p>}
           {lines.map((l) => {
             const err: Partial<ReturnType<typeof lineErrors>> = submitted ? lineErrors(l) : {}
             return (
-              <div key={l.key} className="grid gap-3 rounded-md border border-hairline p-3 sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_6.5rem_auto] sm:items-start">
-                <div className="min-w-0"><div className="truncate text-sm font-medium">{l.name}</div><div className="code text-muted-foreground">{l.sku}</div></div>
-                <Field label="Units" htmlFor={`q-${l.key}`} error={err.quantity}>
-                  <Input id={`q-${l.key}`} inputMode="numeric" value={l.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} className="tabular" />
+              <div key={l.key} className={`grid gap-3 rounded-md border border-hairline p-3 sm:items-start ${expiryEnabled ? "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_6.5rem_auto]" : "sm:grid-cols-[1fr_5.5rem_8rem_6.5rem_auto]"}`}>
+                <div className="min-w-0 truncate text-sm font-medium">{l.name}</div>
+                <Field label="Units" htmlFor={`q-${l.key}`} error={err.quantity} required>
+                  <Input id={`q-${l.key}`} inputMode="numeric" value={l.quantity} aria-invalid={!!err.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} className="tabular" />
                 </Field>
                 <Field label="Batch" htmlFor={`b-${l.key}`}>
                   <Input id={`b-${l.key}`} placeholder="auto" className="font-mono" value={l.batchNumber} onChange={(e) => update(l.key, { batchNumber: e.target.value })} />
                 </Field>
-                <Field label={l.tracksExpiry ? "Expiry *" : "Expiry"} htmlFor={`e-${l.key}`} error={err.expiryDate}>
-                  <Input id={`e-${l.key}`} type="date" value={l.expiryDate} onChange={(e) => update(l.key, { expiryDate: e.target.value })} />
-                </Field>
-                <Field label="Unit cost $" htmlFor={`c-${l.key}`} error={err.unitCost}>
-                  <Input id={`c-${l.key}`} inputMode="decimal" value={l.unitCost} onChange={(e) => update(l.key, { unitCost: e.target.value })} className="tabular" />
+                {expiryEnabled && <Field label={l.tracksExpiry ? "Expiry *" : "Expiry"} htmlFor={`e-${l.key}`} error={err.expiryDate}>
+                  <Input id={`e-${l.key}`} type="date" value={l.expiryDate} aria-invalid={!!err.expiryDate} onChange={(e) => update(l.key, { expiryDate: e.target.value })} />
+                </Field>}
+                <Field label="Unit cost $" htmlFor={`c-${l.key}`} error={err.unitCost} hint={!l.unitCost ? "blank = standard cost" : undefined}>
+                  <Input id={`c-${l.key}`} inputMode="decimal" value={l.unitCost} aria-invalid={!!err.unitCost} onChange={(e) => update(l.key, { unitCost: e.target.value })} className="tabular" />
                 </Field>
                 <Button type="button" variant="ghost" size="icon-sm" className="sm:mt-6" aria-label={`Remove ${l.name}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><X /></Button>
               </div>
@@ -190,7 +227,7 @@ export function NewReceiptPage() {
           <div className="rounded-lg border border-hairline bg-card p-4 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Units</span><span className="tabular font-medium">{number(totalUnits)}</span></div>
             <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Cost</span><span className="tabular">{totalCost !== null && lines.length ? money(totalCost) : "—"}</span></div>
-            <SubmitButton pending={save.isPending} className="mt-4 w-full" disabled={lines.length === 0}>Record receipt</SubmitButton>
+            <SubmitButton pending={save.isPending} className="mt-4 w-full">Record receipt</SubmitButton>
           </div>
         </div>
       </form>

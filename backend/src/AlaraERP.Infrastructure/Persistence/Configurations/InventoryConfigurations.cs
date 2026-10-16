@@ -30,12 +30,25 @@ internal sealed class ProductInventorySettingsConfiguration : IEntityTypeConfigu
     }
 }
 
+internal sealed class InventoryFeatureSettingsConfiguration : IEntityTypeConfiguration<InventoryFeatureSettings>
+{
+    public void Configure(EntityTypeBuilder<InventoryFeatureSettings> b)
+    {
+        b.ToTable("feature_settings", Schemas.Inventory, t =>
+            t.HasCheckConstraint("ck_inventory_feature_settings_singleton", "id = 1"));
+        b.HasKey(s => s.Id);
+        b.Property(s => s.Id).ValueGeneratedNever();
+        b.HasOne<AppUser>().WithMany().HasForeignKey(s => s.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 internal sealed class BatchConfiguration : IEntityTypeConfiguration<Batch>
 {
     public void Configure(EntityTypeBuilder<Batch> b)
     {
-        b.ToTable("batches", Schemas.Inventory);
+        b.ToTable("batches", Schemas.Inventory, t => t.HasCheckConstraint("ck_batches_unit_cost", "unit_cost IS NULL OR unit_cost >= 0"));
         b.HasKey(x => x.Id);
+        b.Property(x => x.UnitCost).HasPrecision(12, 4);
         b.Property(x => x.BatchNumber).HasMaxLength(60).IsRequired();
         b.HasIndex(x => new { x.ProductId, x.BatchNumber }).IsUnique();
         b.HasIndex(x => x.ExpiryDate);
@@ -107,6 +120,7 @@ internal sealed class StockMovementConfiguration : IEntityTypeConfiguration<Stoc
         b.Property(x => x.Reason).HasConversion<string>().HasMaxLength(30);
         b.Property(x => x.ReferenceType).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.ReferenceNumber).HasMaxLength(40);
+        b.Property(x => x.UnitCost).HasPrecision(12, 4);
         b.HasIndex(x => x.CreatedAt);
         b.HasIndex(x => new { x.ProductId, x.CreatedAt });
         b.HasIndex(x => new { x.WarehouseId, x.CreatedAt });

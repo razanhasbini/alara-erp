@@ -33,7 +33,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Catalog.BundleItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -70,7 +69,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Catalog.Category", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -129,7 +127,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Catalog.Product", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -192,17 +189,16 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(10,2)")
                         .HasColumnName("size_value");
 
-                    b.Property<string>("Sku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("sku");
-
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(180)
                         .HasColumnType("character varying(180)")
                         .HasColumnName("slug");
+
+                    b.Property<decimal?>("StandardCost")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("numeric(12,4)")
+                        .HasColumnName("standard_cost");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -228,10 +224,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_products_category_id");
 
-                    b.HasIndex("Sku")
-                        .IsUnique()
-                        .HasDatabaseName("ix_products_sku");
-
                     b.HasIndex("Slug")
                         .IsUnique()
                         .HasDatabaseName("ix_products_slug");
@@ -247,6 +239,8 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_products_size", "(size_value IS NULL) = (size_unit IS NULL) AND (size_value IS NULL OR size_value > 0)");
 
+                            t.HasCheckConstraint("ck_products_standard_cost", "standard_cost IS NULL OR standard_cost >= 0");
+
                             t.HasCheckConstraint("ck_products_type", "type IN ('Individual', 'Bundle')");
 
                             t.HasCheckConstraint("ck_products_weight", "weight_grams IS NULL OR weight_grams >= 0");
@@ -256,7 +250,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Catalog.ProductImage", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -320,7 +313,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.Batch", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -342,6 +334,11 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("product_id");
 
+                    b.Property<decimal?>("UnitCost")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("numeric(12,4)")
+                        .HasColumnName("unit_cost");
+
                     b.HasKey("Id")
                         .HasName("pk_batches");
 
@@ -352,7 +349,10 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_batches_product_id_batch_number");
 
-                    b.ToTable("batches", "inventory");
+                    b.ToTable("batches", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_batches_unit_cost", "unit_cost IS NULL OR unit_cost >= 0");
+                        });
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Inventory.BatchBalance", b =>
@@ -382,6 +382,36 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.ToTable("batch_balances", "inventory", t =>
                         {
                             t.HasCheckConstraint("ck_batch_balances_on_hand", "quantity_on_hand >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.InventoryFeatureSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("ExpiryDatesEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("expiry_dates_enabled");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_feature_settings");
+
+                    b.HasIndex("UpdatedByUserId")
+                        .HasDatabaseName("ix_feature_settings_updated_by_user_id");
+
+                    b.ToTable("feature_settings", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_inventory_feature_settings_singleton", "id = 1");
                         });
                 });
 
@@ -458,7 +488,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -512,6 +541,11 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("type");
 
+                    b.Property<decimal?>("UnitCost")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("numeric(12,4)")
+                        .HasColumnName("unit_cost");
+
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("uuid")
                         .HasColumnName("warehouse_id");
@@ -548,7 +582,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockReceipt", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -610,7 +643,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockReceiptLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -658,7 +690,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockReservation", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -720,7 +751,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockTransfer", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -784,7 +814,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockTransferLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -825,7 +854,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Inventory.Warehouse", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -870,7 +898,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Sales.CourierRemittance", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -940,10 +967,81 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Sales.Customer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("city");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedPhone")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("normalized_phone");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("phone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_customers");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("ix_customers_is_active");
+
+                    b.HasIndex("Name")
+                        .HasDatabaseName("ix_customers_name");
+
+                    b.HasIndex("NormalizedPhone")
+                        .IsUnique()
+                        .HasDatabaseName("ix_customers_normalized_phone");
+
+                    b.ToTable("customers", "sales");
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Sales.DeliveryCompany", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -983,7 +1081,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Sales.Order", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -1018,6 +1115,10 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("character(3)")
                         .HasColumnName("currency_code")
                         .IsFixedLength();
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
 
                     b.Property<DateTimeOffset?>("DeliveredAt")
                         .HasColumnType("timestamp with time zone")
@@ -1145,6 +1246,9 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("ix_orders_created_by_user_id");
 
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_orders_customer_id");
+
                     b.HasIndex("OrderNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_orders_order_number");
@@ -1176,7 +1280,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Sales.OrderHistoryEntry", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -1228,9 +1331,12 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Sales.OrderItem", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<bool>("IsGift")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_gift");
 
                     b.Property<decimal>("LineDiscount")
                         .HasPrecision(12, 2)
@@ -1266,12 +1372,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("quantity");
 
-                    b.Property<string>("Sku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("sku");
-
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)")
@@ -1299,9 +1399,13 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("AlaraERP.Domain.Sales.OrderItemComponent", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<decimal>("AllocatedRevenue")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("allocated_revenue");
 
                     b.Property<string>("ComponentName")
                         .IsRequired()
@@ -1312,12 +1416,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ComponentProductId")
                         .HasColumnType("uuid")
                         .HasColumnName("component_product_id");
-
-                    b.Property<string>("ComponentSku")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("component_sku");
 
                     b.Property<Guid>("OrderItemId")
                         .HasColumnType("uuid")
@@ -1713,6 +1811,15 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Navigation("Batch");
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.InventoryFeatureSettings", b =>
+                {
+                    b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_feature_settings_users_updated_by_user_id");
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Inventory.ProductInventorySettings", b =>
                 {
                     b.HasOne("AlaraERP.Domain.Catalog.Product", null)
@@ -1916,6 +2023,12 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_orders_users_created_by_user_id");
+
+                    b.HasOne("AlaraERP.Domain.Sales.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_orders_customers_customer_id");
 
                     b.HasOne("AlaraERP.Domain.Sales.DeliveryCompany", null)
                         .WithMany()

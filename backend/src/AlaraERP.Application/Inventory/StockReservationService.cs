@@ -46,8 +46,9 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
     {
         EnsureTransaction();
         var reservations = await ActiveReservationsAsync(orderId, ct);
-        if (reservations.Count == 0)
-            throw new DomainException("inventory.no_reservation", $"Order {orderNumber} has no reserved stock to ship.");
+        // Shipping is now a separate logistics action. Orders confirmed under the current workflow
+        // were already fulfilled; legacy active reservations are still handled here once.
+        if (reservations.Count == 0) return;
 
         var products = await ledger.LoadStockableProductsAsync(reservations.Select(r => r.ProductId), ct);
         var balances = await locks.LockAsync(reservations.Select(r => (r.WarehouseId, r.ProductId)), createMissing: false, ct);
@@ -60,11 +61,11 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
                 b.WarehouseId == reservation.WarehouseId && b.Batch!.ProductId == reservation.ProductId);
             var label = products[reservation.ProductId].Label;
 
-            foreach (var (batchBalance, take) in ledger.PickFefo(candidates, reservation.Quantity, label))
+            foreach (var (batchBalance, take) in await ledger.PickAsync(candidates, reservation.Quantity, label, ct))
             {
                 batchBalance.Remove(take, batchBalance.Batch!.BatchNumber);
                 ledger.Record(reservation.WarehouseId, reservation.ProductId, batchBalance.BatchId, MovementType.Shipment, -take,
-                    MovementReference.Order, orderId, orderNumber);
+                    MovementReference.Order, orderId, orderNumber, StockLedger.CostOf(batchBalance.Batch, products[reservation.ProductId]));
             }
             balances[(reservation.WarehouseId, reservation.ProductId)].FulfilReserved(reservation.Quantity);
             reservation.Close(ReservationStatus.Fulfilled, ledger.Now);
@@ -77,15 +78,13 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
         var movements = await db.StockMovements.AsNoTracking()
             .Where(m => m.ReferenceType == MovementReference.Order && m.ReferenceId == orderId)
             .ToListAsync(ct);
-        if (movements.Any(m => m.Type == MovementType.Return))
-            throw new DomainException("inventory.already_returned", $"Stock for order {orderNumber} was already returned.");
-
-        var shipped = movements.Where(m => m.Type == MovementType.Shipment)
+        var shipped = movements.Where(m => m.Type is MovementType.Shipment or MovementType.Return)
             .GroupBy(m => (m.WarehouseId, m.ProductId, m.BatchId))
-            .Select(g => (g.Key.WarehouseId, g.Key.ProductId, g.Key.BatchId, Quantity: -g.Sum(m => m.QuantityChange)))
+            .Select(g => (g.Key.WarehouseId, g.Key.ProductId, g.Key.BatchId, Quantity: -g.Sum(m => m.QuantityChange),
+                UnitCost: g.Where(m => m.Type == MovementType.Shipment).Select(m => m.UnitCost).FirstOrDefault()))
+            .Where(x => x.Quantity > 0)
             .ToList();
-        if (shipped.Count == 0)
-            throw new DomainException("inventory.nothing_shipped", $"Order {orderNumber} has no shipped stock to return.");
+        if (shipped.Count == 0) return;
 
         var balances = await locks.LockAsync(shipped.Select(s => (s.WarehouseId, s.ProductId)), createMissing: true, ct);
         var batchBalances = await ledger.LoadBatchBalancesAsync(shipped.Select(s => s.WarehouseId), shipped.Select(s => s.ProductId), ct);
@@ -96,8 +95,9 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
         {
             ledger.GetOrCreateBatchBalance(batchBalances, line.WarehouseId, batches[line.BatchId]).Add(line.Quantity);
             balances[(line.WarehouseId, line.ProductId)].Add(line.Quantity);
+            // Returned units come back at the cost they left with, so the order's net cost of goods is zero.
             ledger.Record(line.WarehouseId, line.ProductId, line.BatchId, MovementType.Return, line.Quantity,
-                MovementReference.Order, orderId, orderNumber);
+                MovementReference.Order, orderId, orderNumber, line.UnitCost);
         }
     }
 

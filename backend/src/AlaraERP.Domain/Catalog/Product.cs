@@ -17,13 +17,12 @@ public sealed class Product : IAuditable
 
     private Product() { }
 
-    public Product(ProductType type, string name, string slug, string sku, decimal sellingPrice, decimal? compareAtPrice)
+    public Product(ProductType type, string name, string slug, decimal sellingPrice, decimal? compareAtPrice)
     {
         Id = Guid.CreateVersion7();
         Type = type;
         Name = name.Trim();
         Slug = slug;
-        Sku = sku;
         IsActive = true;
         SetPricing(sellingPrice, compareAtPrice);
     }
@@ -33,7 +32,6 @@ public sealed class Product : IAuditable
     public Guid? CategoryId { get; private set; }
     public string Name { get; private set; } = "";
     public string Slug { get; private set; } = "";
-    public string Sku { get; private set; } = "";
     public string? Barcode { get; private set; }
     public string? ShortDescription { get; private set; }
     public string? Description { get; private set; }
@@ -44,6 +42,11 @@ public sealed class Product : IAuditable
     public int? WeightGrams { get; private set; }
     public decimal SellingPrice { get; private set; }
     public decimal? CompareAtPrice { get; private set; }
+    /// <summary>
+    /// What one unit normally costs ÀLara Line (purchase + landed costs). Pre-fills stock receipts and is the
+    /// fallback cost when a batch was received without one. Actual costs live on batches.
+    /// </summary>
+    public decimal? StandardCost { get; private set; }
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -52,7 +55,7 @@ public sealed class Product : IAuditable
     public IReadOnlyList<ProductImage> Images => _images;
 
     public void UpdateDetails(
-        string name, string slug, string sku, Guid? categoryId, string? barcode,
+        string name, string slug, Guid? categoryId, string? barcode,
         string? shortDescription, string? description, string? howToUse, string? ingredients,
         decimal? sizeValue, SizeUnit? sizeUnit, int? weightGrams)
     {
@@ -65,7 +68,6 @@ public sealed class Product : IAuditable
 
         Name = name.Trim();
         Slug = slug;
-        Sku = sku;
         CategoryId = categoryId;
         Barcode = Clean(barcode);
         ShortDescription = Clean(shortDescription);
@@ -85,6 +87,15 @@ public sealed class Product : IAuditable
                 "The 'compare at' price must be at least the selling price.");
         SellingPrice = Guard.Money(sellingPrice);
         CompareAtPrice = compareAtPrice is { } c ? Guard.Money(c) : null;
+    }
+
+    public void SetStandardCost(decimal? cost)
+    {
+        if (cost is < 0)
+            throw new DomainException("products.invalid_cost", "Cost cannot be negative.");
+        if (cost is not null && Type == ProductType.Bundle)
+            throw new DomainException("products.bundle_cost", "A bundle's cost is the cost of its components.");
+        StandardCost = cost is { } c ? Math.Round(c, 4, MidpointRounding.AwayFromZero) : null;
     }
 
     public void SetActive(bool isActive) => IsActive = isActive;

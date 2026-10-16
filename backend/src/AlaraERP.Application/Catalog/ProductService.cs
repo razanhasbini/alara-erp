@@ -16,7 +16,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = Text.ContainsPattern(query.Search);
-            q = q.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\") || EF.Functions.Like(p.Sku.ToLower(), term, "\\")
+            q = q.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\")
                           || (p.Barcode != null && EF.Functions.Like(p.Barcode.ToLower(), term, "\\")));
         }
         if (query.CategoryId is { } categoryId)
@@ -28,8 +28,6 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         IOrderedQueryable<Product> ordered = query.Sort switch
         {
             "-name" => q.OrderByDescending(p => p.Name),
-            "sku" => q.OrderBy(p => p.Sku),
-            "-sku" => q.OrderByDescending(p => p.Sku),
             "price" => q.OrderBy(p => p.SellingPrice).ThenBy(p => p.Name),
             "-price" => q.OrderByDescending(p => p.SellingPrice).ThenBy(p => p.Name),
             "updated" => q.OrderBy(p => p.UpdatedAt),
@@ -40,7 +38,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         var total = await q.CountAsync(ct);
         var items = await ordered.ThenBy(p => p.Id).Skip(page.Skip).Take(page.SafePageSize)
             .Select(p => new ProductListItemDto(
-                p.Id, p.Name, p.Sku, p.Type, p.CategoryId,
+                p.Id, p.Name, p.Type, p.CategoryId,
                 db.Categories.Where(c => c.Id == p.CategoryId).Select(c => c.Name).FirstOrDefault(),
                 p.SellingPrice, p.CompareAtPrice, p.IsActive,
                 p.Images.Where(i => i.IsPrimary).Select(i => (Guid?)i.Id).FirstOrDefault(),
@@ -61,15 +59,16 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
             : null;
 
         var items = p.BundleItems
-            .Select(b => new BundleItemDto(b.ComponentProductId, b.Component!.Name, b.Component.Sku, b.Quantity,
+            .Select(b => new BundleItemDto(b.ComponentProductId, b.Component!.Name, b.Quantity,
                 b.Component.SellingPrice, b.Component.IsActive))
             .OrderBy(b => b.Name)
             .ToList();
 
         return new ProductDetailDto(
-            p.Id, p.Type, p.Name, p.Slug, p.Sku, p.Barcode, p.CategoryId, categoryName,
+            p.Id, p.Type, p.Name, p.Slug, p.Barcode, p.CategoryId, categoryName,
             p.ShortDescription, p.Description, p.HowToUse, p.Ingredients,
-            p.SizeValue, p.SizeUnit, p.WeightGrams, p.SellingPrice, p.CompareAtPrice, p.IsActive,
+            p.SizeValue, p.SizeUnit, p.WeightGrams, p.SellingPrice, p.CompareAtPrice,
+            currentUser.HasPermission(Permissions.Costs.View) ? p.StandardCost : null, p.IsActive,
             items,
             p.Type == ProductType.Bundle ? items.Sum(i => i.UnitPrice * i.Quantity) : null,
             p.Images.OrderBy(i => i.DisplayOrder)
@@ -79,13 +78,16 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
 
     public async Task<ProductDetailDto> CreateAsync(CreateProductRequest request, CancellationToken ct)
     {
-        var sku = Text.NormalizeSku(request.Sku);
-        await EnsureSkuFreeAsync(sku, null, ct);
         var slug = await UniqueSlugAsync(request.Slug, request.Name, null, ct);
         await EnsureCategoryExistsAsync(request.CategoryId, ct);
 
-        var product = new Product(request.Type, request.Name, slug, sku, request.SellingPrice, request.CompareAtPrice);
-        ApplyDetails(product, request, slug, sku);
+        var product = new Product(request.Type, request.Name, slug, request.SellingPrice, request.CompareAtPrice);
+        ApplyDetails(product, request, slug);
+        if (request.StandardCost is not null)
+        {
+            EnsureCanSetCost();
+            product.SetStandardCost(request.StandardCost);
+        }
         if (request.Type == ProductType.Bundle)
             product.ReplaceBundleItems(await ResolveComponentsAsync(request.BundleItems ?? [], ct));
 
@@ -97,8 +99,6 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
     public async Task<ProductDetailDto> UpdateAsync(Guid id, UpdateProductRequest request, CancellationToken ct)
     {
         var product = await db.Products.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new NotFoundException("Product", id);
-        var sku = Text.NormalizeSku(request.Sku);
-        await EnsureSkuFreeAsync(sku, id, ct);
         var slug = await UniqueSlugAsync(request.Slug, request.Name, id, ct);
         await EnsureCategoryExistsAsync(request.CategoryId, ct);
 
@@ -106,8 +106,13 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         if (priceChanged && !currentUser.HasPermission(Permissions.Products.ManagePricing))
             throw new ForbiddenOperationException("products.pricing_not_allowed", "You are not allowed to change product prices.");
 
-        ApplyDetails(product, request, slug, sku);
+        ApplyDetails(product, request, slug);
         product.SetPricing(request.SellingPrice, request.CompareAtPrice);
+        if (currentUser.HasPermission(Permissions.Costs.View) && request.StandardCost != product.StandardCost)
+        {
+            EnsureCanSetCost();
+            product.SetStandardCost(request.StandardCost);
+        }
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -155,8 +160,15 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
 
     // ---- helpers ---------------------------------------------------------------------------
 
-    private static void ApplyDetails(Product product, ProductDetailsInput r, string slug, string sku) =>
-        product.UpdateDetails(r.Name, slug, sku, r.CategoryId, r.Barcode, r.ShortDescription, r.Description,
+    /// <summary>Setting a cost requires seeing costs and managing prices (Managers, Super Admins).</summary>
+    private void EnsureCanSetCost()
+    {
+        if (!currentUser.HasPermission(Permissions.Costs.View) || !currentUser.HasPermission(Permissions.Products.ManagePricing))
+            throw new ForbiddenOperationException("products.cost_not_allowed", "You are not allowed to set product costs.");
+    }
+
+    private static void ApplyDetails(Product product, ProductDetailsInput r, string slug) =>
+        product.UpdateDetails(r.Name, slug, r.CategoryId, r.Barcode, r.ShortDescription, r.Description,
             r.HowToUse, r.Ingredients, r.SizeValue, r.SizeUnit, r.WeightGrams);
 
     private async Task<List<(Product, int)>> ResolveComponentsAsync(IReadOnlyList<BundleItemInput> items, CancellationToken ct)
@@ -168,12 +180,6 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
                 ?? throw new DomainException("bundles.unknown_component", $"Component product '{i.ComponentProductId}' does not exist."),
                 i.Quantity))
             .ToList();
-    }
-
-    private async Task EnsureSkuFreeAsync(string sku, Guid? excludeId, CancellationToken ct)
-    {
-        if (await db.Products.AnyAsync(p => p.Sku == sku && p.Id != excludeId, ct))
-            throw new ConflictException("products.duplicate_sku", $"Another product already uses SKU '{sku}'.");
     }
 
     private async Task EnsureCategoryExistsAsync(Guid? categoryId, CancellationToken ct)

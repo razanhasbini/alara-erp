@@ -32,7 +32,7 @@ public sealed class DashboardAndImportTests(AlaraApiFactory factory) : ApiTestBa
         Assert.Equal((3, 1, 1, 1), (dashboard.Orders!.Total, dashboard.Orders.AwaitingShipment, dashboard.Orders.Delivered, dashboard.Orders.Cancelled));
         Assert.Equal(28.00m, dashboard.Finance!.CollectedRevenue); // 24 + 4 delivery
         Assert.Equal(52.00m, dashboard.Finance.OpenOrderValue);   // 2×24 + 4
-        Assert.Equal((9, 2), (dashboard.Inventory!.UnitsOnHand, dashboard.Inventory.UnitsReserved));
+        Assert.Equal((7, 0), (dashboard.Inventory!.UnitsOnHand, dashboard.Inventory.UnitsReserved));
         Assert.Equal(80.00m, dashboard.DailyOrders!.Sum(d => d.Value)); // delivered 28 + open 52; the cancelled order is excluded
         Assert.NotEmpty(dashboard.RecentMovements!);
     }
@@ -76,10 +76,10 @@ public sealed class DashboardAndImportTests(AlaraApiFactory factory) : ApiTestBa
             Assert.Equal(detail.CompareAtPrice, detail.ComponentsValue); // full price = sum of parts, as on the website
             Assert.True(detail.SellingPrice < detail.CompareAtPrice);
         }
-        var fullOh = bundles.Items.Single(b => b.Sku == "ALR-SET-FULL-OH");
-        var components = (await client.GetJsonAsync<ProductDetailDto>($"/api/products/{fullOh.Id}")).BundleItems.Select(i => i.Sku).ToHashSet();
-        Assert.Contains("ALR-HC-SHAM-OH", components);
-        Assert.DoesNotContain("ALR-HC-SHAM-TV", components);
+        var fullOh = bundles.Items.Single(b => b.Name == "Full Treatment Set – Oh Honey");
+        var components = (await client.GetJsonAsync<ProductDetailDto>($"/api/products/{fullOh.Id}")).BundleItems.Select(i => i.Name).ToHashSet();
+        Assert.Contains("Intensive Repair Shampoo – Oh Honey", components);
+        Assert.DoesNotContain("Intensive Repair Shampoo – Tropical Vanilla", components);
         Assert.Equal(0, await new Scenario(client, Factory).CountAsync("SELECT count(*) FROM inventory.stock_movements"));
     }
 }

@@ -53,6 +53,20 @@ public sealed class AdjustStockRequestValidator : AbstractValidator<AdjustStockR
         RuleFor(x => x.BatchId).NotNull().When(x => x.QuantityChange < 0)
             .WithMessage("Choose the batch to remove stock from.");
         RuleFor(x => x.BatchNumber).MaximumLength(60);
+        RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0).PrecisionScale(12, 4, true).When(x => x.UnitCost.HasValue);
+    }
+}
+
+public sealed class WithdrawBundleRequestValidator : AbstractValidator<WithdrawBundleRequest>
+{
+    public WithdrawBundleRequestValidator()
+    {
+        RuleFor(x => x.WarehouseId).NotEmpty();
+        RuleFor(x => x.BundleProductId).NotEmpty();
+        RuleFor(x => x.Quantity).InclusiveBetween(1, 10_000);
+        RuleFor(x => x.Reason).IsInEnum();
+        RuleFor(x => x.Notes).NotEmpty().When(x => x.Reason == AdjustmentReason.Other).WithMessage("Explain why when the reason is 'Other'.");
+        RuleFor(x => x.Notes).MaximumLength(2000);
     }
 }
 

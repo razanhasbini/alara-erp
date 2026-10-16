@@ -55,8 +55,8 @@ await page.waitForSelector("h2::-p-text(In this bundle)"); await shot("05-bundle
 
 // 3. receive the five components
 await page.goto(`${BASE}/inventory/receipts/new`, { waitUntil: "networkidle0" })
-for (const sku of ["ALR-HC-SHAM-OH", "ALR-HC-COND-OH", "ALR-HC-LEAVEIN", "ALR-HC-MASK", "ALR-HC-MIRACLE-PRO"]) {
-  await pick("Add product to this delivery", sku)
+for (const product of ["Intensive Repair Shampoo – Oh Honey", "Hydrating Conditioner – Oh Honey", "Leave In Your Dreams", "Miracle Mask", "Miracle Pro-Edition"]) {
+  await pick("Add product to this delivery", product)
 }
 const qtyInputs = await page.$$("input[id^='q-']")
 const expInputs = await page.$$("input[id^='e-']")
@@ -80,15 +80,15 @@ await clickText("Save", "button[type=submit]"); await sleep(800); await page.key
 await page.goto(`${BASE}/orders/new`, { waitUntil: "networkidle0" })
 await page.type("#o-name", "Rima Saad"); await page.type("#o-phone", "+961 70 123 456"); await page.type("#o-city", "Beirut")
 await page.type("#o-address", "Hamra, Bliss Street, Bldg 12, 3rd floor")
-await pick("Add product or bundle", "Full Treatment Set – Oh")
-await pick("Add product or bundle", "Miracle Mask")
-await page.click("#o-courier"); await clickText("Courier ", "[role=option]")
+await pick("Add bundle", "Full Treatment Set – Oh")
+await pick("Add product", "Miracle Mask")
 await shot("08-order-form")
 await clickText("Save & confirm", "button")
 await page.waitForSelector("header ::-p-text(Confirmed)", { timeout: 10000 }); await shot("09-order-confirmed")
 
 // 5. ship + deliver
-await clickText("Hand to courier", "button")
+await clickText("Shipping", "button")
+await page.click("#s-courier"); await clickText("Courier ", "[role=option]")
 await page.type("#s-track", "WK-889120"); await page.type("#s-fee", "3")
 await clickText("Ship", "button[type=submit]")
 await page.waitForSelector("header ::-p-text(Shipped)", { timeout: 10000 }); await sleep(500)
@@ -96,13 +96,28 @@ await clickText("Delivered", "button")
 await clickText("Mark delivered", "[role=alertdialog] button")
 await page.waitForSelector("header ::-p-text(With courier)", { timeout: 10000 }); await shot("10-order-delivered")
 
+// 5b. analytics, bundle withdrawal, website placeholder
+await page.goto(`${BASE}/analytics?range=today`, { waitUntil: "networkidle0" })
+await page.waitForSelector("::-p-text(Gross profit)", { timeout: 10000 })
+const grossProfitShown = await page.evaluate(() => [...document.querySelectorAll(".eyebrow")].some((e) => e.textContent?.includes("Gross profit")))
+if (!grossProfitShown) problems.push("analytics: gross profit figure missing")
+await shot("10b-analytics")
+await clickText("Bundles", "button[role=radio]"); await sleep(400); await shot("10c-analytics-bundles")
+await page.goto(`${BASE}/products/bundles`, { waitUntil: "networkidle0" })
+await clickText("Full Treatment Set – Oh Honey", "tr *")
+await clickText("Take out of stock", "button")
+await page.waitForSelector("#wb-qty"); await shot("10d-withdraw-dialog")
+await clickText("Take out 1 set", "button[type=submit]")
+await page.waitForSelector("::-p-text(taken out)", { timeout: 10000 }); await shot("10e-bundle-after-withdraw")
+await page.goto(`${BASE}/website-insights`, { waitUntil: "networkidle0" }); await shot("10f-website-soon")
+
 // 6. views
 for (const [path, name] of [["/inventory", "11-inventory"], ["/inventory/movements", "12-movements"], ["/orders", "13-orders"],
   ["/deliveries", "14-deliveries"], ["/", "15-dashboard"], ["/employees", "16-employees"], ["/roles", "17-roles"], ["/warehouses", "18-warehouses"]]) {
   await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" }); await shot(name)
 }
 await page.goto(`${BASE}/inventory?product=` + await page.evaluate(async () => {
-  const r = await fetch("/api/products?search=ALR-HC-MASK"); return (await r.json()).items[0].id }), { waitUntil: "networkidle0" })
+  const r = await fetch("/api/products?search=Miracle%20Mask"); return (await r.json()).items[0].id }), { waitUntil: "networkidle0" })
 await shot("19-stock-sheet")
 
 // phone width

@@ -14,6 +14,20 @@ public sealed class RecipientInputValidator : AbstractValidator<RecipientInput>
     }
 }
 
+public sealed class CustomerRequestValidator : AbstractValidator<CustomerRequest>
+{
+    public CustomerRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
+        RuleFor(x => x.Phone).NotEmpty().MaximumLength(40).Matches(@"^\+?[0-9 ()\-/]{6,40}$")
+            .WithMessage("Enter a valid phone number.");
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(254).When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.City).MaximumLength(100);
+        RuleFor(x => x.Address).MaximumLength(1000);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+    }
+}
+
 public sealed class OrderLineInputValidator : AbstractValidator<OrderLineInput>
 {
     public OrderLineInputValidator()
@@ -21,6 +35,7 @@ public sealed class OrderLineInputValidator : AbstractValidator<OrderLineInput>
         RuleFor(x => x.ProductId).NotEmpty();
         RuleFor(x => x.Quantity).InclusiveBetween(1, 10_000);
         RuleFor(x => x.LineDiscount).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true);
+        RuleFor(x => x.LineDiscount).Equal(0).When(x => x.IsGift).WithMessage("A gift cannot have a discount because it is already free.");
     }
 }
 
@@ -32,9 +47,11 @@ internal static class OrderRules
     {
         v.RuleFor(x => recipient(x)).NotNull().SetValidator(new RecipientInputValidator()).OverridePropertyName("recipient");
         v.RuleFor(x => items(x)).NotEmpty().WithMessage("Add at least one product.").OverridePropertyName("items");
+        v.RuleFor(x => items(x)).Must(i => i is not null && i.Any(line => !line.IsGift))
+            .WithMessage("Add at least one product to sell. A gift must be sent with an order.").OverridePropertyName("items");
         v.RuleForEach(x => items(x)).SetValidator(new OrderLineInputValidator()).OverridePropertyName("items");
-        v.RuleFor(x => items(x)).Must(i => i is null || i.Select(l => l.ProductId).Distinct().Count() == i.Count)
-            .WithMessage("Each product can appear only once; change its quantity instead.").OverridePropertyName("items");
+        v.RuleFor(x => items(x)).Must(i => i is null || i.Select(l => (l.ProductId, l.IsGift)).Distinct().Count() == i.Count)
+            .WithMessage("Each product can appear once as a sale and once as a gift; change its quantity instead.").OverridePropertyName("items");
         v.RuleFor(x => discount(x)).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).OverridePropertyName("discountTotal");
         v.RuleFor(x => notes(x)).MaximumLength(2000).OverridePropertyName("notes");
     }

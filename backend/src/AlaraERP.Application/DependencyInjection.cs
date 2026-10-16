@@ -1,3 +1,4 @@
+using AlaraERP.Application.Analytics;
 using AlaraERP.Application.Catalog;
 using AlaraERP.Application.Common;
 using AlaraERP.Application.Dashboard;
@@ -29,17 +30,20 @@ public static class DependencyInjection
         services.AddScoped<WarehouseService>();
         services.AddScoped<IWarehouseDirectory>(sp => sp.GetRequiredService<WarehouseService>());
         services.AddScoped<InventorySettingsService>();
+        services.AddScoped<InventoryFeatureService>();
         services.AddScoped<StockLedger>();
         services.AddScoped<StockQueryService>();
         services.AddScoped<StockOperationsService>();
         services.AddScoped<IStockReservationService, StockReservationService>();
 
         // Sales
+        services.AddScoped<CustomerService>();
         services.AddScoped<OrderService>();
         services.AddScoped<DeliveryService>();
 
         // Dashboard
         services.AddScoped<DashboardService>();
+        services.AddScoped<AnalyticsService>();
         return services;
     }
 }

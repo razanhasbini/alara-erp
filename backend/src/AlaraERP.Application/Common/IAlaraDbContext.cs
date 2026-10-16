@@ -21,6 +21,7 @@ public interface IAlaraDbContext
     // inventory
     DbSet<Warehouse> Warehouses { get; }
     DbSet<ProductInventorySettings> ProductInventorySettings { get; }
+    DbSet<InventoryFeatureSettings> InventoryFeatureSettings { get; }
     DbSet<Batch> Batches { get; }
     DbSet<StockBalance> StockBalances { get; }
     DbSet<BatchBalance> BatchBalances { get; }
@@ -30,6 +31,7 @@ public interface IAlaraDbContext
     DbSet<StockTransfer> StockTransfers { get; }
 
     // sales
+    DbSet<Customer> Customers { get; }
     DbSet<Order> Orders { get; }
     DbSet<OrderItem> OrderItems { get; }
     DbSet<OrderHistoryEntry> OrderHistory { get; }

@@ -10,7 +10,7 @@ namespace AlaraERP.Infrastructure.Seeding;
 
 /// <summary>
 /// Loads the real ÀLara Line catalogue (categories, products, bundles) from a JSON file.
-/// Idempotent and additive: existing categories/products (matched by slug/SKU) are left untouched,
+/// Idempotent and additive: existing categories/products (matched by slug) are left untouched,
 /// so edits made in the ERP are never overwritten. Creates no stock, costs or orders.
 /// </summary>
 public sealed class CatalogImporter(AlaraDbContext db, ILogger<CatalogImporter> logger)
@@ -40,29 +40,29 @@ public sealed class CatalogImporter(AlaraDbContext db, ILogger<CatalogImporter> 
         }
         await db.SaveChangesAsync(ct);
 
-        var existing = await db.Products.Select(p => p.Sku).ToHashSetAsync(ct);
-        var bySku = await db.Products.ToDictionaryAsync(p => p.Sku, ct);
+        var existing = await db.Products.Select(p => p.Slug).ToHashSetAsync(ct);
+        var bySlug = await db.Products.ToDictionaryAsync(p => p.Slug, ct);
 
         foreach (var p in file.Products)
         {
-            if (existing.Contains(p.Sku)) { skipped++; continue; }
-            var product = new Product(ProductType.Individual, p.Name, p.Slug, p.Sku, p.SellingPrice, p.CompareAtPrice);
-            product.UpdateDetails(p.Name, p.Slug, p.Sku, categories[p.Category].Id, null, p.ShortDescription, p.Description,
+            if (existing.Contains(p.Slug)) { skipped++; continue; }
+            var product = new Product(ProductType.Individual, p.Name, p.Slug, p.SellingPrice, p.CompareAtPrice);
+            product.UpdateDetails(p.Name, p.Slug, categories[p.Category].Id, null, p.ShortDescription, p.Description,
                 p.HowToUse, p.Ingredients, null, null, p.WeightGrams);
             db.Products.Add(product);
             db.ProductInventorySettings.Add(new ProductInventorySettings(product.Id, lowStockThreshold: 0, p.TracksExpiry));
-            bySku[p.Sku] = product;
+            bySlug[p.Slug] = product;
             productsCreated++;
         }
         await db.SaveChangesAsync(ct);
 
         foreach (var b in file.Bundles)
         {
-            if (existing.Contains(b.Sku)) { skipped++; continue; }
-            var bundle = new Product(ProductType.Bundle, b.Name, b.Slug, b.Sku, b.SellingPrice, b.CompareAtPrice);
-            bundle.UpdateDetails(b.Name, b.Slug, b.Sku, categories[b.Category].Id, null, b.ShortDescription, b.Description,
+            if (existing.Contains(b.Slug)) { skipped++; continue; }
+            var bundle = new Product(ProductType.Bundle, b.Name, b.Slug, b.SellingPrice, b.CompareAtPrice);
+            bundle.UpdateDetails(b.Name, b.Slug, categories[b.Category].Id, null, b.ShortDescription, b.Description,
                 null, null, null, null, null);
-            bundle.ReplaceBundleItems(b.Components.Select(c => (bySku[c.Sku], c.Quantity)).ToList());
+            bundle.ReplaceBundleItems(b.Components.Select(c => (bySlug[c.Slug], c.Quantity)).ToList());
             db.Products.Add(bundle);
             bundlesCreated++;
         }
@@ -84,9 +84,9 @@ public sealed class CatalogImporter(AlaraDbContext db, ILogger<CatalogImporter> 
 
     private sealed record CatalogFile(List<CategoryRow> Categories, List<ProductRow> Products, List<BundleRow> Bundles);
     private sealed record CategoryRow(string Slug, string Name, string? Parent, int SortOrder, string? Description);
-    private sealed record ProductRow(string Sku, string Name, string Slug, string Category, decimal SellingPrice, decimal? CompareAtPrice,
+    private sealed record ProductRow(string Name, string Slug, string Category, decimal SellingPrice, decimal? CompareAtPrice,
         string? ShortDescription, string? Description, string? HowToUse, string? Ingredients, int? WeightGrams, bool TracksExpiry);
-    private sealed record BundleRow(string Sku, string Name, string Slug, string Category, decimal SellingPrice, decimal? CompareAtPrice,
+    private sealed record BundleRow(string Name, string Slug, string Category, decimal SellingPrice, decimal? CompareAtPrice,
         string? ShortDescription, string? Description, List<ComponentRow> Components);
-    private sealed record ComponentRow(string Sku, int Quantity);
+    private sealed record ComponentRow(string Slug, int Quantity);
 }

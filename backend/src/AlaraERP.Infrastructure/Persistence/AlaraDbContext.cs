@@ -24,6 +24,7 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
 
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<ProductInventorySettings> ProductInventorySettings => Set<ProductInventorySettings>();
+    public DbSet<InventoryFeatureSettings> InventoryFeatureSettings => Set<InventoryFeatureSettings>();
     public DbSet<Batch> Batches => Set<Batch>();
     public DbSet<StockBalance> StockBalances => Set<StockBalance>();
     public DbSet<BatchBalance> BatchBalances => Set<BatchBalance>();
@@ -32,6 +33,7 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<StockReceipt> StockReceipts => Set<StockReceipt>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
 
+    public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();

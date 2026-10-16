@@ -27,7 +27,7 @@ alara-erp/
 │   │   │   ├── Identity/  Catalog/  Inventory/  Sales/
 │   │   ├── AlaraERP.Application/       # use-case services, DTOs, validators, interfaces
 │   │   │   ├── Common/                 # paging, Result/errors, ICurrentUser, IClock
-│   │   │   ├── Identity/  Catalog/  Inventory/  Sales/  Dashboard/
+│   │   │   ├── Identity/  Catalog/  Inventory/  Sales/  Dashboard/  Analytics/
 │   │   ├── AlaraERP.Infrastructure/    # EF Core DbContext, configurations, migrations,
 │   │   │   ├── Persistence/            #   Identity setup, file storage, seeding
 │   │   │   ├── Identity/  Storage/  Seeding/
@@ -42,11 +42,11 @@ alara-erp/
 
 Project references: `Api → Application, Infrastructure` · `Infrastructure → Application, Domain` · `Application → Domain` · `Domain → nothing`.
 
-**Why not one project per module?** Five modules × four layers is 20 projects for a small team — slow builds and ceremony with no benefit at this size. The cost of the chosen approach is that module boundaries are a convention, so they are enforced by tests:
+**Why not one project per module?** Six modules × four layers would create 24 projects for a small team — slow builds and ceremony with no benefit at this size. The cost of the chosen approach is that module boundaries are a convention, so they are enforced by tests:
 
 - `Sales` may call `Inventory` and `Catalog` only through their public application interfaces (e.g. `IStockReservationService`, `ICatalogLookup`), never their internal services or DbSets directly.
 - `Catalog` does not depend on `Inventory` or `Sales`. `Inventory` may read `Catalog` via `ICatalogLookup`.
-- `Dashboard` is read-only and may query across modules (it is a reporting module by definition).
+- `Dashboard` and `Analytics` are read-only and may query across modules (they are reporting modules by definition).
 
 **Single DbContext.** `AlaraDbContext : IdentityDbContext<AppUser, AppRole, Guid>` spans all schemas. Order confirmation (sales) and stock reservation (inventory) must commit atomically; one context gives one transaction without distributed-transaction tricks. Each module owns its entity configurations under its own folder and schema.
 
@@ -97,6 +97,7 @@ Standard ASP.NET Identity tables renamed to snake_case: `users, roles, user_role
 | orders.manage_payments (cash collection / remittance) | ✓ | ✓ | | | |
 | delivery_companies.manage | ✓ | ✓ | | | |
 | reports.view | ✓ | ✓ | | | ✓ |
+| costs.view | ✓ | ✓ | | | |
 | users.view | ✓ | ✓ | | | |
 | users.create / update / assign_roles | ✓ | | | | |
 
@@ -104,7 +105,7 @@ Low-stock thresholds are set per product by a Manager (`inventory.manage_thresho
 
 ### 4.2 Catalog — schema `catalog`
 - **categories** — hierarchy via `parent_category_id`; self-parenting blocked by CHECK, cycles blocked in the service.
-- **products** — one sellable version per row (scents are separate products; scented bundles are separate bundle SKUs). Includes website-ready fields (slug, short description, how-to-use, ingredients, size, weight, compare-at price) so the future React site can read from the ERP. **No stock quantity here.**
+- **products** — one sellable version per row (scents and scented bundles are separate products). Includes website-ready fields (slug, short description, how-to-use, ingredients, size, weight, compare-at price) and an optional standard landed unit cost. **No stock quantity here.**
 - **bundle_items** — components of a bundle; components must be `Individual` (no nested bundles); no self-reference; quantity > 0; unique per (bundle, component).
 - **product_images** — storage key + order + `is_primary` (partial unique index: one primary per product).
 
@@ -116,28 +117,29 @@ Bundle availability = min over components of ⌊available(component) / qty⌋, p
 **Model**: stock exists in **batches**. Every receipt line goes into a batch (existing or new). Products that don't expire (brushes, towels) still get a batch with `expiry_date = NULL`, so there is one uniform model.
 
 - **product_settings** (1:1 with product, owned by Inventory): `low_stock_threshold`, `tracks_expiry`. Keeps inventory policy out of the catalog table.
-- **batches**: `product_id, batch_number, expiry_date`; unique (product_id, batch_number).
+- **batches**: `product_id, batch_number, expiry_date, unit_cost`; unique (product_id, batch_number). Repeated receipts into one batch update its cost by weighted average.
 - **stock_balances** (warehouse, product): `quantity_on_hand, quantity_reserved` — the fast aggregate used for availability and reservation locking.
 - **batch_balances** (warehouse, batch): `quantity_on_hand` — where the units physically are.
   Invariant (enforced in the same transaction, covered by tests): Σ batch_balances.on_hand = stock_balances.on_hand per (warehouse, product).
 - **stock_reservations**: per order × product × warehouse; status `Active → Fulfilled | Released`. Reservations are at product level, not batch level — batches are picked at shipment.
-- **stock_movements**: immutable ledger, every change of on-hand creates a row with `batch_id`, signed `quantity_change`, type, reference (receipt / transfer / order / adjustment), user, reason.
+- **stock_movements**: immutable ledger, every change of on-hand creates a row with `batch_id`, signed `quantity_change`, a unit-cost snapshot, type, reference (receipt / transfer / order / adjustment), user, reason.
 - **stock_receipts / stock_receipt_lines**: supplier name + reference (free text until the Purchasing module exists), `unit_cost` per line (optional).
 - **stock_transfers / stock_transfer_lines**: completed atomically in the MVP (no in-transit state); each line records the batch moved; writes Transfer Out + Transfer In movements.
 
 **Batch picking & expiry rules**
 - Shipment and transfers pick batches **FEFO** (first-expiry-first-out; non-expiring batches last).
 - **Expired batches are never shipped.** If non-expired stock is insufficient, shipping fails with a clear error; the expired units must be written off via an Adjustment (reason "Expired").
-- Dashboard + inventory list show **expired** and **expiring within N days** (config `Inventory:ExpiryWarningDays`, default 60).
+- Dashboard + inventory list show **expired** and **expiring within N days** (config `Erp:ExpiryWarningDays`, default 60).
 - Reservations count all on-hand stock (including soon-to-expire); expired stock should be written off promptly — the dashboard flags it.
 
 Movement types: `Receipt, Shipment, Return, AdjustmentIncrease, AdjustmentDecrease, TransferOut, TransferIn`.
 Adjustment reasons: `Damaged, Expired, CountCorrection, Lost, Sample/Gift, Other` (+ mandatory notes for Other).
 
 ### 4.4 Sales — schema `sales`
-- **orders** — status, payment status, source, warehouse, totals (snapshots), recipient snapshot (name, phone, city, address — indexed phone so a future Customers module can backfill `customer_id`), delivery company, tracking number, delivery fee charged, courier fee, timestamps per milestone.
-- **order_items** — product/bundle snapshot (name, SKU, type, unit price, discount, line total).
-- **order_item_components** — bundle composition snapshot at order time (component id, name, SKU, qty per bundle, total qty). Reservations and shipment use this snapshot, so later bundle edits never affect existing orders.
+- **customers** — durable identity and contact defaults (`name, phone, email, city, address, notes, is_active`). `normalized_phone` is unique and treats common Lebanese local/international formats as the same number. Existing orders are backfilled by phone.
+- **orders** — status, payment status, source, warehouse, `customer_id`, totals (snapshots), recipient snapshot (name, phone, city, address), delivery company, tracking number, delivery fee charged, courier fee, timestamps per milestone. The snapshot preserves the original delivery details after a customer profile changes.
+- **order_items** — product/bundle snapshot (name, type, unit price, discount, line total, gift flag).
+- **order_item_components** — bundle composition snapshot at order time (component id, name, qty per bundle, total qty, allocated revenue). Reservations and shipment use this snapshot, so later bundle edits never affect existing orders. Allocated revenue lets product reports split a bundle sale across its components.
 - **order_history** — status and payment changes (old → new, who, when, notes). Generalises the proposed `order_status_history` so payment changes are audited in the same place.
 - **delivery_companies** — name, phone, active.
 - **courier_remittances** — a cash hand-over from a delivery company (amount, date, who recorded it), linked to the orders it settles.
@@ -147,11 +149,11 @@ Adjustment reasons: `Damaged, Expired, CountCorrection, Lost, Sample/Gift, Other
 ```mermaid
 stateDiagram-v2
     [*] --> Draft
-    Draft --> Confirmed: confirm (reserve stock)
+    Draft --> Confirmed: confirm (deduct stock FEFO)
     Draft --> Cancelled: cancel
-    Confirmed --> Draft: reopen (release reservation)
-    Confirmed --> Shipped: hand to courier (deduct stock FEFO, fulfil reservation)
-    Confirmed --> Cancelled: cancel (release reservation)
+    Confirmed --> Draft: reopen (return stock)
+    Confirmed --> Shipped: record shipping details
+    Confirmed --> Cancelled: cancel (return stock)
     Shipped --> Delivered: delivered
     Shipped --> Returned: refused / failed (stock back to same batches)
     Delivered --> [*]
@@ -159,24 +161,33 @@ stateDiagram-v2
     Returned --> [*]
 ```
 
-- Items are editable only in **Draft**. To change a confirmed order, reopen it (releases stock) or cancel.
-- Stock is deducted exactly once, at **Shipped**; Delivered and Returned never deduct. Cancel releases only Active reservations; Returned restores only what was shipped (from the movement records). Each transition is idempotent-guarded by the state machine + reservation status.
+- Items are editable only in **Draft**. To change a confirmed order, reopen it (returns stock) or cancel.
+- Stock is deducted exactly once, at **Confirmed**, using FEFO batches. Shipping records logistics only. Reopening or cancelling a confirmed order, and recording a return, restores the units from the movement records.
 - Delivered → Returned is **not** allowed in the MVP (no returns policy yet).
 
 **Payment** (separate from fulfilment)
 - `payment_method`: `CashOnDelivery` (default) — enum is ready for `Whish, OMT, BankTransfer, Cash` once confirmed.
 - `payment_status`: `Unpaid → CollectedByCourier → Paid` for COD (Delivered sets CollectedByCourier; a remittance sets Paid). Non-COD methods: `Unpaid → Paid`. Cancelled/Returned orders → `Void`.
-- Delivery fee default: config `Sales:DefaultDeliveryFee` = 4.00 USD, editable per order (e.g. free delivery).
+- Delivery fee default: config `Erp:DefaultDeliveryFee` = 4.00 USD, editable per order (e.g. free delivery).
 
 Order numbers: PostgreSQL sequence → `AL-000001`.
 
-### 4.5 Dashboard
+### 4.5 Dashboard and analytics
 Read-only aggregation endpoints. Metric definitions:
 - **Collected revenue** = Σ grand_total of orders with `payment_status = Paid`.
 - **Delivered, awaiting cash** = Σ grand_total of Delivered orders with `CollectedByCourier` (owed by couriers).
 - **Open order value** = Confirmed + Shipped.
 - Cancelled/Returned/Draft are never counted as revenue.
 - Inventory: total units on hand, by warehouse, low-stock products (available ≤ threshold), expired / expiring batches.
+
+Analytics uses the inclusive Beirut business-date range supplied by the UI:
+- A sale is recognised on `confirmed_at`; cancelled and returned orders are excluded. Confirmation records the exact FEFO batch costs immediately.
+- **Gross sales** = unit price × quantity before line/order discounts. **Net sales** excludes delivery fees.
+- **Cost of goods** comes from the unit-cost snapshots on the actual FEFO shipment movements.
+- **Gross profit** = net sales − cost of goods. **Profit after delivery** also adds delivery fees charged and subtracts courier fees.
+- **Cash received** is grouped by `paid_at`; courier remittances are net of the courier fee retained.
+- Day, ISO-week and month grouping are supported. Cost and profit values require `costs.view`; `reports.view` alone exposes sales totals only.
+- Customer loyalty uses the same selected date range and exposes order count, repeat orders, total ordered, total paid, average order value, and average days between confirmed orders. The UI lets the user choose the ranking measure instead of hiding it in an opaque score.
 
 ## 5. ERD
 
@@ -237,7 +248,6 @@ erDiagram
         uuid category_id FK "nullable"
         varchar name
         varchar slug UK
-        varchar sku UK
         varchar barcode UK "nullable"
         varchar product_type "Individual | Bundle"
         text short_description
@@ -249,6 +259,7 @@ erDiagram
         int weight_grams "nullable, >= 0"
         numeric selling_price "12,2 >= 0"
         numeric compare_at_price "12,2 nullable, >= selling_price"
+        numeric standard_cost "12,4 nullable, >= 0"
         boolean is_active
         timestamptz created_at
         timestamptz updated_at
@@ -267,6 +278,7 @@ erDiagram
         int display_order
         boolean is_primary "max one per product"
         timestamptz created_at
+        timestamptz updated_at
     }
     categories ||--o{ categories : parent_of
     categories ||--o{ products : contains
@@ -296,6 +308,7 @@ erDiagram
         uuid product_id FK
         varchar batch_number "unique per product"
         date expiry_date "nullable"
+        numeric unit_cost "12,4 nullable, >= 0"
         timestamptz created_at
     }
     stock_balances {
@@ -328,6 +341,7 @@ erDiagram
         uuid batch_id FK
         varchar movement_type
         int quantity_change "!= 0, sign matches type"
+        numeric unit_cost "12,4 nullable, cost snapshot"
         varchar reason
         varchar reference_type "Receipt | Transfer | Order | Adjustment"
         uuid reference_id
@@ -385,6 +399,19 @@ erDiagram
     warehouses ||--o{ stock_reservations : "reserved in"
 
     %% ---------- sales ----------
+    customers {
+        uuid id PK
+        varchar name
+        varchar phone
+        varchar normalized_phone UK
+        varchar email
+        varchar city
+        text address
+        text notes
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
     orders {
         uuid id PK
         varchar order_number UK "AL-000001"
@@ -393,6 +420,7 @@ erDiagram
         varchar payment_status
         varchar source "WhatsApp | Instagram | Website | Other"
         uuid warehouse_id FK
+        uuid customer_id FK
         varchar recipient_name
         varchar recipient_phone "indexed"
         varchar recipient_city
@@ -415,13 +443,14 @@ erDiagram
         timestamptz delivered_at
         timestamptz cancelled_at
         timestamptz returned_at
+        timestamptz paid_at
     }
     order_items {
         uuid id PK
         uuid order_id FK
         uuid product_id FK
         varchar product_name
-        varchar sku
+        boolean is_gift
         varchar product_type
         int quantity "> 0"
         numeric unit_price "12,2"
@@ -433,9 +462,9 @@ erDiagram
         uuid order_item_id FK
         uuid component_product_id FK
         varchar component_name
-        varchar component_sku
         int quantity_per_bundle
         int total_quantity
+        numeric allocated_revenue "12,2"
     }
     order_history {
         uuid id PK
@@ -459,12 +488,16 @@ erDiagram
         uuid id PK
         varchar remittance_number UK
         uuid delivery_company_id FK
-        numeric amount "12,2 = sum of linked orders"
+        numeric amount_collected "12,2 = sum of linked orders"
+        numeric courier_fees "12,2"
+        numeric net_amount "12,2 handed over"
+        int order_count
         timestamptz received_at
         text notes
         uuid recorded_by_user_id FK
         timestamptz created_at
     }
+    customers ||--o{ orders : places
     orders ||--|{ order_items : contains
     order_items ||--o{ order_item_components : "bundle snapshot"
     orders ||--o{ order_history : audited
@@ -497,6 +530,7 @@ GET          /api/inventory  (balances; filter warehouse, product, low-stock, ex
 GET/PUT      /api/inventory/settings/{productId}   (threshold, tracks_expiry)
 GET          /api/inventory/batches
 POST/GET     /api/inventory/receipts | /adjustments | /transfers
+POST         /api/inventory/bundle-withdrawals
 GET          /api/inventory/movements
 
 GET/POST/PUT /api/orders  ·  GET /api/orders/{id}
@@ -506,6 +540,7 @@ GET/POST/PUT /api/delivery-companies
 GET/POST     /api/courier-remittances   (+ GET /api/courier-remittances/outstanding)
 
 GET          /api/dashboard/summary | /recent-orders | /recent-movements | /inventory-by-warehouse
+GET          /api/analytics/summary | /products
 ```
 
 All lists: `?page=&pageSize=&search=&sort=` + module filters. All mutations require the CSRF header and a permission.
@@ -514,7 +549,7 @@ All lists: `?page=&pageSize=&search=&sort=` + module filters. All mutations requ
 
 From alaraline.co (catalogue as of 2026-10-15), with user approval:
 - Categories: **Hair Care** › *Curls On Collection* (subcategory) · **Hair Accessories** · **Body Care** · **Sets & Bundles**.
-- 28 individual products with current site prices, descriptions, weights (where listed). SKUs are **generated** (the site has none), e.g. `ALR-HC-SHAMPOO-OH`.
+- 28 individual products with current site prices, descriptions and weights (where listed).
 - 8 bundles: Full Treatment Set (Oh Honey / Tropical Vanilla), Hydrate & Repair Trio (Oh Honey / Tropical Vanilla), Curls On Collection, Curls On Care Kit, Deep Repair Duo, 4 Hair Mists — with site sale price as `selling_price` and component-sum as `compare_at_price`.
 - One warehouse `MAIN`. **Stock = 0, no costs, no batches, no orders, no delivery company** — those are real business facts to be entered by the team.
 - `tracks_expiry = true` for liquids/creams, `false` for accessories; thresholds default 0 until a manager sets them.
@@ -555,36 +590,36 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 ## 10. Implementation checklist
 
 **Phase B — Foundation**
-- [ ] git init + `.gitignore` (if approved)
-- [ ] Create Domain / Application / Infrastructure + 3 test projects, wire references, remove WeatherForecast
-- [ ] Packages: EF Core 10 + Npgsql, Identity EF stores, FluentValidation, snake_case naming
-- [ ] Local `dotnet-ef` tool manifest
-- [ ] AlaraDbContext, schemas, Identity mapping to `identity.*`
-- [ ] ProblemDetails, exception handler, validation filter, logging
-- [ ] Cookie auth, antiforgery, lockout, rate limiting, permission policies
-- [ ] Roles/permissions seeding, `bootstrap-admin` command
-- [ ] Auth + users + roles endpoints
-- [ ] DB roles + test DB (after approval), first migration applied
-- [ ] Tests: login ok/fail, lockout, deactivated user, permission denial, escalation prevention
-- [ ] **Checkpoint: review with you**
+- [x] git init + `.gitignore`
+- [x] Create Domain / Application / Infrastructure + 3 test projects, wire references, remove WeatherForecast
+- [x] Packages: EF Core 10 + Npgsql, Identity EF stores, FluentValidation, snake_case naming
+- [x] Local `dotnet-ef` tool manifest
+- [x] AlaraDbContext, schemas, Identity mapping to `identity.*`
+- [x] ProblemDetails, exception handler, validation filter, logging
+- [x] Cookie auth, antiforgery, lockout, rate limiting, permission policies
+- [x] Roles/permissions seeding, `bootstrap-admin` command
+- [x] Auth + users + roles endpoints
+- [x] DB roles + test DB, first migration applied
+- [x] Tests: login ok/fail, lockout, deactivated user, permission denial, escalation prevention
+- [x] **Checkpoint: reviewed and committed**
 
 **Phase C — Business modules**
-- [ ] Catalog: categories, products, bundles, images, availability + tests
-- [ ] Inventory: warehouses, settings/thresholds, batches, receipts, adjustments, transfers, movements, reservations + tests (incl. concurrency)
-- [ ] Sales: orders, state machine, reservation/shipment/return integration, delivery companies, remittances + tests
-- [ ] Dashboard endpoints + tests
-- [ ] Dev seed (real catalogue)
-- [ ] Architecture tests (layer/module rules)
+- [x] Catalog: categories, products, bundles, images, availability + tests
+- [x] Inventory: warehouses, settings/thresholds, batches, receipts, adjustments, transfers, movements, reservations + tests (incl. concurrency)
+- [x] Sales: orders, state machine, reservation/shipment/return integration, delivery companies, remittances + tests
+- [x] Dashboard endpoints + tests
+- [x] Dev seed (real catalogue)
+- [x] Architecture tests (layer/module rules)
 
 **Phase D — Frontend**
-- [ ] Vite + React + TS + Tailwind + shadcn/ui + TanStack Query + RHF + Zod, Vite proxy
-- [ ] Layout, auth flow, protected routes, permission-aware navigation
-- [ ] Products/Categories/Bundles/Images · Inventory/Warehouses/Movements · Orders/Deliveries · Dashboard · Employees & Roles · Profile
+- [x] Vite + React + TS + Tailwind + shadcn/ui + TanStack Query + RHF + Zod, Vite proxy
+- [x] Layout, auth flow, protected routes, permission-aware navigation
+- [x] Products/Categories/Bundles/Images · Inventory/Warehouses/Movements · Orders/Deliveries · Dashboard/Analytics · Employees & Roles · Profile
 
 **Phase E — Verification**
-- [ ] Migrations, builds, backend tests, frontend typecheck/lint/build
-- [ ] Manual end-to-end run of acceptance criteria 1–22
-- [ ] README, `.env.example`, ERD in docs
+- [x] Migrations, builds, backend tests, frontend typecheck/lint/build
+- [x] Manual end-to-end run of acceptance criteria 1–22
+- [x] README, `.env.example`, ERD in docs
 
 ## 11. Changes made during implementation
 
@@ -596,9 +631,11 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 - **Paid orders cannot be cancelled or returned** until refunds are supported. This only affects non-COD prepaid orders.
 - **Entity keys** are UUIDv7, generated in the domain (EF `ValueGenerated.Never`).
 - **Product images** carry `created_at`/`updated_at`. At most one primary image per product, enforced by a partial unique index.
-- **Seed data is real, not a demo.** `import-catalog` loads the alaraline.co catalogue (SKUs assigned for the ERP) into the real database. It never creates stock, costs or orders.
+- **Seed data is real, not a demo.** `import-catalog` loads the alaraline.co catalogue into the real database. It never creates stock, costs or orders.
+- **Cost and profit reporting.** Products may have a standard landed cost; batches carry weighted actual cost and stock movements snapshot it. Analytics reports sales, COGS, margins, delivery result and cash timing while `costs.view` keeps cost fields separate from ordinary report access.
+- **Bundle stock withdrawal.** Gifts, PR sets, losses and damage deduct the bundle's real components FEFO and leave one linked adjustment reference in the immutable ledger.
+- **Customers and loyalty.** Customer profiles are linked to every new order, existing orders are backfilled by normalised phone, and analytics ranks loyalty by transparent order/payment/frequency measures.
 
 ### Adding later
 - **Purchasing / Suppliers.** Receipts already capture supplier name, reference and unit cost, so a `purchasing` schema can link to `stock_receipts`.
-- **Customers.** Orders keep an indexed, normalised `recipient_phone`. A migration can add `customer_id` and backfill it by phone.
 - **Website integration.** Products already have slug, short description, how-to-use, ingredients, size, weight and compare-at price for the React storefront.

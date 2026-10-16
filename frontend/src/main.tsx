@@ -26,7 +26,7 @@ createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <TooltipProvider delayDuration={300}>
           <RouterProvider router={router} />
-          <Toaster theme="light" position="bottom-right" richColors closeButton />
+          <Toaster theme="light" position="top-right" visibleToasts={5} closeButton />
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>

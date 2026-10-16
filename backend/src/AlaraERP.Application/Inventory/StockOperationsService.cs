@@ -44,11 +44,13 @@ public sealed class StockOperationsService(
             var product = products[line.ProductId];
             var batch = await _ledger.ResolveIncomingBatchAsync(product, line.BatchNumber, line.ExpiryDate, number, ct);
             receipt.AddLine(product.Id, batch.Id, line.Quantity, line.UnitCost);
+            // No cost on the invoice line → fall back to the product's standard cost.
+            batch.ApplyReceivedCost(await _ledger.UnitsOnHandAsync(batch.Id, ct), line.Quantity, line.UnitCost ?? product.StandardCost);
 
             _ledger.GetOrCreateBatchBalance(batchBalances, warehouseId, batch).Add(line.Quantity);
             balances[(warehouseId, product.Id)].Add(line.Quantity);
             _ledger.Record(warehouseId, product.Id, batch.Id, MovementType.Receipt, line.Quantity,
-                MovementReference.Receipt, receipt.Id, number);
+                MovementReference.Receipt, receipt.Id, number, StockLedger.CostOf(batch, product));
         }
 
         _db.StockReceipts.Add(receipt);
@@ -86,10 +88,11 @@ public sealed class StockOperationsService(
         StockMovement movement;
         if (increase)
         {
+            batch.ApplyReceivedCost(await _ledger.UnitsOnHandAsync(batch.Id, ct), quantity, request.UnitCost ?? (batch.UnitCost is null ? product.StandardCost : null));
             _ledger.GetOrCreateBatchBalance(batchBalances, warehouseId, batch).Add(quantity);
             balances[(warehouseId, product.Id)].Add(quantity);
             movement = _ledger.Record(warehouseId, product.Id, batch.Id, MovementType.AdjustmentIncrease, quantity,
-                MovementReference.Adjustment, adjustmentId, "ADJ", request.Reason, request.Notes);
+                MovementReference.Adjustment, adjustmentId, "ADJ", StockLedger.CostOf(batch, product), request.Reason, request.Notes);
         }
         else
         {
@@ -100,7 +103,7 @@ public sealed class StockOperationsService(
             batchBalance.Remove(quantity, batch.BatchNumber);
             balance.RemoveUnreserved(quantity, product.Label);
             movement = _ledger.Record(warehouseId, product.Id, batch.Id, MovementType.AdjustmentDecrease, -quantity,
-                MovementReference.Adjustment, adjustmentId, "ADJ", request.Reason, request.Notes);
+                MovementReference.Adjustment, adjustmentId, "ADJ", StockLedger.CostOf(batch, product), request.Reason, request.Notes);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -136,8 +139,8 @@ public sealed class StockOperationsService(
             }
             else
             {
-                picks = _ledger.PickFefo(batchBalances.Values.Where(b => b.WarehouseId == from.Id && b.Batch!.ProductId == product.Id),
-                    line.Quantity, product.Label);
+                picks = await _ledger.PickAsync(batchBalances.Values.Where(b => b.WarehouseId == from.Id && b.Batch!.ProductId == product.Id),
+                    line.Quantity, product.Label, ct);
             }
 
             foreach (var (source, take) in picks)
@@ -147,8 +150,9 @@ public sealed class StockOperationsService(
                 _ledger.GetOrCreateBatchBalance(batchBalances, to.Id, batch).Add(take);
                 balances[(to.Id, product.Id)].Add(take);
                 transfer.AddLine(product.Id, batch.Id, take);
-                _ledger.Record(from.Id, product.Id, batch.Id, MovementType.TransferOut, -take, MovementReference.Transfer, transfer.Id, number);
-                _ledger.Record(to.Id, product.Id, batch.Id, MovementType.TransferIn, take, MovementReference.Transfer, transfer.Id, number);
+                var cost = StockLedger.CostOf(batch, product);
+                _ledger.Record(from.Id, product.Id, batch.Id, MovementType.TransferOut, -take, MovementReference.Transfer, transfer.Id, number, cost);
+                _ledger.Record(to.Id, product.Id, batch.Id, MovementType.TransferIn, take, MovementReference.Transfer, transfer.Id, number, cost);
             }
         }
 
@@ -156,5 +160,48 @@ public sealed class StockOperationsService(
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return await _queries.GetTransferAsync(transfer.Id, ct);
+    }
+
+    /// <summary>
+    /// Takes complete bundles out of stock without an order (PR boxes, gifts, damaged sets): each component is
+    /// deducted (earliest expiry first) and logged as an adjustment that names the bundle. Bundles have no stock of their own.
+    /// </summary>
+    public async Task<IReadOnlyList<MovementDto>> WithdrawBundleAsync(WithdrawBundleRequest request, CancellationToken ct)
+    {
+        var warehouseId = request.WarehouseId;
+        await _ledger.RequireActiveWarehouseAsync(warehouseId, ct);
+        var bundle = await _db.Products.AsNoTracking().Include(p => p.BundleItems)
+                         .FirstOrDefaultAsync(p => p.Id == request.BundleProductId, ct)
+                     ?? throw new NotFoundException("Bundle", request.BundleProductId);
+        if (bundle.Type != Domain.Catalog.ProductType.Bundle || bundle.BundleItems.Count == 0)
+            throw new DomainException("bundles.not_a_bundle", $"'{bundle.Name}' is not a bundle with components.");
+
+        var needs = bundle.BundleItems.ToDictionary(b => b.ComponentProductId, b => b.Quantity * request.Quantity);
+        var products = await _ledger.LoadStockableProductsAsync(needs.Keys, ct);
+        var adjustmentId = Guid.CreateVersion7();
+        var notes = $"{request.Quantity} × {bundle.Name}" + (string.IsNullOrWhiteSpace(request.Notes) ? "" : $" — {request.Notes.Trim()}");
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        var balances = await _locks.LockAsync(needs.Keys.Select(p => (warehouseId, p)), createMissing: false, ct);
+        var batchBalances = await _ledger.LoadBatchBalancesAsync([warehouseId], needs.Keys, ct);
+
+        foreach (var (productId, quantity) in needs.OrderBy(n => n.Key))
+        {
+            var product = products[productId];
+            if (!balances.TryGetValue((warehouseId, productId), out var balance))
+                throw new DomainException("inventory.insufficient_available", $"There is no {product.Label} in this warehouse.");
+            balance.RemoveUnreserved(quantity, product.Label);
+            var candidates = batchBalances.Values.Where(b => b.Batch!.ProductId == productId);
+            foreach (var (batchBalance, take) in await _ledger.PickAsync(candidates, quantity, product.Label, ct))
+            {
+                batchBalance.Remove(take, batchBalance.Batch!.BatchNumber);
+                _ledger.Record(warehouseId, productId, batchBalance.BatchId, MovementType.AdjustmentDecrease, -take,
+                    MovementReference.Adjustment, adjustmentId, "BUNDLE", StockLedger.CostOf(batchBalance.Batch, product), request.Reason, notes);
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return (await _queries.ListMovementsAsync(new MovementQuery(null, null, null, null, null, adjustmentId, 1, 100), ct)).Items;
     }
 }

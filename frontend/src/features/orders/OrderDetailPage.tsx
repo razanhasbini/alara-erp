@@ -6,7 +6,7 @@ import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog, Field, SubmitButton } from "@/components/common/controls"
 import { Facts, PageHeader, Section } from "@/components/common/page"
-import { OrderStatusPill, PaymentStatusPill } from "@/components/common/StatusBadge"
+import { OrderStatusPill, PaymentStatusPill, Pill } from "@/components/common/StatusBadge"
 import { ErrorState, FullPageSpinner } from "@/components/common/states"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -23,16 +23,16 @@ import type { OrderDetail, OrderStatus } from "@/types/api"
 type Action = "confirm" | "reopen" | "deliver" | "return" | "cancel" | "mark-paid"
 
 const actionDone: Record<Action, string> = {
-  confirm: "confirmed — stock reserved", reopen: "reopened as draft — stock released", deliver: "marked delivered",
+  confirm: "confirmed — stock deducted", reopen: "reopened as draft — stock returned", deliver: "marked delivered",
   return: "returned — stock back on the shelf", cancel: "cancelled", "mark-paid": "marked paid",
 }
 
 const actionCopy: Record<Action, { title: string; description: string; label: string; destructive?: boolean; note?: boolean }> = {
-  confirm: { title: "Confirm order?", description: "Stock for every item (and every product inside bundles) will be reserved.", label: "Confirm" },
-  reopen: { title: "Reopen as draft?", description: "The reserved stock is released so the order can be edited.", label: "Reopen" },
+  confirm: { title: "Confirm order?", description: "Stock for every item, including products inside bundles, will be deducted immediately.", label: "Confirm & deduct stock" },
+  reopen: { title: "Reopen as draft?", description: "The deducted stock is returned so the order can be edited.", label: "Reopen" },
   deliver: { title: "Mark as delivered?", description: "Cash-on-delivery orders become “with courier” until the courier hands over the cash (or paid, if your own staff delivered).", label: "Mark delivered" },
   return: { title: "Record a returned delivery?", description: "Use when the customer refused or the courier couldn't deliver. The units go back into stock, into the batches they left from.", label: "Record return", destructive: true, note: true },
-  cancel: { title: "Cancel this order?", description: "Any reserved stock is released. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
+  cancel: { title: "Cancel this order?", description: "Any stock deducted at confirmation is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
   "mark-paid": { title: "Record payment?", description: "Confirms the customer has paid this order directly.", label: "Mark paid", note: true },
 }
 
@@ -68,8 +68,8 @@ export function OrderDetailPage() {
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
   if (o.paymentMethod !== "CashOnDelivery" && o.paymentStatus === "Unpaid" && !["Cancelled", "Returned"].includes(o.status) && can(P.orders.payments))
     buttons.push(<Button key="paid" variant="outline" onClick={() => setAction("mark-paid")}>Mark paid</Button>)
-  if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Confirm & reserve</Button>)
-  if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setShipping(true)}><Truck /> Hand to courier</Button>)
+  if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Confirm & deduct stock</Button>)
+  if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setShipping(true)}><Truck /> Shipping</Button>)
   if (allowed("Delivered") && can(P.orders.update)) buttons.push(<Button key="deliver" onClick={() => setAction("deliver")}><Check /> Delivered</Button>)
 
   const copy = action ? actionCopy[action] : null
@@ -96,8 +96,7 @@ export function OrderDetailPage() {
                   {o.items.map((i) => (
                     <tr key={i.id} className="border-b border-hairline align-top last:border-0">
                       <td className="px-4 py-2.5">
-                        <Link to={`/products/${i.productId}`} className="hover:underline">{i.productName}</Link>
-                        <div className="code text-muted-foreground">{i.sku}</div>
+                        <div className="flex items-center gap-2"><Link to={`/products/${i.productId}`} className="hover:underline">{i.productName}</Link>{i.isGift && <Pill tone="green" dot={false}>Gift</Pill>}</div>
                         {i.components.length > 0 && (
                           <ul className="mt-1.5 border-l border-petal pl-2.5 text-xs text-muted-foreground">
                             {i.components.map((c) => <li key={c.productId}>{c.totalQuantity} × {c.name}</li>)}
@@ -105,9 +104,9 @@ export function OrderDetailPage() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular">{i.quantity}</td>
-                      <td className="px-4 py-2.5 text-right tabular">{money(i.unitPrice)}</td>
-                      <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{i.lineDiscount ? `−${money(i.lineDiscount)}` : "—"}</td>
-                      <td className="px-4 py-2.5 text-right tabular font-medium">{money(i.lineTotal)}</td>
+                      <td className="px-4 py-2.5 text-right tabular">{i.isGift ? "Free" : money(i.unitPrice)}</td>
+                      <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{i.isGift ? "—" : i.lineDiscount ? `−${money(i.lineDiscount)}` : "—"}</td>
+                      <td className="px-4 py-2.5 text-right tabular font-medium">{i.isGift ? "Gift" : money(i.lineTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -146,7 +145,7 @@ export function OrderDetailPage() {
           <Section title="Customer" actions={!["Delivered", "Cancelled", "Returned"].includes(o.status) && can(P.orders.update) &&
             <Button size="xs" variant="ghost" onClick={() => setEditingDelivery(true)}>Edit</Button>} bodyClassName="p-4">
             <Facts items={[
-              ["Name", o.recipientName],
+              ["Name", o.customerId ? <Link key="customer" to={`/customers?search=${encodeURIComponent(o.recipientPhone)}`} className="font-medium text-primary hover:underline">{o.recipientName}</Link> : o.recipientName],
               ["Phone", <a key="f145-26" className="hover:underline" href={`https://wa.me/${o.recipientPhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">{o.recipientPhone}</a>],
               ["City", o.recipientCity], ["Address", o.recipientAddress],
             ]} />
@@ -172,7 +171,7 @@ export function OrderDetailPage() {
           {copy.note && <Textarea aria-label="Note" placeholder="Note (optional)" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />}
         </ConfirmDialog>
       )}
-      {shipping && <ShipDialog order={o} onClose={() => setShipping(false)} onDone={(u) => afterChange(u, `${u.orderNumber} handed to courier — stock deducted`)} />}
+      {shipping && <ShipDialog order={o} onClose={() => setShipping(false)} onDone={(u) => afterChange(u, `${u.orderNumber} marked as shipped`)} />}
       {editingDelivery && <DeliveryDialog order={o} onClose={() => setEditingDelivery(false)} onDone={(u) => afterChange(u, "Delivery details saved")} />}
     </>
   )
@@ -195,8 +194,8 @@ function ShipDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Hand {order.orderNumber} to the courier</DialogTitle>
-          <DialogDescription>Stock is deducted now, from the batches that expire first. Expired units are never shipped.</DialogDescription>
+          <DialogTitle>Shipping for {order.orderNumber}</DialogTitle>
+          <DialogDescription>Stock was already deducted when the order was confirmed. Add the courier and tracking details here.</DialogDescription>
         </DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!feeError) ship.mutate() }}>
           <Field label="Delivery company" htmlFor="s-courier">

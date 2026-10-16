@@ -35,6 +35,8 @@ public sealed class ReadEndpointSmokeTests(AlaraApiFactory factory) : ApiTestBas
             "/api/delivery-companies", "/api/delivery-companies?includeInactive=true", $"/api/delivery-companies/{courier.Id}",
             $"/api/delivery-companies/{courier.Id}/awaiting-remittance", "/api/courier-remittances",
             "/api/users", "/api/roles", "/api/roles/permissions",
+            "/api/analytics/summary", "/api/analytics/summary?groupBy=Week", "/api/analytics/summary?from=2026-01-01&to=2026-12-31&groupBy=Month",
+            "/api/analytics/products",
         ];
         foreach (var url in urls)
         {

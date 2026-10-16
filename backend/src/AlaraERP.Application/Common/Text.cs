@@ -21,7 +21,6 @@ public static partial class Text
         return slug.Length > 0 ? slug[..Math.Min(slug.Length, 180)] : "item";
     }
 
-    public static string NormalizeSku(string sku) => sku.Trim().ToUpperInvariant();
 
     /// <summary>
     /// Escapes LIKE wildcards in user input and wraps it for a case-insensitive "contains" search

@@ -16,5 +16,11 @@ export function RequireAuth() {
 /** UX-only gate; the API independently enforces the same permission. */
 export function RequirePermission({ permission }: { permission: string }) {
   const { can } = useAuth()
-  return can(permission) ? <Outlet /> : <Navigate to="/unauthorized" replace />
+  return can(permission) ? <Outlet /> : <Navigate to="/" replace />
+}
+
+/** Restricts system administration pages whose API endpoints require a specific role. */
+export function RequireRole({ role }: { role: string }) {
+  const { user } = useAuth()
+  return user?.roles.includes(role) ? <Outlet /> : <Navigate to="/" replace />
 }

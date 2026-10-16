@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity;
 
 namespace AlaraERP.Infrastructure.Identity;
 
-/// <summary>An ERP employee account. Email doubles as the user name.</summary>
+/// <summary>An ERP employee account. Employees may sign in with their username or email address.</summary>
 public class AppUser : IdentityUser<Guid>, IAuditable
 {
     public string FirstName { get; set; } = "";

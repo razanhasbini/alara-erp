@@ -29,7 +29,7 @@ public static class SystemRoles
                 P.Warehouses.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
                 P.DeliveryCompanies.Manage,
-                P.Reports.View,
+                P.Reports.View, P.Costs.View,
                 P.Users.View,
             }),
 
@@ -40,10 +40,11 @@ public static class SystemRoles
                 P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer,
             }),
 
-        new(SalesEmployee, "Takes and processes orders from WhatsApp, Instagram and the website.",
+        new(SalesEmployee, "Handles the day-to-day catalogue, customers, orders, receipts and stock records.",
             new HashSet<string>
             {
-                P.Products.View, P.Inventory.View,
+                P.Products.View, P.Products.Create, P.Products.Update,
+                P.Inventory.View, P.Inventory.Receive,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel,
             }),
 

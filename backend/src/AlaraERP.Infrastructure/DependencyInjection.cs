@@ -32,13 +32,14 @@ public static class DependencyInjection
         services
             .AddIdentityCore<AppUser>(o =>
             {
+                var simpleDevelopmentPasswords = configuration.GetValue<bool>("Auth:SimpleDevelopmentPasswords");
                 o.User.RequireUniqueEmail = true;
-                o.Password.RequiredLength = 10;
+                o.Password.RequiredLength = simpleDevelopmentPasswords ? 8 : 10;
                 o.Password.RequireDigit = true;
-                o.Password.RequireLowercase = true;
-                o.Password.RequireUppercase = true;
+                o.Password.RequireLowercase = !simpleDevelopmentPasswords;
+                o.Password.RequireUppercase = !simpleDevelopmentPasswords;
                 o.Password.RequireNonAlphanumeric = false;
-                o.Password.RequiredUniqueChars = 4;
+                o.Password.RequiredUniqueChars = simpleDevelopmentPasswords ? 1 : 4;
                 o.Lockout.AllowedForNewUsers = true;
                 o.Lockout.MaxFailedAccessAttempts = 5;
                 o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
@@ -61,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<AdminBootstrapper>();
+        services.AddScoped<UserProvisioner>();
         services.AddSingleton<DatabaseMigrator>();
         services.AddScoped<CatalogImporter>();
 

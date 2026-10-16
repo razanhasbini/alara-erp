@@ -80,6 +80,14 @@ public sealed class AlaraApiFactory : WebApplicationFactory<Program>, IAsyncLife
             await using var truncate = new NpgsqlCommand($"TRUNCATE {tables} RESTART IDENTITY CASCADE;", conn);
             await truncate.ExecuteNonQueryAsync();
         }
+
+        // Most inventory scenarios exercise the long-standing expiry workflow. Production starts
+        // with it off; tests opt into it here and feature-toggle tests explicitly switch it off.
+        await using var features = new NpgsqlCommand("""
+            INSERT INTO inventory.feature_settings (id, expiry_dates_enabled, updated_at)
+            VALUES (1, TRUE, now())
+            """, conn);
+        await features.ExecuteNonQueryAsync();
     }
 
     Task IAsyncLifetime.DisposeAsync() => base.DisposeAsync().AsTask();

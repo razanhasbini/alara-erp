@@ -4,6 +4,8 @@ using AlaraERP.Application.Identity;
 using AlaraERP.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace AlaraERP.Infrastructure.Identity;
 
@@ -11,11 +13,17 @@ internal sealed class AuthService(
     UserManager<AppUser> users,
     SignInManager<AppUser> signIn,
     AlaraDbContext db,
-    TimeProvider clock) : IAuthService
+    TimeProvider clock,
+    IConfiguration configuration,
+    IHostEnvironment environment) : IAuthService
 {
+    private bool DevelopmentLoginEnabled =>
+        environment.IsDevelopment() && configuration.GetValue<bool>("Auth:PasswordlessLogin");
+
     public async Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken ct)
     {
-        var user = await users.FindByEmailAsync(request.Email.Trim());
+        var identifier = request.Email.Trim();
+        var user = await users.FindByNameAsync(identifier) ?? await users.FindByEmailAsync(identifier);
         if (user is null)
             return new LoginResult(LoginOutcome.InvalidCredentials);
 
@@ -25,6 +33,28 @@ internal sealed class AuthService(
         if (!result.Succeeded)
             return new LoginResult(LoginOutcome.InvalidCredentials); // wrong password or deactivated: same answer
 
+        user.LastLoginAt = clock.GetUtcNow();
+        await users.UpdateAsync(user);
+        return new LoginResult(LoginOutcome.Succeeded, await BuildCurrentUserAsync(user, ct));
+    }
+
+    public async Task<LoginResult> DevelopmentLoginAsync(CancellationToken ct)
+    {
+        if (!DevelopmentLoginEnabled)
+            return new LoginResult(LoginOutcome.InvalidCredentials);
+
+        // Temporary local setup: use the first active Super Admin so account creation remains available.
+        // This path is unreachable outside Development and does not alter the user's stored password.
+        var user = await (from u in db.Users
+                          join ur in db.UserRoles on u.Id equals ur.UserId
+                          join r in db.Roles on ur.RoleId equals r.Id
+                          where u.IsActive && r.Name == SystemRoles.SuperAdmin
+                          orderby u.CreatedAt, u.Id
+                          select u).FirstOrDefaultAsync(ct);
+        if (user is null)
+            return new LoginResult(LoginOutcome.InvalidCredentials);
+
+        await signIn.SignInAsync(user, isPersistent: false);
         user.LastLoginAt = clock.GetUtcNow();
         await users.UpdateAsync(user);
         return new LoginResult(LoginOutcome.Succeeded, await BuildCurrentUserAsync(user, ct));
@@ -62,7 +92,8 @@ internal sealed class AuthService(
             .OrderBy(p => p)
             .ToListAsync(ct);
 
-        return new CurrentUserDto(user.Id, user.Email!, user.FirstName, user.LastName, user.MustChangePassword,
+        return new CurrentUserDto(user.Id, user.Email!, user.FirstName, user.LastName,
+            DevelopmentLoginEnabled ? false : user.MustChangePassword,
             roles.Select(r => r.Name!).OrderBy(n => n).ToList(), permissions);
     }
 }

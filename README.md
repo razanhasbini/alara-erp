@@ -1,7 +1,7 @@
 # ÀLara Line ERP
 
 Internal operations system for **ÀLara Line**, a Lebanese haircare brand: catalogue, stock with batch and expiry
-tracking, orders from WhatsApp / Instagram / the website, courier delivery, and cash-on-delivery reconciliation.
+tracking, customer profiles and loyalty analytics, orders from WhatsApp / Instagram / the website, courier delivery, and cash-on-delivery reconciliation.
 It is an internal tool for employees, separate from the public website [alaraline.co](https://alaraline.co).
 The future React storefront will read the same catalogue.
 
@@ -25,7 +25,7 @@ backend/src/
   AlaraERP.Domain          entities + business rules (no framework dependencies)
   AlaraERP.Application     use-case services, DTOs, validators   ─┐ folders per module:
   AlaraERP.Infrastructure  EF Core, Identity, storage, CLI tasks  │ Identity · Catalog · Inventory
-  AlaraERP.Api             controllers, auth, errors, CLI entry  ─┘ Sales · Dashboard
+  AlaraERP.Api             controllers, auth, errors, CLI entry  ─┘ Sales · Dashboard · Analytics
 backend/tests/
   AlaraERP.UnitTests · AlaraERP.ArchitectureTests · AlaraERP.IntegrationTests
 frontend/src/
@@ -36,7 +36,7 @@ data/catalog/              the real catalogue, imported once (see below)
 **Module rules**, enforced by `AlaraERP.ArchitectureTests`:
 - Dependencies flow one way: Catalog ← Inventory ← Sales.
 - Sales may change stock **only** through `Inventory.Contracts.IStockReservationService`.
-- Dashboard is read-only and may read every module.
+- Dashboard and Analytics are read-only reporting modules and may read every module.
 
 ---
 
@@ -97,7 +97,7 @@ dotnet run --project src/AlaraERP.Api -- bootstrap-admin    # first Super Admin;
 ```
 
 - `import-catalog` loads the real catalogue: 28 products, 8 bundles, 5 categories and the `MAIN` warehouse.
-  - It is idempotent and additive: products are matched by SKU, and nothing that already exists is overwritten.
+  - It is idempotent and additive: products are matched by their web slug, and nothing that already exists is overwritten.
   - It creates no stock, costs or orders. Those must come from real counts.
 - `bootstrap-admin` refuses to run once an active Super Admin exists. After that, employees are created in the app under **Employees**.
 
@@ -114,6 +114,17 @@ cd frontend && npm install && npm run dev
 Open http://localhost:5173 and sign in. Sessions survive refreshes and restarts of either server, because the
 data lives in PostgreSQL and the session lives in an HttpOnly cookie.
 
+Employees can sign in with either their username or email address. For local account setup without storing a
+password in source control, run the interactive command below after `migrate`:
+
+```bash
+cd backend
+dotnet run --project src/AlaraERP.Api -- provision-user <username> <email> <first-name> <last-name> <role>
+```
+
+Local Development accepts passwords of at least eight characters. Testing and Production retain the stronger
+ten-character mixed-case policy.
+
 ## Tests and checks
 
 ```bash
@@ -126,7 +137,7 @@ The integration tests rebuild the **test** database schema on each run and trunc
 to run against a database whose name doesn't end in `_test`.
 
 The browser smoke test (`frontend/e2e/smoke.mjs`) drives the whole flow: sign in → receive stock → order a bundle
-→ confirm → ship → deliver → check the dashboard, plus a phone-width check. **It creates data**, so point it at an
+→ confirm → ship → deliver → inspect profit → withdraw a bundle → check the operational views, plus a phone-width check. **It creates data**, so point it at an
 API that uses the test database:
 
 ```bash
@@ -158,7 +169,7 @@ The API never migrates or resets the database at startup.
 - **Brute force.**
   - An account locks for 15 minutes after 5 failed sign-ins.
   - Login is also rate-limited per IP.
-  - An unknown email and a wrong password get the same answer.
+  - An unknown username/email and a wrong password get the same answer.
 - **Sessions are re-checked every minute.** Deactivation, password resets and role changes therefore reach open sessions within a minute.
 - **Authorization.** Named permissions (e.g. `orders.create`) stored as role claims are checked by the API on every endpoint. The UI only hides what the API would refuse anyway.
 - **No privilege escalation.**
@@ -174,9 +185,9 @@ The API never migrates or resets the database at startup.
 | Role | Can |
 |---|---|
 | Super Admin | everything, including employees and roles |
-| Manager | catalogue and prices, stock, thresholds, warehouses, orders, payments and courier cash, couriers, reports; view employees |
+| Manager | catalogue, prices and costs; stock, thresholds, warehouses, orders, payments and courier cash, couriers, sales/profit reports; view employees |
 | Inventory Manager | view products; receive, adjust and transfer stock |
-| Sales Employee | view products and stock; create, update and cancel orders |
+| Sales Employee | manage products, bundles and categories; manage customers and orders; receive and view stock, receipts, warehouses and movements |
 | Viewer | read-only catalogue, stock, orders and reports |
 
 The full matrix is on the **Roles & permissions** page and in `Application/Common/Security/SystemRoles.cs`.
@@ -185,27 +196,35 @@ Roles are defined in code and synced to the database by `migrate`.
 ## Business rules (summary)
 
 **Catalogue**
-- Each product is one sellable item, and each scent is its own SKU.
-- A bundle is its own product with its own price. Bundles with a scent choice are one SKU per scent.
+- Each product is one sellable item, and each scent is its own product.
+- A bundle is its own product with its own price. Bundles with a scent choice are separate products per scent.
 - Bundles hold no stock of their own: selling one reserves and deducts its components.
 - Bundle availability = the minimum, across its components, of ⌊available ÷ quantity per bundle⌋.
 - Products with history can't be deleted, only deactivated.
+- Individual products may have a standard landed unit cost. Cost fields are visible only with `costs.view`.
 
 **Stock**
 - All stock lives in batches; products that track expiry need an expiry date when received.
-- Shipping and transfers pick the **earliest-expiring** batch first.
+- Order confirmation and transfers pick the **earliest-expiring** batch first.
 - **Expired units are never shipped.** They must be written off with an "Expired" adjustment.
 - Reserved stock can't be adjusted away or transferred.
 - Each product has a low-stock alert threshold, set by a Manager.
 - Every change writes an immutable movement record.
+- A batch keeps its weighted unit cost, and every movement snapshots the cost used at that moment.
+- Taking a bundle out for a PR box, gift, loss or damage deducts its component products; bundles never gain a separate stock balance.
 
 **Order lifecycle**
-- **Draft:** editable, nothing reserved.
-- **Confirmed:** stock is reserved. "Reopen" releases it.
-- **Shipped:** stock is deducted from batches. This happens exactly once.
+- **Draft:** editable, stock is unchanged.
+- **Confirmed:** stock is deducted immediately from FEFO batches. "Reopen" returns it.
+- **Shipped:** courier and tracking details are recorded separately; stock is not changed again.
 - **Delivered**, or **Returned** (stock goes back into the same batches it left from).
-- **Cancelled** is possible only before shipping, and releases any reservation.
+- **Cancelled** is possible only before shipping, and returns stock deducted at confirmation.
 - Prices, names and bundle contents are frozen when the order is placed.
+
+**Customers**
+- Every new order links to a durable customer profile. A phone number already on file reuses the same customer, including equivalent Lebanese formats such as `+961 70…`, `70…`, and `03…`.
+- Orders keep their own recipient and address snapshot, so editing a customer later never rewrites old orders.
+- The Customers page shows lifetime orders, total ordered, total paid, average order value, and last activity.
 
 **Cash on delivery**
 - Delivered by a courier: the payment is *With courier* until a **courier hand-over** is recorded, which marks the orders *Paid* and records the courier's fees.
@@ -214,3 +233,6 @@ Roles are defined in code and synced to the database by `migrate`.
 **Money**
 - Amounts are in USD, using `decimal` / `NUMERIC(12,2)`.
 - "Cash collected" on the dashboard counts **paid** orders only.
+- Analytics reports sales on the confirmation date and excludes cancelled and returned orders. Cost of goods uses the exact batches deducted at confirmation.
+- Loyalty analytics can rank customers by order count, total ordered, total paid, average order value, reorder frequency, or most recent order for the selected period.
+- Bundle revenue is allocated across its component products by their full prices. Profit reports flag shipped units with no recorded cost.

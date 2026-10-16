@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import type { Movement, MovementType, Paged } from "@/types/api"
 
 const typeLabel: Record<MovementType, string> = {
-  Receipt: "Received", Shipment: "Shipped", Return: "Returned", AdjustmentIncrease: "Adjusted +", AdjustmentDecrease: "Adjusted −",
+  Receipt: "Received", Shipment: "Order confirmed", Return: "Returned", AdjustmentIncrease: "Adjusted +", AdjustmentDecrease: "Adjusted −",
   TransferOut: "Transfer out", TransferIn: "Transfer in",
 }
 
@@ -33,7 +33,7 @@ export function MovementsPage() {
 
   const columns: Column<Movement>[] = [
     { key: "when", header: "When", cell: (m) => <span className="whitespace-nowrap">{when(m.createdAt)}</span> },
-    { key: "product", header: "Product", cell: (m) => <div><Link to={`/products/${m.productId}`} className="hover:underline">{m.productName}</Link><div className="code text-muted-foreground">{m.sku} · {m.batchNumber}</div></div> },
+    { key: "product", header: "Product", cell: (m) => <div><Link to={`/products/${m.productId}`} className="hover:underline">{m.productName}</Link><div className="text-xs text-muted-foreground">Batch {m.batchNumber}</div></div> },
     { key: "type", header: "Movement", cell: (m) => <span className="whitespace-nowrap">{typeLabel[m.type]}{m.reason && <span className="text-muted-foreground"> · {humanize(m.reason)}</span>}</span> },
     { key: "qty", header: "Units", align: "right", cell: (m) => <span className={cn("tabular font-semibold", m.quantityChange > 0 ? "text-tone-green" : "text-tone-red")}>{m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}</span> },
     { key: "wh", header: "Warehouse", hideOnMobile: true, cell: (m) => <span className="code">{m.warehouseCode}</span> },

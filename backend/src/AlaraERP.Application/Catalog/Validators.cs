@@ -5,7 +5,6 @@ namespace AlaraERP.Application.Catalog;
 
 internal static class CatalogRules
 {
-    public const string SkuPattern = "^[A-Za-z0-9][A-Za-z0-9-]{1,79}$";
     public const string SlugPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";
 }
 
@@ -26,8 +25,6 @@ internal sealed class ProductDetailsValidator : AbstractValidator<ProductDetails
     public ProductDetailsValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Sku).NotEmpty().Matches(CatalogRules.SkuPattern)
-            .WithMessage("SKU must be 2–80 characters: letters, digits and hyphens.");
         RuleFor(x => x.Slug).MaximumLength(180).Matches(CatalogRules.SlugPattern).When(x => !string.IsNullOrEmpty(x.Slug))
             .WithMessage("Use lowercase letters, digits and single hyphens.");
         RuleFor(x => x.Barcode).MaximumLength(100);
@@ -43,6 +40,7 @@ internal sealed class ProductDetailsValidator : AbstractValidator<ProductDetails
         RuleFor(x => x.CompareAtPrice).GreaterThanOrEqualTo(x => x.SellingPrice).When(x => x.CompareAtPrice.HasValue)
             .WithMessage("The 'compare at' price must be at least the selling price.");
         RuleFor(x => x.CompareAtPrice).PrecisionScale(12, 2, true).When(x => x.CompareAtPrice.HasValue);
+        RuleFor(x => x.StandardCost).GreaterThanOrEqualTo(0).PrecisionScale(12, 4, true).When(x => x.StandardCost.HasValue);
     }
 }
 

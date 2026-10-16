@@ -89,6 +89,12 @@ public sealed class InventoryController(
     [HasPermission(Inventory.Adjust)]
     public Task<MovementDto> Adjust(AdjustStockRequest request, CancellationToken ct) => operations.AdjustAsync(request, ct);
 
+    /// <summary>Takes whole bundles out of stock (PR, gifts, damage): deducts each component, never a "bundle stock".</summary>
+    [HttpPost("bundle-withdrawals")]
+    [HasPermission(Inventory.Adjust)]
+    public Task<IReadOnlyList<MovementDto>> WithdrawBundle(WithdrawBundleRequest request, CancellationToken ct) =>
+        operations.WithdrawBundleAsync(request, ct);
+
     [HttpGet("transfers")]
     [HasPermission(Inventory.View)]
     public Task<PagedResult<TransferDto>> Transfers([FromQuery] Guid? warehouseId, [FromQuery] int page = 1,

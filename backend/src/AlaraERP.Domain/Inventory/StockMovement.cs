@@ -16,7 +16,7 @@ public sealed class StockMovement
     public StockMovement(
         Guid warehouseId, Guid productId, Guid batchId, MovementType type, int quantityChange,
         MovementReference referenceType, Guid referenceId, string? referenceNumber, Guid? performedByUserId, DateTimeOffset createdAt,
-        AdjustmentReason? reason = null, string? notes = null)
+        AdjustmentReason? reason = null, string? notes = null, decimal? unitCost = null)
     {
         if (quantityChange == 0)
             throw new DomainException("inventory.zero_movement", "A stock movement cannot have a zero quantity.");
@@ -37,6 +37,7 @@ public sealed class StockMovement
         CreatedAt = createdAt;
         Reason = reason;
         Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        UnitCost = unitCost;
     }
 
     public Guid Id { get; private set; }
@@ -45,6 +46,8 @@ public sealed class StockMovement
     public Guid BatchId { get; private set; }
     public MovementType Type { get; private set; }
     public int QuantityChange { get; private set; }
+    /// <summary>Cost per unit of the units moved (from their batch) — the basis of cost of goods sold.</summary>
+    public decimal? UnitCost { get; private set; }
     public AdjustmentReason? Reason { get; private set; }
     public MovementReference ReferenceType { get; private set; }
     public Guid ReferenceId { get; private set; }

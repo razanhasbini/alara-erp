@@ -10,6 +10,34 @@ namespace AlaraERP.IntegrationTests.Business;
 public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factory)
 {
     [Fact]
+    public async Task Super_admin_can_deactivate_and_reactivate_expiry_dates_without_losing_the_workflow()
+    {
+        var (manager, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var first = await s.ProductAsync("ALR-NO-EXPIRY", 18m);
+        var second = await s.ProductAsync("ALR-NEEDS-EXPIRY", 19m);
+        using var superAdmin = await SignedInAsAsync(SystemRoles.SuperAdmin);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.GetAsync("/api/settings/features")).StatusCode);
+        var disabled = await (await superAdmin.PutAsync("/api/settings/features/expiry-dates", new UpdateExpiryDatesRequest(false)))
+            .OkJsonAsync<InventoryFeatureSettingsDto>();
+        var received = await manager.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(first.Id, 3, null, null, null)]));
+
+        Assert.False(disabled.ExpiryDatesEnabled);
+        Assert.Equal(HttpStatusCode.Created, received.StatusCode);
+        Assert.Null(Assert.Single((await s.StockAsync(first.Id)).Batches).ExpiryDate);
+
+        var enabled = await (await superAdmin.PutAsync("/api/settings/features/expiry-dates", new UpdateExpiryDatesRequest(true)))
+            .OkJsonAsync<InventoryFeatureSettingsDto>();
+        var missing = await manager.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(second.Id, 3, null, null, null)]));
+
+        Assert.True(enabled.ExpiryDatesEnabled);
+        Assert.Equal("inventory.expiry_required", await missing.ProblemCodeAsync());
+    }
+
+    [Fact]
     public async Task Receiving_stock_creates_batch_balance_and_receipt_movement()
     {
         var (client, s) = await ManagerAsync();
@@ -66,14 +94,14 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
     }
 
     [Fact]
-    public async Task Adjustments_need_a_reason_and_never_eat_into_reserved_stock()
+    public async Task Adjustments_need_a_reason_and_cannot_remove_more_than_remains_after_confirmed_sales()
     {
         var (client, s) = await ManagerAsync();
         var warehouse = await s.WarehouseAsync();
         var oil = await s.ProductAsync("ALR-BC-TANOIL", 16m);
         await s.ReceiveAsync(warehouse.Id, oil.Id, 10);
         var batchId = (await s.StockAsync(oil.Id)).Batches.Single().BatchId;
-        await s.OrderAsync(warehouse.Id, confirm: true, (oil.Id, 7)); // 7 reserved, 3 free
+        await s.OrderAsync(warehouse.Id, confirm: true, (oil.Id, 7)); // 7 deducted, 3 remain
 
         var noReason = await client.PostAsync("/api/inventory/adjustments",
             new AdjustStockRequest(warehouse.Id, oil.Id, -1, AdjustmentReason.Other, null, batchId, null, null));
@@ -83,11 +111,11 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
             new AdjustStockRequest(warehouse.Id, oil.Id, -3, AdjustmentReason.Damaged, "Broken bottles", batchId, null, null));
 
         Assert.Equal(HttpStatusCode.BadRequest, noReason.StatusCode);
-        Assert.Equal("inventory.insufficient_available", await tooMuch.ProblemCodeAsync());
+        Assert.Equal("inventory.insufficient_batch_stock", await tooMuch.ProblemCodeAsync());
         var movement = await ok.OkJsonAsync<MovementDto>();
         Assert.Equal((MovementType.AdjustmentDecrease, -3, AdjustmentReason.Damaged), (movement.Type, movement.QuantityChange, movement.Reason));
         var stock = await s.StockAsync(oil.Id);
-        Assert.Equal((7, 7, 0), (stock.OnHand, stock.Reserved, stock.Available));
+        Assert.Equal((0, 0, 0), (stock.OnHand, stock.Reserved, stock.Available));
     }
 
     [Fact]
@@ -162,7 +190,7 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
     }
 
     [Fact]
-    public async Task Only_managers_set_thresholds_and_sales_cannot_move_stock()
+    public async Task Operational_staff_can_receive_stock_but_cannot_adjust_it_or_set_thresholds()
     {
         var (_, s) = await ManagerAsync();
         var warehouse = await s.WarehouseAsync();
@@ -173,12 +201,16 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
         var threshold = await stockKeeper.PutAsync($"/api/inventory/settings/{mask.Id}", new UpdateInventorySettingsRequest(3, true));
         var receive = await stockKeeper.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
             [new ReceiveLineInput(mask.Id, 5, null, null, Scenario.InAYear)]));
+        var salesReceive = await sales.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, "Supplier", "DIANA-1", null, null,
+            [new ReceiveLineInput(mask.Id, 2, null, null, Scenario.InAYear)]));
         var salesAdjust = await sales.PostAsync("/api/inventory/adjustments",
             new AdjustStockRequest(warehouse.Id, mask.Id, 5, AdjustmentReason.CountCorrection, null, null, null, Scenario.InAYear));
 
         Assert.Equal(HttpStatusCode.Forbidden, threshold.StatusCode);
         Assert.Equal(HttpStatusCode.Created, receive.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, salesReceive.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, salesAdjust.StatusCode);
+        Assert.Equal(7, (await s.StockAsync(mask.Id)).OnHand);
     }
 
     [Fact]

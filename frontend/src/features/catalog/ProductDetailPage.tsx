@@ -1,7 +1,7 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ImagePlus, Pencil, Star, Trash2 } from "lucide-react"
+import { ImagePlus, PackageMinus, Pencil, Star, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog } from "@/components/common/controls"
@@ -11,11 +11,12 @@ import { ErrorState, FullPageSpinner, InlineSpinner } from "@/components/common/
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { api, errorMessage } from "@/lib/api"
-import { dateOnly, dateTime, money, number } from "@/lib/format"
+import { cost as fmtCost, date, dateOnly, dateTime, money, number, percent, todayIso } from "@/lib/format"
 import { P } from "@/lib/permissions"
-import { qk, useAvailability } from "@/lib/queries"
+import { qk, useAvailability, useSettings } from "@/lib/queries"
 import { cn } from "@/lib/utils"
-import type { ProductDetail, ProductStock } from "@/types/api"
+import type { ProductAnalytics, ProductDetail, ProductStock } from "@/types/api"
+import { WithdrawBundleDialog } from "./WithdrawBundleDialog"
 import { BundleComponentsEditor, type ComponentLine } from "./BundleComponentsEditor"
 
 export function ProductDetailPage() {
@@ -23,6 +24,8 @@ export function ProductDetailPage() {
   const { can } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { data: settings } = useSettings()
+  const expiryEnabled = settings?.expiryDatesEnabled ?? false
   const { data: p, isLoading, error, refetch } = useQuery({ queryKey: qk.product(id), queryFn: () => api<ProductDetail>(`/api/products/${id}`) })
   const isIndividual = p?.type === "Individual"
   const { data: stock } = useQuery({
@@ -33,6 +36,15 @@ export function ProductDetailPage() {
   const { data: available } = useAvailability(p ? [p.id, ...componentIds] : [], undefined, !!p && can(P.inventory.view))
   const [confirm, setConfirm] = useState<"delete" | "deactivate" | null>(null)
   const [editComponents, setEditComponents] = useState(false)
+  const [withdraw, setWithdraw] = useState(false)
+  // Today's set cost and margin for bundles (cost-viewers only).
+  const { data: costing } = useQuery({
+    queryKey: ["analytics", "costing"],
+    queryFn: () => api<ProductAnalytics>("/api/analytics/products", { query: { from: todayIso(), to: todayIso() } }),
+    enabled: p?.type === "Bundle" && can(P.costs.view) && can(P.reports.view),
+    staleTime: 60_000,
+  })
+  const bundleCosting = costing?.bundles.find((b) => b.productId === id)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["catalog"] })
   const setActive = useMutation({
@@ -56,7 +68,6 @@ export function ProductDetailPage() {
         back={{ to: p.type === "Bundle" ? "/products/bundles" : "/products", label: p.type === "Bundle" ? "Bundles" : "Products" }}
         title={p.name}
         meta={<>
-          <span className="code rounded bg-secondary px-1.5 py-0.5">{p.sku}</span>
           <ActivePill active={p.isActive} />
           {p.type === "Bundle" && <Pill tone="rose" dot={false}>Bundle</Pill>}
           {stock && <StockStatusPill status={stock.status} />}
@@ -65,6 +76,9 @@ export function ProductDetailPage() {
           {can(P.products.update) && (p.isActive
             ? <Button variant="outline" onClick={() => setConfirm("deactivate")}>Deactivate</Button>
             : <Button variant="outline" onClick={() => setActive.mutate(true)} disabled={setActive.isPending}>Activate</Button>)}
+          {p.type === "Bundle" && p.isActive && can(P.inventory.adjust) && (
+            <Button variant="outline" onClick={() => setWithdraw(true)}><PackageMinus /> Take out of stock</Button>
+          )}
           {can(P.products.delete) && <Button variant="ghost" aria-label="Delete product" onClick={() => setConfirm("delete")}><Trash2 /></Button>}
           {can(P.products.update) && <Button asChild><Link to={`/products/${p.id}/edit`}><Pencil /> Edit</Link></Button>}
         </>}
@@ -91,14 +105,14 @@ export function ProductDetailPage() {
           </Section>
 
           {p.type === "Bundle" && (
-            <Section title="In this bundle" actions={can(P.products.update) && <Button size="sm" variant="outline" onClick={() => setEditComponents(true)}>Edit contents</Button>}>
+            <Section title="In this bundle — selling one deducts these" actions={can(P.products.update) && <Button size="sm" variant="outline" onClick={() => setEditComponents(true)}>Edit contents</Button>}>
               <table className="w-full text-sm">
                 <tbody>
                   {p.bundleItems.map((b) => (
                     <tr key={b.componentProductId} className="border-b border-hairline last:border-0">
                       <td className="px-4 py-2.5">
                         <Link to={`/products/${b.componentProductId}`} className="hover:underline">{b.name}</Link>
-                        <div className="code text-muted-foreground">{b.sku}{!b.isActive && " · inactive"}</div>
+                        {!b.isActive && <div className="text-xs text-muted-foreground">Inactive</div>}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular">× {b.quantity}</td>
                       <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{money(b.unitPrice * b.quantity)}</td>
@@ -130,6 +144,40 @@ export function ProductDetailPage() {
 
         <div className="grid content-start gap-6">
           <ImagesSection product={p} canEdit={can(P.products.update)} />
+          {stock?.cost && (
+            <Section title="Cost & margin" bodyClassName="p-4">
+              {(() => {
+                const unitCost = stock.cost.averageCost
+                const earn = unitCost !== null ? p.sellingPrice - unitCost : null
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 border-b border-hairline pb-3 text-center">
+                      <div><div className="font-display text-2xl tabular">{fmtCost(unitCost)}</div><div className="eyebrow">Unit cost</div></div>
+                      <div><div className={cn("font-display text-2xl tabular", earn !== null && earn < 0 && "text-tone-red")}>{earn === null ? "—" : money(earn)}</div>
+                        <div className="eyebrow">You earn · {earn === null || p.sellingPrice <= 0 ? "—" : percent((earn / p.sellingPrice) * 100, 0)}</div></div>
+                    </div>
+                    <Facts className="mt-3 text-xs" items={[
+                      ["Standard cost", fmtCost(stock.cost.standardCost)],
+                      ["Last invoice", stock.cost.lastReceiptCost !== null ? `${fmtCost(stock.cost.lastReceiptCost)} · ${date(stock.cost.lastReceivedAt)}` : "—"],
+                      ["Stock value", money(stock.cost.stockValue)],
+                    ]} />
+                    {unitCost === null && <p className="mt-2 text-xs text-tone-amber">No cost recorded yet — set the unit cost when editing the product or receiving stock.</p>}
+                    {stock.cost.uncostedUnits > 0 && <p className="mt-2 text-xs text-tone-amber">{stock.cost.uncostedUnits} unit(s) in stock have no cost.</p>}
+                  </>
+                )
+              })()}
+            </Section>
+          )}
+          {p.type === "Bundle" && bundleCosting && (
+            <Section title="Cost & margin" bodyClassName="p-4">
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div><div className="font-display text-2xl tabular">{money(bundleCosting.componentsCost)}</div><div className="eyebrow">Set cost</div></div>
+                <div><div className={cn("font-display text-2xl tabular", (bundleCosting.unitMargin ?? 0) < 0 && "text-tone-red")}>{money(bundleCosting.unitMargin)}</div>
+                  <div className="eyebrow">You earn · {percent(bundleCosting.unitMarginPercent, 0)}</div></div>
+              </div>
+              {bundleCosting.componentsCost === null && <p className="mt-2 text-xs text-tone-amber">Some products in this bundle have no cost yet.</p>}
+            </Section>
+          )}
           {stock && (
             <Section title="Stock" actions={<Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>}
               bodyClassName="p-4">
@@ -139,14 +187,14 @@ export function ProductDetailPage() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                Low-stock alert at {stock.settings.lowStockThreshold} · {stock.settings.tracksExpiry ? "tracks expiry dates" : "no expiry tracking"}
+                Low-stock alert at {stock.settings.lowStockThreshold}{expiryEnabled && <> · {stock.settings.tracksExpiry ? "tracks expiry dates" : "no expiry tracking"}</>}
               </p>
               {stock.batches.length > 0 && (
                 <ul className="mt-3 divide-y divide-hairline border-t border-hairline text-xs">
                   {stock.batches.map((b) => (
                     <li key={`${b.batchId}-${b.warehouseId}`} className="flex justify-between py-1.5">
                       <span><span className="code">{b.batchNumber}</span> <span className="text-muted-foreground">· {b.warehouseCode}</span></span>
-                      <span className={cn("tabular", b.isExpired && "text-tone-red")}>{b.onHand} · {b.expiryDate ? dateOnly(b.expiryDate) : "no expiry"}</span>
+                      <span className={cn("tabular", expiryEnabled && b.isExpired && "text-tone-red")}>{b.onHand}{expiryEnabled && <> · {b.expiryDate ? dateOnly(b.expiryDate) : "no expiry"}</>}</span>
                     </li>
                   ))}
                 </ul>
@@ -165,6 +213,7 @@ export function ProductDetailPage() {
       {editComponents && (
         <ComponentsDialog product={p} onClose={() => setEditComponents(false)} />
       )}
+      {withdraw && <WithdrawBundleDialog bundle={p} onClose={() => setWithdraw(false)} />}
     </>
   )
 }
@@ -172,7 +221,7 @@ export function ProductDetailPage() {
 function ComponentsDialog({ product, onClose }: { product: ProductDetail; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [lines, setLines] = useState<ComponentLine[]>(product.bundleItems.map((b) => ({
-    productId: b.componentProductId, name: b.name, sku: b.sku, unitPrice: b.unitPrice, quantity: b.quantity,
+    productId: b.componentProductId, name: b.name, unitPrice: b.unitPrice, quantity: b.quantity,
   })))
   const save = useMutation({
     mutationFn: () => api(`/api/products/${product.id}/bundle-items`, {
@@ -199,18 +248,19 @@ function ComponentsDialog({ product, onClose }: { product: ProductDetail; onClos
 function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: boolean }) {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
+  const [pendingImages, setPendingImages] = useState<File[]>([])
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["catalog"] })
   const upload = useMutation({
-    mutationFn: async (files: FileList) => {
-      for (const file of Array.from(files)) {
+    mutationFn: async (files: File[]) => {
+      for (const file of files) {
         if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} is larger than 5 MB.`)
         const body = new FormData()
         body.append("file", file)
         await api(`/api/products/${product.id}/images`, { method: "POST", body })
       }
     },
-    onSuccess: async () => { await refresh(); toast.success("Image uploaded") },
-    onError: async (e) => { await refresh(); toast.error(errorMessage(e)) },
+    onSuccess: async (_, files) => { await refresh(); setPendingImages([]); toast.success(files.length === 1 ? "Photo uploaded and now visible" : `${files.length} photos uploaded and now visible`) },
+    onError: async (e) => { await refresh(); setPendingImages([]); toast.error(errorMessage(e)) },
   })
   const primary = useMutation({
     mutationFn: (imageId: string) => api(`/api/products/${product.id}/images/${imageId}/primary`, { method: "PUT" }),
@@ -226,13 +276,20 @@ function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: 
     <Section title="Images" actions={canEdit && (
       <>
         <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
-          onChange={(e) => { if (e.target.files?.length) upload.mutate(e.target.files); e.target.value = "" }} />
+          onChange={(e) => {
+            if (e.target.files?.length) {
+              const files = Array.from(e.target.files)
+              setPendingImages(files)
+              upload.mutate(files)
+            }
+            e.target.value = ""
+          }} />
         <Button size="sm" variant="outline" onClick={() => input.current?.click()} disabled={upload.isPending}>
-          {upload.isPending ? <InlineSpinner /> : <ImagePlus />} Upload
+          {upload.isPending ? <InlineSpinner /> : <ImagePlus />} {upload.isPending ? "Uploading…" : "Upload"}
         </Button>
       </>
     )} bodyClassName="p-3">
-      {images.length === 0 ? (
+      {images.length === 0 && pendingImages.length === 0 ? (
         <p className="px-1 py-6 text-center text-xs text-muted-foreground">No images yet. JPEG, PNG or WebP up to 5 MB.</p>
       ) : (
         <ul className="grid grid-cols-2 gap-2">
@@ -250,8 +307,20 @@ function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: 
               )}
             </li>
           ))}
+          {pendingImages.map((file) => <PendingImagePreview key={`${file.name}-${file.size}-${file.lastModified}`} file={file} />)}
         </ul>
       )}
     </Section>
+  )
+}
+
+function PendingImagePreview({ file }: { file: File }) {
+  const [src] = useState(() => URL.createObjectURL(file))
+  useEffect(() => () => URL.revokeObjectURL(src), [src])
+  return (
+    <li className="relative overflow-hidden rounded-md border border-rose bg-white">
+      <img src={src} alt="Photo being uploaded" className="aspect-square w-full object-cover" />
+      <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded bg-white/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-rose-ink"><InlineSpinner className="size-2.5" />Uploading</span>
+    </li>
   )
 }

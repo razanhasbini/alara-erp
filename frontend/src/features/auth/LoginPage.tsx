@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { ApiError, errorMessage } from "@/lib/api"
 
 const schema = z.object({
-  email: z.string().trim().min(1, "Enter your email."),
+  email: z.string().trim().min(1, "Enter your username."),
   password: z.string().min(1, "Enter your password."),
 })
 type Values = z.infer<typeof schema>
@@ -29,7 +29,8 @@ export function LoginPage() {
     setError(null)
     try {
       const me = await login(email, password)
-      navigate(me.mustChangePassword ? "/profile" : from, { replace: true })
+      const isSuperAdmin = me.roles.includes("Super Admin")
+      navigate(me.mustChangePassword ? "/profile" : isSuperAdmin ? from : "/inventory", { replace: true })
     } catch (e) {
       setError(e instanceof ApiError && e.status === 401 ? e.message : errorMessage(e))
     }
@@ -52,8 +53,8 @@ export function LoginPage() {
           <p className="mt-1 text-sm text-muted-foreground">Use the account your administrator created for you.</p>
 
           <div className="mt-8 grid gap-4">
-            <Field label="Email" htmlFor="email" error={errors.email?.message}>
-              <Input id="email" type="email" autoComplete="username" autoFocus aria-invalid={!!errors.email} {...register("email")} />
+            <Field label="Username" htmlFor="email" error={errors.email?.message}>
+              <Input id="email" type="text" autoComplete="username" autoFocus aria-invalid={!!errors.email} {...register("email")} />
             </Field>
             <Field label="Password" htmlFor="password" error={errors.password?.message}>
               <Input id="password" type="password" autoComplete="current-password" aria-invalid={!!errors.password} {...register("password")} />

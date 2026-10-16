@@ -2,7 +2,6 @@
   "source": "https://alaraline.co (public catalogue, read 2026-10-15)",
   "currency": "USD",
   "notes": [
-    "SKUs were assigned for the ERP; the website has none.",
     "Sizes (ml/g) are not published on the site and are left empty.",
     "Weights are taken from the product pages where listed.",
     "No stock, costs or batches are included: those must be entered from real counts."
@@ -42,7 +41,6 @@
   ],
   "products": [
     {
-      "sku": "ALR-HC-SHAM-OH",
       "name": "Intensive Repair Shampoo – Oh Honey",
       "slug": "shampoo",
       "category": "hair-care",
@@ -57,7 +55,6 @@
       "weightGrams": 570
     },
     {
-      "sku": "ALR-HC-SHAM-TV",
       "name": "Intensive Repair Shampoo – Tropical Vanilla",
       "slug": "intensive-repair-shampoo-tropical-vanilla",
       "category": "hair-care",
@@ -72,7 +69,6 @@
       "weightGrams": 570
     },
     {
-      "sku": "ALR-HC-COND-OH",
       "name": "Hydrating Conditioner – Oh Honey",
       "slug": "conditioner",
       "category": "hair-care",
@@ -87,7 +83,6 @@
       "weightGrams": 530
     },
     {
-      "sku": "ALR-HC-COND-TV",
       "name": "Hydrating Conditioner – Tropical Vanilla",
       "slug": "hydrating-conditioner-tropical-vanilla",
       "category": "hair-care",
@@ -102,7 +97,6 @@
       "weightGrams": 530
     },
     {
-      "sku": "ALR-HC-LEAVEIN",
       "name": "Leave In Your Dreams",
       "slug": "leave-in",
       "category": "hair-care",
@@ -117,7 +111,6 @@
       "weightGrams": 280
     },
     {
-      "sku": "ALR-HC-MASK",
       "name": "Miracle Mask",
       "slug": "miracle-mask",
       "category": "hair-care",
@@ -132,7 +125,6 @@
       "weightGrams": 310
     },
     {
-      "sku": "ALR-HC-MIRACLE-PRO",
       "name": "The Miracle Pro-Edition",
       "slug": "miracle-pro-edition",
       "category": "hair-care",
@@ -147,7 +139,6 @@
       "weightGrams": 250
     },
     {
-      "sku": "ALR-HC-SHAM-AD",
       "name": "Anti-Dandruff Shampoo",
       "slug": "anti-dandruff-shampoo",
       "category": "hair-care",
@@ -162,7 +153,6 @@
       "weightGrams": 580
     },
     {
-      "sku": "ALR-HC-SCRUB",
       "name": "Detox Scalp Scrub",
       "slug": "detox-scalp-scrub",
       "category": "hair-care",
@@ -177,7 +167,6 @@
       "weightGrams": null
     },
     {
-      "sku": "ALR-HC-CAPS",
       "name": "Deep Repair Capsules",
       "slug": "deep-repair-capsules",
       "category": "hair-care",
@@ -192,7 +181,6 @@
       "weightGrams": 60
     },
     {
-      "sku": "ALR-HC-HEATPRO",
       "name": "Heat Protectant",
       "slug": "heat-protectant",
       "category": "hair-care",
@@ -207,7 +195,6 @@
       "weightGrams": 415
     },
     {
-      "sku": "ALR-HC-WAXSTICK",
       "name": "Edge Control Wax Stick",
       "slug": "wax-stick-styling-hair-wax",
       "category": "hair-care",
@@ -222,7 +209,6 @@
       "weightGrams": 108
     },
     {
-      "sku": "ALR-HC-SERUM",
       "name": "Crystal Glow Hair Serum",
       "slug": "serum",
       "category": "hair-care",
@@ -237,7 +223,6 @@
       "weightGrams": 175
     },
     {
-      "sku": "ALR-HC-MIST-TV",
       "name": "Hair Mist – Tropical Vanilla",
       "slug": "hair-mist-tropical-vanilla",
       "category": "hair-care",
@@ -252,7 +237,6 @@
       "weightGrams": 141
     },
     {
-      "sku": "ALR-HC-MIST-OH",
       "name": "Hair Mist – Oh Honey",
       "slug": "hair-mist-oh-honey",
       "category": "hair-care",
@@ -267,7 +251,6 @@
       "weightGrams": 141
     },
     {
-      "sku": "ALR-HC-MIST-GT",
       "name": "Hair Mist – Green Tea",
       "slug": "hair-mist-green-tea",
       "category": "hair-care",
@@ -282,7 +265,6 @@
       "weightGrams": 141
     },
     {
-      "sku": "ALR-HC-MIST-AM",
       "name": "Hair Mist – Amber Musk",
       "slug": "hair-mist-amber-musk",
       "category": "hair-care",
@@ -297,7 +279,6 @@
       "weightGrams": 141
     },
     {
-      "sku": "ALR-CO-SHAM",
       "name": "Curl Defining Shampoo",
       "slug": "curl-defining-shampoo",
       "category": "curls-on-collection",
@@ -312,7 +293,6 @@
       "weightGrams": null
     },
     {
-      "sku": "ALR-CO-COND",
       "name": "Hydrating Curl Conditioner",
       "slug": "hydrating-curl-conditioner",
       "category": "curls-on-collection",
@@ -327,7 +307,6 @@
       "weightGrams": null
     },
     {
-      "sku": "ALR-CO-CREAM",
       "name": "Curl Boosting Cream",
       "slug": "curl-boosting-cream",
       "category": "curls-on-collection",
@@ -342,7 +321,6 @@
       "weightGrams": null
     },
     {
-      "sku": "ALR-ACC-BRUSH",
       "name": "Curly Hair Brush",
       "slug": "curly-hair-brush",
       "category": "hair-accessories",
@@ -357,7 +335,6 @@
       "weightGrams": 78
     },
     {
-      "sku": "ALR-ACC-PILLOW",
       "name": "Satin Pillow Cover",
       "slug": "satin-pillow-cover",
       "category": "hair-accessories",
@@ -372,7 +349,6 @@
       "weightGrams": 65
     },
     {
-      "sku": "ALR-ACC-MASSAGER",
       "name": "Scalp Massager",
       "slug": "scalp-massager",
       "category": "hair-accessories",
@@ -387,7 +363,6 @@
       "weightGrams": 41
     },
     {
-      "sku": "ALR-ACC-DERMAROLLER",
       "name": "Derma Roller 0.25mm",
       "slug": "dermaroller",
       "category": "hair-accessories",
@@ -402,7 +377,6 @@
       "weightGrams": 67
     },
     {
-      "sku": "ALR-ACC-DIFFUSER",
       "name": "Diffuser Top for Hair Dryers",
       "slug": "diffuser-top",
       "category": "hair-accessories",
@@ -417,7 +391,6 @@
       "weightGrams": 148
     },
     {
-      "sku": "ALR-ACC-POUCH",
       "name": "ÀLara’s Pouch",
       "slug": "alaras-pouch",
       "category": "hair-accessories",
@@ -432,7 +405,6 @@
       "weightGrams": null
     },
     {
-      "sku": "ALR-ACC-TOWEL",
       "name": "Microfiber Hair Towel",
       "slug": "microfiber-towel",
       "category": "hair-accessories",
@@ -447,7 +419,6 @@
       "weightGrams": 70
     },
     {
-      "sku": "ALR-BC-TANOIL",
       "name": "Golden Dusky Tanning Oil",
       "slug": "golden-dusky-tanning-oil",
       "category": "body-care",
@@ -464,7 +435,6 @@
   ],
   "bundles": [
     {
-      "sku": "ALR-SET-FULL-OH",
       "name": "Full Treatment Set – Oh Honey",
       "slug": "full-treatment-set-oh-honey",
       "category": "sets-and-bundles",
@@ -474,31 +444,30 @@
       "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams\nMiracle Mask\nThe Miracle Pro-Edition",
       "components": [
         {
-          "sku": "ALR-HC-SHAM-OH",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "shampoo"
         },
         {
-          "sku": "ALR-HC-COND-OH",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "conditioner"
         },
         {
-          "sku": "ALR-HC-LEAVEIN",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "leave-in"
         },
         {
-          "sku": "ALR-HC-MASK",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-mask"
         },
         {
-          "sku": "ALR-HC-MIRACLE-PRO",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-pro-edition"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/full-treatment-set/",
       "sourceId": 3947
     },
     {
-      "sku": "ALR-SET-FULL-TV",
       "name": "Full Treatment Set – Tropical Vanilla",
       "slug": "full-treatment-set-tropical-vanilla",
       "category": "sets-and-bundles",
@@ -508,31 +477,30 @@
       "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams\nMiracle Mask\nThe Miracle Pro-Edition",
       "components": [
         {
-          "sku": "ALR-HC-SHAM-TV",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "intensive-repair-shampoo-tropical-vanilla"
         },
         {
-          "sku": "ALR-HC-COND-TV",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hydrating-conditioner-tropical-vanilla"
         },
         {
-          "sku": "ALR-HC-LEAVEIN",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "leave-in"
         },
         {
-          "sku": "ALR-HC-MASK",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-mask"
         },
         {
-          "sku": "ALR-HC-MIRACLE-PRO",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-pro-edition"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/full-treatment-set/",
       "sourceId": 3947
     },
     {
-      "sku": "ALR-SET-TRIO-OH",
       "name": "Hydrate & Repair Trio – Oh Honey",
       "slug": "hydrate-and-repair-trio-oh-honey",
       "category": "sets-and-bundles",
@@ -542,23 +510,22 @@
       "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams",
       "components": [
         {
-          "sku": "ALR-HC-SHAM-OH",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "shampoo"
         },
         {
-          "sku": "ALR-HC-COND-OH",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "conditioner"
         },
         {
-          "sku": "ALR-HC-LEAVEIN",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "leave-in"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/hydrate-and-repair-trio/",
       "sourceId": 5486
     },
     {
-      "sku": "ALR-SET-TRIO-TV",
       "name": "Hydrate & Repair Trio – Tropical Vanilla",
       "slug": "hydrate-and-repair-trio-tropical-vanilla",
       "category": "sets-and-bundles",
@@ -568,23 +535,22 @@
       "description": "Intensive Repair Shampoo\nHydrating Conditioner\nLeave In Your Dreams",
       "components": [
         {
-          "sku": "ALR-HC-SHAM-TV",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "intensive-repair-shampoo-tropical-vanilla"
         },
         {
-          "sku": "ALR-HC-COND-TV",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hydrating-conditioner-tropical-vanilla"
         },
         {
-          "sku": "ALR-HC-LEAVEIN",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "leave-in"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/hydrate-and-repair-trio/",
       "sourceId": 5486
     },
     {
-      "sku": "ALR-SET-CURLS",
       "name": "Curls On Collection",
       "slug": "curls-on-collection",
       "category": "sets-and-bundles",
@@ -594,23 +560,22 @@
       "description": null,
       "components": [
         {
-          "sku": "ALR-CO-SHAM",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "curl-defining-shampoo"
         },
         {
-          "sku": "ALR-CO-COND",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hydrating-curl-conditioner"
         },
         {
-          "sku": "ALR-CO-CREAM",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "curl-boosting-cream"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/curls-on-collection/",
       "sourceId": 6133
     },
     {
-      "sku": "ALR-SET-CURLS-KIT",
       "name": "Curls On Care Kit",
       "slug": "curls-on-care-kit",
       "category": "sets-and-bundles",
@@ -620,31 +585,30 @@
       "description": null,
       "components": [
         {
-          "sku": "ALR-CO-SHAM",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "curl-defining-shampoo"
         },
         {
-          "sku": "ALR-CO-COND",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hydrating-curl-conditioner"
         },
         {
-          "sku": "ALR-CO-CREAM",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "curl-boosting-cream"
         },
         {
-          "sku": "ALR-HC-MASK",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-mask"
         },
         {
-          "sku": "ALR-HC-MIRACLE-PRO",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-pro-edition"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/curls-on-care-kit/",
       "sourceId": 6166
     },
     {
-      "sku": "ALR-SET-DUO",
       "name": "Deep Repair Duo",
       "slug": "deep-repair-duo",
       "category": "sets-and-bundles",
@@ -654,19 +618,18 @@
       "description": null,
       "components": [
         {
-          "sku": "ALR-HC-MASK",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-mask"
         },
         {
-          "sku": "ALR-HC-MIRACLE-PRO",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "miracle-pro-edition"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/deep-repair-duo/",
       "sourceId": 4214
     },
     {
-      "sku": "ALR-SET-MISTS",
       "name": "4 Hair Mists",
       "slug": "4hair-mists",
       "category": "sets-and-bundles",
@@ -676,20 +639,20 @@
       "description": null,
       "components": [
         {
-          "sku": "ALR-HC-MIST-TV",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hair-mist-tropical-vanilla"
         },
         {
-          "sku": "ALR-HC-MIST-OH",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hair-mist-oh-honey"
         },
         {
-          "sku": "ALR-HC-MIST-GT",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hair-mist-green-tea"
         },
         {
-          "sku": "ALR-HC-MIST-AM",
-          "quantity": 1
+          "quantity": 1,
+          "slug": "hair-mist-amber-musk"
         }
       ],
       "sourceUrl": "https://alaraline.co/product/4hair-mists/",

@@ -46,6 +46,7 @@ public sealed class OrderService(
         if (query.PaymentStatus is { } payment) q = q.Where(o => o.PaymentStatus == payment);
         if (query.Source is { } source) q = q.Where(o => o.Source == source);
         if (query.DeliveryCompanyId is { } company) q = q.Where(o => o.DeliveryCompanyId == company);
+        if (query.CustomerId is { } customer) q = q.Where(o => o.CustomerId == customer);
         if (query.From is { } from) { var start = clock.StartOfDayUtc(from); q = q.Where(o => o.CreatedAt >= start); }
         if (query.To is { } to) { var end = clock.StartOfDayUtc(to.AddDays(1)); q = q.Where(o => o.CreatedAt < end); }
 
@@ -98,7 +99,7 @@ public sealed class OrderService(
 
         var allowed = Enum.GetValues<OrderStatus>().Where(s => Order.CanTransition(o.Status, s)).ToList();
         return new OrderDetailDto(
-            o.Id, o.OrderNumber, o.Status, o.PaymentStatus, o.PaymentMethod, o.Source, o.WarehouseId, warehouse?.Name ?? "?",
+            o.Id, o.OrderNumber, o.Status, o.PaymentStatus, o.PaymentMethod, o.Source, o.WarehouseId, warehouse?.Name ?? "?", o.CustomerId,
             o.RecipientName, o.RecipientPhone, o.RecipientCity, o.RecipientAddress,
             o.DeliveryCompanyId, company, o.TrackingNumber,
             o.Subtotal, o.DiscountTotal, o.ShippingTotal, o.CourierFee, o.GrandTotal, o.CurrencyCode,
@@ -106,9 +107,9 @@ public sealed class OrderService(
             o.ConfirmedAt, o.ShippedAt, o.DeliveredAt, o.CancelledAt, o.ReturnedAt, o.PaidAt,
             allowed,
             o.Items.OrderBy(i => i.ProductName).Select(i => new OrderItemDto(
-                i.Id, i.ProductId, i.ProductName, i.Sku, i.ProductType, i.Quantity, i.UnitPrice, i.LineDiscount, i.LineTotal,
+                i.Id, i.ProductId, i.ProductName, i.ProductType, i.IsGift, i.Quantity, i.UnitPrice, i.LineDiscount, i.LineTotal,
                 i.Components.OrderBy(c => c.ComponentName)
-                    .Select(c => new OrderItemComponentDto(c.ComponentProductId, c.ComponentName, c.ComponentSku, c.QuantityPerBundle, c.TotalQuantity))
+                    .Select(c => new OrderItemComponentDto(c.ComponentProductId, c.ComponentName, c.QuantityPerBundle, c.TotalQuantity))
                     .ToList())).ToList(),
             o.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id)
                 .Select(h => new OrderHistoryDto(h.EventType, h.OldValue, h.NewValue, h.Notes, h.ChangedAt, Name(h.ChangedByUserId)))
@@ -123,11 +124,15 @@ public sealed class OrderService(
         await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var customer = await ResolveCustomerAsync(request.CustomerId, request.Recipient, ct);
         var number = await numbers.NextOrderNumberAsync(ct);
         var order = new Order(number, request.Source, request.WarehouseId, ToRecipient(request.Recipient),
             request.PaymentMethod, options.Value.BaseCurrency, UserId, clock.UtcNow);
-        order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct), request.DiscountTotal,
-            request.ShippingTotal ?? options.Value.DefaultDeliveryFee, request.WarehouseId, request.Source, request.PaymentMethod);
+        order.SetCustomer(customer.Id);
+        order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
+            request.DiscountTotal,
+            request.ShippingTotal ?? options.Value.DefaultDeliveryFee,
+            request.WarehouseId, request.Source, request.PaymentMethod);
         order.SetDelivery(request.DeliveryCompanyId, null, null);
         order.SetNotes(request.Notes);
         db.Orders.Add(order);
@@ -136,6 +141,10 @@ public sealed class OrderService(
         {
             order.TransitionTo(OrderStatus.Confirmed, UserId, clock.UtcNow);
             await stock.ReserveAsync(order.Id, order.WarehouseId, order.StockRequirements(), ct);
+            // Make the staged reservation queryable inside this transaction, then deduct it now.
+            // No reserved quantity is visible outside the confirmation transaction.
+            await db.SaveChangesAsync(ct);
+            await stock.ShipAsync(order.Id, order.OrderNumber, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -148,9 +157,11 @@ public sealed class OrderService(
         {
             await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
             await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
-            order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct), request.DiscountTotal, request.ShippingTotal,
+            order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
+                request.DiscountTotal, request.ShippingTotal,
                 request.WarehouseId, request.Source, request.PaymentMethod);
             order.SetRecipient(ToRecipient(request.Recipient));
+            order.SetCustomer((await ResolveCustomerAsync(request.CustomerId, request.Recipient, ct)).Id);
             order.SetDelivery(request.DeliveryCompanyId, order.TrackingNumber, order.CourierFee);
             order.SetNotes(request.Notes);
         }, ct);
@@ -170,6 +181,8 @@ public sealed class OrderService(
             await EnsureWarehouseUsableAsync(order.WarehouseId, ct);
             order.TransitionTo(OrderStatus.Confirmed, UserId, clock.UtcNow, request.Notes);
             await stock.ReserveAsync(order.Id, order.WarehouseId, order.StockRequirements(), ct);
+            await db.SaveChangesAsync(ct);
+            await stock.ShipAsync(order.Id, order.OrderNumber, ct);
         }, ct);
 
     public Task<OrderDetailDto> ReopenAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
@@ -177,6 +190,7 @@ public sealed class OrderService(
         {
             order.TransitionTo(OrderStatus.Draft, UserId, clock.UtcNow, request.Notes);
             await stock.ReleaseAsync(order.Id, ct);
+            await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
         }, ct);
 
     public Task<OrderDetailDto> ShipAsync(Guid id, ShipOrderRequest request, CancellationToken ct) =>
@@ -186,6 +200,8 @@ public sealed class OrderService(
             await EnsureDeliveryCompanyUsableAsync(companyId, ct);
             order.SetDelivery(companyId, request.TrackingNumber ?? order.TrackingNumber, request.CourierFee ?? order.CourierFee);
             order.TransitionTo(OrderStatus.Shipped, UserId, clock.UtcNow, request.Notes);
+            // Current orders were deducted at confirmation. This only fulfils a reservation left
+            // by an order confirmed before that workflow changed.
             await stock.ShipAsync(order.Id, order.OrderNumber, ct);
         }, ct);
 
@@ -208,7 +224,11 @@ public sealed class OrderService(
         {
             var hadReservation = order.Status == OrderStatus.Confirmed;
             order.TransitionTo(OrderStatus.Cancelled, UserId, clock.UtcNow, request.Notes);
-            if (hadReservation) await stock.ReleaseAsync(order.Id, ct);
+            if (hadReservation)
+            {
+                await stock.ReleaseAsync(order.Id, ct);
+                await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
+            }
         }, ct);
 
     public Task<OrderDetailDto> MarkPaidAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
@@ -232,7 +252,7 @@ public sealed class OrderService(
         return await GetAsync(id, ct);
     }
 
-    /// <summary>Snapshots each product's current name, SKU, price and (for bundles) composition.</summary>
+    /// <summary>Snapshots each product's current name, price and (for bundles) composition.</summary>
     private async Task<List<OrderItem>> BuildItemsAsync(Guid orderId, IReadOnlyList<OrderLineInput> lines, CancellationToken ct)
     {
         var ids = lines.Select(l => l.ProductId).Distinct().ToList();
@@ -248,12 +268,12 @@ public sealed class OrderService(
             if (!product.IsActive)
                 throw new DomainException("orders.inactive_product", $"'{product.Name}' is inactive and cannot be sold.");
             var components = product.BundleItems
-                .Select(b => (b.ComponentProductId, b.Component!.Name, b.Component.Sku, b.Quantity))
+                .Select(b => (b.ComponentProductId, b.Component!.Name, b.Quantity, b.Component.SellingPrice))
                 .ToList();
             if (product.Type == ProductType.Bundle && product.BundleItems.Any(b => !b.Component!.IsActive))
                 throw new DomainException("orders.inactive_component", $"Bundle '{product.Name}' contains an inactive product.");
-            return new OrderItem(orderId, product.Id, product.Name, product.Sku, product.Type, line.Quantity,
-                product.SellingPrice, line.LineDiscount, components);
+            return new OrderItem(orderId, product.Id, product.Name, product.Type, line.Quantity,
+                product.SellingPrice, line.LineDiscount, components, line.IsGift);
         }).ToList();
     }
 
@@ -271,6 +291,24 @@ public sealed class OrderService(
                       ?? throw new NotFoundException("Delivery company", id);
         if (!company.IsActive)
             throw new DomainException("delivery_companies.inactive", $"{company.Name} is inactive.");
+    }
+
+    /// <summary>
+    /// Orders always link to a durable customer. Selecting a customer keeps that identity even if the delivery
+    /// recipient is edited; typing a new phone reuses an existing profile or creates one automatically.
+    /// </summary>
+    private async Task<Customer> ResolveCustomerAsync(Guid? customerId, RecipientInput recipient, CancellationToken ct)
+    {
+        if (customerId is { } id)
+            return await db.Customers.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new NotFoundException("Customer", id);
+
+        var phone = Customer.NormalizePhoneKey(recipient.Phone);
+        var existing = await db.Customers.FirstOrDefaultAsync(c => c.NormalizedPhone == phone, ct);
+        if (existing is not null) return existing;
+
+        var customer = new Customer(recipient.Name, recipient.Phone, null, recipient.City, recipient.Address, null);
+        db.Customers.Add(customer);
+        return customer;
     }
 
     private static OrderRecipient ToRecipient(RecipientInput r) => new(r.Name, r.Phone, r.City, r.Address);

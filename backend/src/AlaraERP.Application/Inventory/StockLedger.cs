@@ -6,16 +6,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Inventory;
 
-public sealed record StockableProduct(Guid Id, string Name, string Sku, bool TracksExpiry)
+public sealed record StockableProduct(Guid Id, string Name, bool TracksExpiry, decimal? StandardCost)
 {
-    public string Label => $"{Name} ({Sku})";
+    public string Label => Name;
 }
 
 /// <summary>
 /// Shared building blocks for every stock change: batch lookup/creation, FEFO picking and ledger entries.
 /// Callers must already hold the <see cref="IStockLocks"/> lock for the affected (warehouse, product) pairs.
 /// </summary>
-public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurrentUser currentUser)
+public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurrentUser currentUser, InventoryFeatureService features)
 {
     public DateTimeOffset Now => clock.UtcNow;
     public DateOnly Today => clock.Today;
@@ -26,7 +26,7 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
         var products = await db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
             .Select(p => new
             {
-                p.Id, p.Name, p.Sku, p.Type,
+                p.Id, p.Name, p.Type, p.StandardCost,
                 TracksExpiry = db.ProductInventorySettings.Where(s => s.ProductId == p.Id).Select(s => (bool?)s.TracksExpiry).FirstOrDefault()
                                ?? InventorySettingsService.DefaultTracksExpiry,
             })
@@ -39,7 +39,7 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
             throw new DomainException("inventory.bundle_not_stocked",
                 $"'{bundle.Name}' is a bundle; receive or move its component products instead.");
 
-        return products.ToDictionary(p => p.Id, p => new StockableProduct(p.Id, p.Name, p.Sku, p.TracksExpiry));
+        return products.ToDictionary(p => p.Id, p => new StockableProduct(p.Id, p.Name, p.TracksExpiry, p.StandardCost));
     }
 
     public async Task<Warehouse> RequireActiveWarehouseAsync(Guid id, CancellationToken ct)
@@ -78,20 +78,22 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
     public async Task<Batch> ResolveIncomingBatchAsync(StockableProduct product, string? batchNumber, DateOnly? expiry,
         string defaultBatchNumber, CancellationToken ct)
     {
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
+        if (!expiryEnabled) expiry = null;
         var number = string.IsNullOrWhiteSpace(batchNumber) ? defaultBatchNumber : batchNumber.Trim();
         var existing = db.Batches.Local.FirstOrDefault(b => b.ProductId == product.Id && b.BatchNumber == number)
                        ?? await db.Batches.FirstOrDefaultAsync(b => b.ProductId == product.Id && b.BatchNumber == number, ct);
         if (existing is not null)
         {
-            if (expiry is { } e && existing.ExpiryDate != e)
+            if (expiryEnabled && expiry is { } e && existing.ExpiryDate != e)
                 throw new ConflictException("inventory.batch_expiry_mismatch",
                     $"Batch {number} of {product.Label} already exists with expiry {existing.ExpiryDate?.ToString("yyyy-MM-dd") ?? "none"}.");
             return existing;
         }
 
-        if (product.TracksExpiry && expiry is null)
+        if (expiryEnabled && product.TracksExpiry && expiry is null)
             throw new DomainException("inventory.expiry_required", $"{product.Label} tracks expiry: enter the expiry date.");
-        if (expiry is { } exp && exp < Today)
+        if (expiryEnabled && expiry is { } exp && exp < Today)
             throw new DomainException("inventory.already_expired", $"The expiry date for {product.Label} is in the past.");
 
         var batch = new Batch(product.Id, number, expiry, Now);
@@ -103,14 +105,15 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
     /// First-expiry-first-out over non-expired batches (no-expiry batches last, then oldest first).
     /// Expired units are never picked automatically.
     /// </summary>
-    public List<(BatchBalance Balance, int Quantity)> PickFefo(IEnumerable<BatchBalance> candidates, int quantity, string productLabel)
+    public async Task<List<(BatchBalance Balance, int Quantity)>> PickAsync(
+        IEnumerable<BatchBalance> candidates, int quantity, string productLabel, CancellationToken ct)
     {
         var withStock = candidates.Where(b => b.QuantityOnHand > 0).ToList();
-        var usable = withStock.Where(b => !b.Batch!.IsExpiredOn(Today))
-            .OrderBy(b => b.Batch!.ExpiryDate is null)
-            .ThenBy(b => b.Batch!.ExpiryDate)
-            .ThenBy(b => b.Batch!.CreatedAt)
-            .ToList();
+        var expiryEnabled = await features.ExpiryDatesEnabledAsync(ct);
+        var usable = (expiryEnabled ? withStock.Where(b => !b.Batch!.IsExpiredOn(Today)) : withStock)
+            .OrderBy(b => expiryEnabled && b.Batch!.ExpiryDate is null)
+            .ThenBy(b => expiryEnabled ? b.Batch!.ExpiryDate : null)
+            .ThenBy(b => b.Batch!.CreatedAt).ToList();
 
         var picks = new List<(BatchBalance, int)>();
         var remaining = quantity;
@@ -123,7 +126,7 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
         }
         if (remaining == 0) return picks;
 
-        var expiredUnits = withStock.Sum(b => b.QuantityOnHand) - usable.Sum(b => b.QuantityOnHand);
+        var expiredUnits = expiryEnabled ? withStock.Sum(b => b.QuantityOnHand) - usable.Sum(b => b.QuantityOnHand) : 0;
         throw expiredUnits > 0
             ? new DomainException("inventory.only_expired_stock",
                 $"Only expired stock is left for part of {productLabel} ({expiredUnits} expired unit(s)). Write it off and receive fresh stock.")
@@ -131,12 +134,22 @@ public sealed class StockLedger(IAlaraDbContext db, BusinessClock clock, ICurren
                 $"Not enough units of {productLabel} in this warehouse's batches.");
     }
 
+    /// <summary>
+    /// Committed units of a batch on hand across all warehouses, used to weight its unit cost.
+    /// Call before staging changes to that batch (a receipt never lists the same batch twice).
+    /// </summary>
+    public async Task<int> UnitsOnHandAsync(Guid batchId, CancellationToken ct) =>
+        await db.BatchBalances.AsNoTracking().Where(b => b.BatchId == batchId).SumAsync(b => (int?)b.QuantityOnHand, ct) ?? 0;
+
+    /// <summary>The cost to attach to units leaving or entering via this batch.</summary>
+    public static decimal? CostOf(Batch batch, StockableProduct product) => batch.UnitCost ?? product.StandardCost;
+
     public StockMovement Record(Guid warehouseId, Guid productId, Guid batchId, MovementType type, int quantityChange,
-        MovementReference referenceType, Guid referenceId, string? referenceNumber,
+        MovementReference referenceType, Guid referenceId, string? referenceNumber, decimal? unitCost,
         AdjustmentReason? reason = null, string? notes = null)
     {
         var movement = new StockMovement(warehouseId, productId, batchId, type, quantityChange, referenceType, referenceId,
-            referenceNumber, currentUser.UserId, Now, reason, notes);
+            referenceNumber, currentUser.UserId, Now, reason, notes, unitCost);
         db.StockMovements.Add(movement);
         return movement;
     }
