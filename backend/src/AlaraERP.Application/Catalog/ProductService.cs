@@ -72,7 +72,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
             p.Type == ProductType.Bundle ? items.Sum(i => i.UnitPrice * i.Quantity) : null,
             p.Images.OrderBy(i => i.DisplayOrder)
                 .Select(i => new ProductImageDto(i.Id, i.ContentType, i.SizeBytes, i.DisplayOrder, i.IsPrimary)).ToList(),
-            p.CreatedAt, p.UpdatedAt);
+            p.CreatedAt, p.UpdatedAt, p.StandardCost is not null);
     }
 
     public async Task<ProductDetailDto> CreateAsync(CreateProductRequest request, CancellationToken ct)

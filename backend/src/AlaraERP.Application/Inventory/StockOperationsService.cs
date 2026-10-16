@@ -1,5 +1,4 @@
 using AlaraERP.Application.Common;
-using AlaraERP.Application.Common.Security;
 using AlaraERP.Domain.Common;
 using AlaraERP.Domain.Inventory;
 using Microsoft.EntityFrameworkCore;
@@ -38,10 +37,7 @@ public sealed class StockOperationsService(
             .Select(l => products[l.ProductId].Label).Distinct().ToList();
         if (uncosted.Count > 0)
             throw new DomainException("inventory.cost_required",
-                $"{string.Join(", ", uncosted)} {(uncosted.Count == 1 ? "has" : "have")} no saved cost. " +
-                (currentUser.HasPermission(Permissions.Costs.View)
-                    ? "Enter the unit cost for this delivery, or save a cost on the product first."
-                    : "Ask an admin to set the cost on the product, then record this delivery."));
+                $"{string.Join(", ", uncosted)} {(uncosted.Count == 1 ? "has" : "have")} no saved cost. Enter the unit cost for this delivery.");
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var number = await _numbers.NextReceiptNumberAsync(ct);

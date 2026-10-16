@@ -104,6 +104,8 @@ export interface ProductDetail {
   compareAtPrice: number | null
   /** Only present for employees with costs.view. */
   standardCost: number | null
+  /** Whether a cost is saved; visible to everyone (the amount is not). */
+  hasStandardCost: boolean
   isActive: boolean
   bundleItems: BundleItem[]
   componentsValue: number | null

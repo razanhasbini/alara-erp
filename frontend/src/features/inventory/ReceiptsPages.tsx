@@ -98,6 +98,8 @@ export function ReceiptDetailPage() {
 interface Line {
   key: string; productId: string; name: string; tracksExpiry: boolean; quantity: string; batchNumber: string; expiryDate: string
   /** The product's saved unit cost, used when nothing is typed for this delivery. */
+  /** Whether the product has a saved cost. Everyone knows this; only the admin sees the amount (savedCost). */
+  hasSavedCost: boolean
   savedCost: number | null
   /** A one-off cost for this delivery only; the product's saved cost is not changed. */
   overrideCost: boolean
@@ -106,7 +108,9 @@ interface Line {
 
 const costRe = /^\d{1,8}(\.\d{1,4})?$/
 /** Cost per unit this line will be recorded at, or null when unknown. */
-const lineCost = (l: Line) => l.overrideCost || l.savedCost === null ? (l.unitCost && costRe.test(l.unitCost) ? Number(l.unitCost) : null) : l.savedCost
+/** A cost has to be typed: the product has none saved, or this delivery cost something different. */
+const typesCost = (l: Line) => l.overrideCost || !l.hasSavedCost
+const lineCost = (l: Line) => typesCost(l) ? (l.unitCost && costRe.test(l.unitCost) ? Number(l.unitCost) : null) : l.savedCost
 
 export function NewReceiptPage() {
   const navigate = useNavigate()
@@ -132,15 +136,15 @@ export function NewReceiptPage() {
       api<ProductDetail>(`/api/products/${p.id}`).catch(() => null), // standardCost is only returned to cost-viewers
     ])
     setLines((ls) => [...ls, { key: crypto.randomUUID(), productId: p.id, name: p.name, tracksExpiry: settings?.tracksExpiry ?? true,
-      quantity: "", batchNumber: "", expiryDate: "", savedCost: detail?.standardCost ?? null, overrideCost: false, unitCost: "" }])
+      quantity: "", batchNumber: "", expiryDate: "", hasSavedCost: !!detail?.hasStandardCost, savedCost: detail?.standardCost ?? null, overrideCost: false, unitCost: "" }])
   }
   const update = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)))
   const lineErrors = (l: Line) => ({
     quantity: !/^\d+$/.test(l.quantity) || Number(l.quantity) < 1 ? "Required" : undefined,
     expiryDate: !expiryEnabled ? undefined : l.tracksExpiry && !l.expiryDate ? "Required" : l.expiryDate && l.expiryDate < todayIso() ? "In the past" : undefined,
-    unitCost: (l.overrideCost || l.savedCost === null) && l.unitCost && !costRe.test(l.unitCost) ? "Invalid"
+    unitCost: typesCost(l) && l.unitCost && !costRe.test(l.unitCost) ? "Invalid"
       : l.overrideCost && !l.unitCost ? "Enter the cost, or use the saved one"
-      : showCost && l.savedCost === null && !l.unitCost ? "Required: this product has no saved cost" : undefined,
+      : !l.hasSavedCost && !l.unitCost ? "Required: this product has no saved cost" : undefined,
   })
   const hasErrors = lines.some((l) => Object.values(lineErrors(l)).some(Boolean))
   const totalUnits = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
@@ -152,7 +156,7 @@ export function NewReceiptPage() {
       body: {
         warehouseId: effectiveWarehouse, supplierName: supplierName || null, supplierReference: supplierReference || null,
         receivedAt: receivedOn === todayIso() ? null : new Date(`${receivedOn}T12:00:00`).toISOString(), notes: notes || null,
-        lines: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: (l.overrideCost || l.savedCost === null) && l.unitCost ? Number(l.unitCost) : null,
+        lines: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity), unitCost: typesCost(l) && l.unitCost ? Number(l.unitCost) : null,
           batchNumber: l.batchNumber.trim() || null, expiryDate: expiryEnabled && l.expiryDate ? l.expiryDate : null })),
       },
     }),
@@ -209,7 +213,7 @@ export function NewReceiptPage() {
           {lines.map((l) => {
             const err: Partial<ReturnType<typeof lineErrors>> = submitted ? lineErrors(l) : {}
             return (
-              <div key={l.key} className={`grid gap-3 rounded-md border border-hairline p-3 sm:items-start ${expiryEnabled ? (showCost ? "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_9rem_auto]" : "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_auto]") : (showCost ? "sm:grid-cols-[1fr_6rem_11rem_auto]" : "sm:grid-cols-[1fr_6rem_auto]")}`}>
+              <div key={l.key} className={`grid gap-3 rounded-md border border-hairline p-3 sm:items-start ${expiryEnabled ? "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_9rem_auto]" : "sm:grid-cols-[1fr_6rem_11rem_auto]"}`}>
                 <div className="min-w-0 truncate text-sm font-medium">{l.name}</div>
                 <Field label="Units" htmlFor={`q-${l.key}`} error={err.quantity} required>
                   <Input id={`q-${l.key}`} inputMode="numeric" value={l.quantity} aria-invalid={!!err.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} className="tabular" />
@@ -220,7 +224,7 @@ export function NewReceiptPage() {
                 {expiryEnabled && <Field label={l.tracksExpiry ? "Expiry *" : "Expiry"} htmlFor={`e-${l.key}`} error={err.expiryDate}>
                   <Input id={`e-${l.key}`} type="date" value={l.expiryDate} aria-invalid={!!err.expiryDate} onChange={(e) => update(l.key, { expiryDate: e.target.value })} />
                 </Field>}
-                {showCost && <LineCost line={l} error={err.unitCost} update={(patch) => update(l.key, patch)} />}
+                <LineCost line={l} error={err.unitCost} update={(patch) => update(l.key, patch)} />
                 <Button type="button" variant="ghost" size="icon-sm" className="sm:mt-6" aria-label={`Remove ${l.name}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><X /></Button>
               </div>
             )
@@ -259,20 +263,21 @@ export function NewReceiptPage() {
  */
 function LineCost({ line, error, update }: { line: Line; error?: string; update: (patch: Partial<Line>) => void }) {
   const id = `c-${line.key}`
-  if (line.savedCost !== null && !line.overrideCost)
+  const saved = line.savedCost !== null ? money(line.savedCost) : null // only the admin gets the amount
+  if (line.hasSavedCost && !line.overrideCost)
     return (
       <div className="grid gap-1.5 text-sm">
         <span className="font-medium">Unit cost</span>
-        <span className="flex h-9 items-center tabular">{money(line.savedCost)} <span className="ml-1.5 text-xs text-muted-foreground">saved</span></span>
+        <span className="flex h-9 items-center tabular">{saved ?? "Saved cost"}{saved && <span className="ml-1.5 text-xs text-muted-foreground">saved</span>}</span>
         <button type="button" className="w-fit text-xs font-medium text-primary hover:underline" onClick={() => update({ overrideCost: true, unitCost: "" })}>
           Different cost this time
         </button>
       </div>
     )
   return (
-    <Field label="Unit cost $" htmlFor={id} error={error} required={line.savedCost === null}
-      hint={line.savedCost !== null ? <>This delivery only. <button type="button" className="font-medium text-primary hover:underline" onClick={() => update({ overrideCost: false, unitCost: "" })}>Use saved {money(line.savedCost)}</button></>
-        : error ? undefined : "No saved cost. Save one on the product to skip this next time."}>
+    <Field label="Unit cost $" htmlFor={id} error={error} required={!line.hasSavedCost}
+      hint={line.hasSavedCost ? <>This delivery only. <button type="button" className="font-medium text-primary hover:underline" onClick={() => update({ overrideCost: false, unitCost: "" })}>Use saved{saved && ` ${saved}`}</button></>
+        : error ? undefined : "No saved cost yet. What one unit cost in this delivery."}>
       <Input id={id} inputMode="decimal" autoFocus={line.overrideCost} value={line.unitCost} aria-invalid={!!error} onChange={(e) => update({ unitCost: e.target.value })} className="tabular" />
     </Field>
   )

@@ -113,6 +113,30 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
+    public async Task Staff_who_cannot_see_costs_can_still_type_one_when_receiving_an_uncosted_product()
+    {
+        var (admin, s) = await AdminAsync();
+        var warehouse = await s.WarehouseAsync();
+        var scrub = await s.ProductAsync("ALR-SCRUB", 24m, standardCost: null);
+        var mask = await s.ProductAsync("ALR-MASK", 24m, standardCost: 6m);
+        using var stockKeeper = await SignedInAsAsync(SystemRoles.InventoryManager);
+
+        var scrubSeen = await stockKeeper.GetJsonAsync<ProductDetailDto>($"/api/products/{scrub.Id}");
+        var maskSeen = await stockKeeper.GetJsonAsync<ProductDetailDto>($"/api/products/{mask.Id}");
+        var receipt = await (await stockKeeper.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(scrub.Id, 3, 7.25m, null, Scenario.InAYear), new ReceiveLineInput(mask.Id, 2, null, null, Scenario.InAYear)])))
+            .OkJsonAsync<ReceiptDto>();
+        var asAdmin = await admin.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}");
+
+        Assert.False(scrubSeen.HasStandardCost);
+        Assert.True(maskSeen.HasStandardCost);
+        Assert.Null(maskSeen.StandardCost);                       // knows a cost is saved, not what it is
+        Assert.All(receipt.Lines, l => Assert.Null(l.UnitCost));  // and doesn't see costs on the receipt
+        Assert.Equal(7.25m, asAdmin.Lines.Single(l => l.ProductId == scrub.Id).UnitCost);
+        Assert.Equal(6m, asAdmin.Lines.Single(l => l.ProductId == mask.Id).UnitCost);
+    }
+
+    [Fact]
     public async Task Receipts_saved_without_a_line_cost_show_the_cost_the_stock_is_valued_at()
     {
         var (client, s) = await AdminAsync();

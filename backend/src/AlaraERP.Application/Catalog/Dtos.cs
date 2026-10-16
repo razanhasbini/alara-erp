@@ -34,7 +34,9 @@ public sealed record ProductDetailDto(
     /// <summary>Sum of component prices at full price — what the customer saves against.</summary>
     decimal? ComponentsValue,
     IReadOnlyList<ProductImageDto> Images,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    /// <summary>Whether a cost is saved (never the amount), so anyone receiving stock knows if they must type one.</summary>
+    bool HasStandardCost = false);
 
 public sealed record BundleItemInput(Guid ComponentProductId, int Quantity);
 
