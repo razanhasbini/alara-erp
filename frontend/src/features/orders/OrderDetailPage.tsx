@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Pencil, Printer, RotateCcw, Truck, Undo2, X } from "lucide-react"
+import { AlarmClock, Check, Clock, Pencil, Printer, RotateCcw, Truck, Undo2, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog, Field, SubmitButton } from "@/components/common/controls"
@@ -19,20 +19,21 @@ import { P } from "@/lib/permissions"
 import { qk, useDeliveryCompanies } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { OrderDetail, OrderStatus } from "@/types/api"
+import { ReserveTimeDialog } from "./ReserveTimeDialog"
 
-type Action = "confirm" | "reopen" | "deliver" | "return" | "cancel" | "mark-paid"
+type Action = "confirm" | "deliver" | "return" | "cancel" | "mark-paid"
+type ReserveMode = "reserve" | "change"
 
 const actionDone: Record<Action, string> = {
-  confirm: "confirmed — stock deducted", reopen: "reopened as draft — stock returned", deliver: "marked delivered",
+  confirm: "sold — stock deducted", deliver: "marked delivered",
   return: "returned — stock back on the shelf", cancel: "cancelled", "mark-paid": "marked paid",
 }
 
 const actionCopy: Record<Action, { title: string; description: string; label: string; destructive?: boolean; note?: boolean }> = {
-  confirm: { title: "Confirm order?", description: "Stock for every item, including products inside bundles, will be deducted immediately.", label: "Confirm & deduct stock" },
-  reopen: { title: "Reopen as draft?", description: "The deducted stock is returned so the order can be edited.", label: "Reopen" },
+  confirm: { title: "Mark as sold?", description: "The held stock for every item, including products inside bundles, is deducted and the sale is counted in revenue and profit.", label: "Mark as sold" },
   deliver: { title: "Mark as delivered?", description: "Cash-on-delivery orders become “with courier” until the courier hands over the cash (or paid, if your own staff delivered).", label: "Mark delivered" },
   return: { title: "Record a returned delivery?", description: "Use when the customer refused or the courier couldn't deliver. The units go back into stock, into the batches they left from.", label: "Record return", destructive: true, note: true },
-  cancel: { title: "Cancel this order?", description: "Any stock deducted at confirmation is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
+  cancel: { title: "Cancel this order?", description: "Reserved stock is released and any stock deducted when it was sold is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
   "mark-paid": { title: "Record payment?", description: "Confirms the customer has paid this order directly.", label: "Mark paid", note: true },
 }
 
@@ -45,6 +46,7 @@ export function OrderDetailPage() {
   const [note, setNote] = useState("")
   const [shipping, setShipping] = useState(false)
   const [editingDelivery, setEditingDelivery] = useState(false)
+  const [reserveMode, setReserveMode] = useState<ReserveMode | null>(null)
 
   const afterChange = async (updated: OrderDetail, message: string) => {
     queryClient.setQueryData(qk.order(id), updated)
@@ -56,22 +58,39 @@ export function OrderDetailPage() {
     onSuccess: async (updated, { a }) => { setAction(null); setNote(""); await afterChange(updated, `${updated.orderNumber} ${actionDone[a]}`) },
     onError: (e) => { setAction(null); toast.error(errorMessage(e)) },
   })
+  const reserve = useMutation({
+    mutationFn: ({ mode, until, notes }: { mode: ReserveMode; until: string; notes: string }) => mode === "reserve"
+      ? api<OrderDetail>(`/api/orders/${id}/reserve`, { method: "POST", body: { reservedUntil: until, notes: notes || null } })
+      : api<OrderDetail>(`/api/orders/${id}/reservation`, { method: "PUT", body: { reservedUntil: until, notes: notes || null } }),
+    onSuccess: async (updated, { mode }) => {
+      setReserveMode(null)
+      await afterChange(updated, mode === "reserve"
+        ? `${updated.orderNumber} moved back to reserved — the sale is undone and the stock is held until ${dateTime(updated.reservedUntil)}`
+        : `Reservation now ends ${dateTime(updated.reservedUntil)}`)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
 
   if (isLoading) return <FullPageSpinner />
   if (error || !o) return <ErrorState error={error} onRetry={refetch} />
 
   const allowed = (s: OrderStatus) => o.allowedTransitions.includes(s)
   const buttons: ReactNode[] = []
-  if (o.status === "Draft" && can(P.orders.update)) buttons.push(<Button key="edit" variant="outline" asChild><Link to={`/orders/${o.id}/edit`}><Pencil /> Edit</Link></Button>)
+  if ((o.status === "Reserved" || o.status === "Draft") && can(P.orders.update)) buttons.push(<Button key="edit" variant="outline" asChild><Link to={`/orders/${o.id}/edit`}><Pencil /> Edit</Link></Button>)
   if (allowed("Cancelled") && can(P.orders.cancel)) buttons.push(<Button key="cancel" variant="ghost" onClick={() => setAction("cancel")}><X /> Cancel</Button>)
-  if (allowed("Draft") && can(P.orders.update)) buttons.push(<Button key="reopen" variant="outline" onClick={() => setAction("reopen")}><Undo2 /> Reopen</Button>)
+  if (o.status === "Reserved" && can(P.orders.update)) buttons.push(<Button key="change" variant="outline" onClick={() => setReserveMode("change")}><Clock /> Change time</Button>)
+  if (allowed("Reserved") && can(P.orders.update)) buttons.push(<Button key="reserve" variant="outline" onClick={() => setReserveMode("reserve")}><Undo2 /> {o.status === "Draft" ? "Reserve" : "Back to reserved"}</Button>)
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
   if (o.paymentMethod !== "CashOnDelivery" && o.paymentStatus === "Unpaid" && !["Cancelled", "Returned"].includes(o.status) && can(P.orders.payments))
     buttons.push(<Button key="paid" variant="outline" onClick={() => setAction("mark-paid")}>Mark paid</Button>)
-  if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Confirm & deduct stock</Button>)
+  if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Mark as sold</Button>)
   if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setShipping(true)}><Truck /> Shipping</Button>)
   if (allowed("Delivered") && can(P.orders.update)) buttons.push(<Button key="deliver" onClick={() => setAction("deliver")}><Check /> Delivered</Button>)
 
+  // Every order starts as an internal draft and immediately becomes reserved or sold; "Reserved until…" already
+  // says it was reserved, so only the "→ Sold" half of that first step is worth showing.
+  const history = o.history.filter((h) => !(h.eventType === "Status" && h.oldValue === "Draft" && h.newValue === "Reserved"))
+    .map((h) => h.eventType === "Status" && h.oldValue === "Draft" ? { ...h, oldValue: null, newValue: "Sold" } : h)
   const copy = action ? actionCopy[action] : null
   return (
     <>
@@ -82,6 +101,8 @@ export function OrderDetailPage() {
           <span className="text-xs text-muted-foreground">{o.source} · created {dateTime(o.createdAt)} by {o.createdBy ?? "—"}</span>
         </>}
         actions={<>{buttons}<Button variant="ghost" size="icon" aria-label="Print" onClick={() => window.print()}><Printer /></Button></>} />
+
+      {o.status === "Reserved" && <ReservationBanner order={o} />}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_21rem]">
         <div className="grid content-start gap-6">
@@ -123,14 +144,20 @@ export function OrderDetailPage() {
 
           <Section title="History">
             <ol className="px-4 py-3">
-              {o.history.map((h, idx) => (
+              {history.map((h, idx) => (
                 <li key={idx} className="relative flex gap-3 pb-4 last:pb-0">
-                  <span className={cn("relative z-10 mt-1.5 size-2 shrink-0 rounded-full", h.eventType === "Payment" ? "bg-tone-green" : "bg-rose")} />
-                  {idx < o.history.length - 1 && <span className="absolute top-3 left-[3.5px] h-full w-px bg-hairline" />}
+                  <span className={cn("relative z-10 mt-1.5 size-2 shrink-0 rounded-full", h.eventType === "Payment" ? "bg-tone-green" : h.eventType === "Reservation" ? "bg-tone-amber" : "bg-rose")} />
+                  {idx < history.length - 1 && <span className="absolute top-3 left-[3.5px] h-full w-px bg-hairline" />}
                   <div className="text-sm">
                     <div>
-                      {h.eventType === "Payment" ? "Payment " : ""}
-                      {h.oldValue ? <>{humanize(h.oldValue)} → <span className="font-medium">{humanize(h.newValue)}</span></> : <span className="font-medium">Created as {h.newValue.toLowerCase()}</span>}
+                      {h.eventType === "Reservation"
+                        ? h.oldValue
+                          ? <>Reservation time changed from {dateTime(h.oldValue)} to <span className="font-medium">{dateTime(h.newValue)}</span></>
+                          : <>Reserved until <span className="font-medium">{dateTime(h.newValue)}</span></>
+                        : <>
+                          {h.eventType === "Payment" ? "Payment " : ""}
+                          {h.oldValue ? <>{statusLabel(h.oldValue)} → <span className="font-medium">{statusLabel(h.newValue)}</span></> : <span className="font-medium">{h.newValue === "Draft" ? "Order created" : statusLabel(h.newValue)}</span>}
+                        </>}
                     </div>
                     <div className="text-xs text-muted-foreground">{dateTime(h.changedAt)} · {h.changedBy ?? "System"}</div>
                     {h.notes && <div className="mt-0.5 text-xs">“{h.notes}”</div>}
@@ -172,8 +199,40 @@ export function OrderDetailPage() {
         </ConfirmDialog>
       )}
       {shipping && <ShipDialog order={o} onClose={() => setShipping(false)} onDone={(u) => afterChange(u, `${u.orderNumber} marked as shipped`)} />}
+      {reserveMode && (
+        <ReserveTimeDialog open onOpenChange={(open) => !open && setReserveMode(null)} pending={reserve.isPending}
+          initial={reserveMode === "change" ? o.reservedUntil : null}
+          title={reserveMode === "change" ? "Change reservation time" : o.status === "Draft" ? "Reserve stock for this order" : "Move back to reserved?"}
+          description={reserveMode === "change"
+            ? "Choose a new time. You get a new alert when it's up."
+            : o.status === "Draft" ? "The products and gifts are held for this customer until the time you choose."
+            : "The sale is undone: the deducted stock is returned and held again for this customer, and revenue and profit stop counting it. You can then edit the order."}
+          confirmLabel={reserveMode === "change" ? "Save time" : "Reserve"}
+          onConfirm={(until, notes) => reserve.mutate({ mode: reserveMode, until, notes: notes.trim() })} />
+      )}
       {editingDelivery && <DeliveryDialog order={o} onClose={() => setEditingDelivery(false)} onDone={(u) => afterChange(u, "Delivery details saved")} />}
     </>
+  )
+}
+
+/** Confirmed orders are shown to staff as "Sold". */
+const statusLabel = (value: string) => value === "Confirmed" ? "Sold" : humanize(value)
+
+function ReservationBanner({ order }: { order: OrderDetail }) {
+  const expired = !!order.reservedUntil && new Date(order.reservedUntil).getTime() <= Date.now()
+  return (
+    <div role="status" className={cn("mb-6 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm",
+      expired ? "border-tone-red/30 bg-tone-red-bg text-tone-red" : "border-tone-amber/30 bg-tone-amber-bg text-tone-amber")}>
+      {expired ? <AlarmClock className="mt-0.5 size-5 shrink-0" aria-hidden /> : <Clock className="mt-0.5 size-5 shrink-0" aria-hidden />}
+      <div>
+        <p className="font-semibold">{expired ? `Reservation time is up (${dateTime(order.reservedUntil)})` : `Reserved until ${dateTime(order.reservedUntil)}`}</p>
+        <p className="mt-0.5 leading-5">
+          {expired
+            ? "The stock is still held. Mark the order as sold, give it more time, or cancel it to release the stock."
+            : "Stock is held for this customer and can't be sold to anyone else. Nothing is counted as sold, and no cost is recorded, until you mark it as sold."}
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -195,7 +254,7 @@ function ShipDialog({ order, onClose, onDone }: { order: OrderDetail; onClose: (
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Shipping for {order.orderNumber}</DialogTitle>
-          <DialogDescription>Stock was already deducted when the order was confirmed. Add the courier and tracking details here.</DialogDescription>
+          <DialogDescription>Stock was already deducted when the order was sold. Add the courier and tracking details here.</DialogDescription>
         </DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!feeError) ship.mutate() }}>
           <Field label="Delivery company" htmlFor="s-courier">

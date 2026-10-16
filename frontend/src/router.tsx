@@ -20,6 +20,7 @@ import { NewReceiptPage, ReceiptDetailPage, ReceiptsPage } from "@/features/inve
 import { StockPage } from "@/features/inventory/StockPage"
 import { NewTransferPage, TransferDetailPage, TransfersPage } from "@/features/inventory/TransfersPages"
 import { WarehousesPage } from "@/features/inventory/WarehousesPage"
+import { AlertsPage } from "@/features/alerts/AlertsPage"
 import { WebsiteInsightsPage } from "@/features/analytics/WebsiteInsightsPage"
 import { DeliveriesPage } from "@/features/orders/DeliveriesPage"
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage"
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       children: [
         { index: true, element: <HomePage /> },
         { path: "profile", element: <ProfilePage /> },
+        { path: "alerts", element: <AlertsPage /> },
         { path: "unauthorized", element: <Navigate to="/" replace /> },
 
         gate(P.orders.view, [

@@ -36,14 +36,12 @@ internal sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(p => p.Type).HasConversion<string>().HasMaxLength(20);
         b.Property(p => p.Name).HasMaxLength(200).IsRequired();
         b.Property(p => p.Slug).HasMaxLength(180).IsRequired();
-        b.Property(p => p.Barcode).HasMaxLength(100);
         b.Property(p => p.SizeValue).HasPrecision(10, 2);
         b.Property(p => p.SizeUnit).HasConversion<string>().HasMaxLength(10);
         b.Property(p => p.SellingPrice).HasPrecision(12, 2);
         b.Property(p => p.CompareAtPrice).HasPrecision(12, 2);
         b.Property(p => p.StandardCost).HasPrecision(12, 4);
         b.HasIndex(p => p.Slug).IsUnique();
-        b.HasIndex(p => p.Barcode).IsUnique();
         b.HasIndex(p => new { p.IsActive, p.Name });
         b.HasIndex(p => p.CategoryId);
         b.HasOne<Category>().WithMany().HasForeignKey(p => p.CategoryId).OnDelete(DeleteBehavior.Restrict);

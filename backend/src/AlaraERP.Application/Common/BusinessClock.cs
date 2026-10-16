@@ -18,6 +18,9 @@ public sealed class BusinessClock(TimeProvider time, IOptions<ErpOptions> option
         return new DateTimeOffset(local, _zone.GetUtcOffset(local)).ToUniversalTime();
     }
 
+    /// <summary>The instant as a Beirut wall-clock time (for messages).</summary>
+    public DateTime ToBusinessDateTime(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, _zone).DateTime;
+
     public DateOnly ToBusinessDate(DateTimeOffset instant) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, _zone).DateTime);
 }

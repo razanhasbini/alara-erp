@@ -91,7 +91,6 @@ export interface ProductDetail {
   type: ProductType
   name: string
   slug: string
-  barcode: string | null
   categoryId: string | null
   categoryName: string | null
   shortDescription: string | null
@@ -256,7 +255,7 @@ export interface Transfer {
 }
 
 // ---- sales --------------------------------------------------------------------------------
-export type OrderStatus = "Draft" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled" | "Returned"
+export type OrderStatus = "Draft" | "Reserved" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled" | "Returned"
 export type OrderSource = "WhatsApp" | "Instagram" | "Website" | "Other"
 export type PaymentMethod = "CashOnDelivery" | "Whish" | "Omt" | "BankTransfer" | "Cash"
 export type PaymentStatus = "Unpaid" | "CollectedByCourier" | "Paid" | "Void"
@@ -297,6 +296,7 @@ export interface OrderListItem {
   trackingNumber: string | null
   createdAt: string
   createdBy: string | null
+  reservedUntil: string | null
 }
 
 export interface OrderItem {
@@ -313,7 +313,7 @@ export interface OrderItem {
 }
 
 export interface OrderHistoryEntry {
-  eventType: "Status" | "Payment"
+  eventType: "Status" | "Payment" | "Reservation"
   oldValue: string | null
   newValue: string
   notes: string | null
@@ -359,6 +359,8 @@ export interface OrderDetail {
   allowedTransitions: OrderStatus[]
   items: OrderItem[]
   history: OrderHistoryEntry[]
+  reservedAt: string | null
+  reservedUntil: string | null
 }
 
 export interface DeliveryCompany {
@@ -401,7 +403,7 @@ export interface Dashboard {
   generatedAt: string
   catalog: { activeProducts: number; activeBundles: number; inactiveProducts: number } | null
   orders: {
-    total: number; drafts: number; awaitingShipment: number; outForDelivery: number
+    total: number; drafts: number; reserved: number; awaitingShipment: number; outForDelivery: number
     delivered: number; cancelled: number; returned: number; createdToday: number
   } | null
   finance: {
@@ -493,4 +495,32 @@ export interface CustomerAnalytics {
   to: string
   currency: string
   customers: CustomerLoyalty[]
+}
+
+// ---- reservations & alerts ------------------------------------------------------------------
+export interface ReservedStock {
+  productId: string
+  reservedQuantity: number
+  orders: { orderId: string; orderNumber: string; recipientName: string; quantity: number; reservedUntil: string | null }[]
+}
+
+export type WhatsAppStatus = "Pending" | "Sent" | "Failed" | "NotConfigured"
+
+export interface AlertItem {
+  id: string
+  type: string
+  title: string
+  body: string
+  link: string | null
+  createdAt: string
+  isRead: boolean
+  whatsApp: { id: string; toPhone: string; status: WhatsAppStatus; attempts: number; lastError: string | null; sentAt: string | null }[]
+}
+
+export interface AlertChannels {
+  whatsAppConfigured: boolean
+  whatsAppRecipients: number
+  usesTemplate: boolean
+  whatsAppPending: number
+  whatsAppNotSent: number
 }

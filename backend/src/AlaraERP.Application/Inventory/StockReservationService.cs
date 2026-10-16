@@ -21,8 +21,9 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
         foreach (var (productId, quantity) in quantities.OrderBy(q => q.Key))
         {
             var label = products[productId].Label;
-            if (!balances.TryGetValue((warehouseId, productId), out var balance))
-                throw new DomainException("inventory.insufficient_stock", $"Not enough stock of {label}: {quantity} needed, 0 available.");
+            var available = balances.TryGetValue((warehouseId, productId), out var balance) ? balance.Available : 0;
+            if (balance is null || quantity > available)
+                throw new InsufficientStockException(productId, label, quantity, available);
             balance.Reserve(quantity, label);
             db.StockReservations.Add(new StockReservation(orderId, productId, warehouseId, quantity, ledger.Now));
         }

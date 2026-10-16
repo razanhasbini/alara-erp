@@ -13,7 +13,7 @@ public sealed record CatalogSummary(int ActiveProducts, int ActiveBundles, int I
 
 public sealed record OrderSummary(
     int Total, int Drafts, int AwaitingShipment, int OutForDelivery, int Delivered, int Cancelled, int Returned,
-    int CreatedToday);
+    int CreatedToday, int Reserved);
 
 /// <summary>Money figures, each with a precise definition (shown in the UI as the metric's tooltip).</summary>
 public sealed record FinanceSummary(
@@ -102,7 +102,7 @@ public sealed class DashboardService(
         int Get(OrderStatus s) => byStatus.GetValueOrDefault(s);
         return new OrderSummary(byStatus.Values.Sum(), Get(OrderStatus.Draft), Get(OrderStatus.Confirmed), Get(OrderStatus.Shipped),
             Get(OrderStatus.Delivered), Get(OrderStatus.Cancelled), Get(OrderStatus.Returned),
-            await db.Orders.CountAsync(o => o.CreatedAt >= startOfToday, ct));
+            await db.Orders.CountAsync(o => o.CreatedAt >= startOfToday, ct), Get(OrderStatus.Reserved));
     }
 
     private async Task<FinanceSummary> FinanceAsync(CancellationToken ct)

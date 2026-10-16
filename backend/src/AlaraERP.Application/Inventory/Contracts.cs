@@ -1,4 +1,16 @@
+using AlaraERP.Domain.Common;
+
 namespace AlaraERP.Application.Inventory.Contracts;
+
+/// <summary>Not enough unreserved stock of one product. Carries the numbers so callers can explain who holds the rest.</summary>
+public sealed class InsufficientStockException(Guid productId, string productName, int needed, int available)
+    : DomainException("inventory.insufficient_stock", $"Not enough stock of {productName}: {needed} needed, {Math.Max(0, available)} available.")
+{
+    public Guid ProductId { get; } = productId;
+    public string ProductName { get; } = productName;
+    public int Needed { get; } = needed;
+    public int Available { get; } = Math.Max(0, available);
+}
 
 /// <summary>
 /// The Inventory module's public interface for order fulfilment. Sales calls these — and only these —

@@ -98,7 +98,6 @@ export function ProductDetailPage() {
                 ["Size", p.sizeValue ? `${number(p.sizeValue)} ${p.sizeUnit?.toLowerCase()}` : <span key="f84-97" className="text-muted-foreground">Not set</span>] as [string, React.ReactNode],
                 ["Shipping weight", p.weightGrams ? `${number(p.weightGrams)} g` : <span key="f85-85" className="text-muted-foreground">Not set</span>] as [string, React.ReactNode],
               ] : []),
-              ["Barcode", p.barcode ? <span key="f87-40" className="code">{p.barcode}</span> : <span key="f87-84" className="text-muted-foreground">—</span>],
               ["Web address", <span key="f88-32" className="code text-muted-foreground">/product/{p.slug}</span>],
               ["Last updated", dateTime(p.updatedAt)],
             ]} />

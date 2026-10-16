@@ -48,7 +48,7 @@ export function ProductPicker({ onSelect, type, exclude = [], warehouseId, showA
       </PopoverTrigger>
       <PopoverContent className="w-[min(30rem,calc(100vw-2rem))] p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput placeholder="Search by name or barcode" value={search} onValueChange={setSearch} />
+          <CommandInput placeholder="Search by name" value={search} onValueChange={setSearch} />
           <CommandList onScroll={(event) => {
             const list = event.currentTarget
             if (hasNextPage && !isFetchingNextPage && list.scrollHeight - list.scrollTop - list.clientHeight < 48)

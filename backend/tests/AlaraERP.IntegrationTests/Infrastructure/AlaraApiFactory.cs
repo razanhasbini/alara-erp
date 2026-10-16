@@ -42,6 +42,8 @@ public sealed class AlaraApiFactory : WebApplicationFactory<Program>, IAsyncLife
             // Re-validate the session on every request so deactivation/role tests are deterministic.
             ["Auth:SessionRevalidationInterval"] = "00:00:00",
             ["Logging:LogLevel:Default"] = "Warning",
+            // Tests run the jobs directly so timing is deterministic.
+            ["Jobs:Enabled"] = "false",
             // Uploaded test images go to a throwaway folder, never the API's App_Data.
             ["Storage:LocalPath"] = Path.Combine(Path.GetTempPath(), "alara-erp-tests", Guid.NewGuid().ToString("N")),
         }));

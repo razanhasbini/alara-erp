@@ -35,11 +35,11 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var response = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Nour Haddad", "+961 3 111 222", "Saida", null), null, 5m, null, "Gift wrap",
-            [new OrderLineInput(shop.Shampoo.Id, 2, 1.50m), new OrderLineInput(shop.Duo.Id, 1)]));
+            [new OrderLineInput(shop.Shampoo.Id, 2, 1.50m), new OrderLineInput(shop.Duo.Id, 1)], ReserveUntil: Scenario.Tomorrow));
 
         var order = await response.OkJsonAsync<OrderDetailDto>();
         Assert.StartsWith("AL-", order.OrderNumber);
-        Assert.Equal(OrderStatus.Draft, order.Status);
+        Assert.Equal(OrderStatus.Reserved, order.Status);
         Assert.Equal(61.50m, order.Subtotal);   // 2×15 − 1.50 + 33
         Assert.Equal(5m, order.DiscountTotal);
         Assert.Equal(4.00m, order.ShippingTotal); // configured default
@@ -47,7 +47,8 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         Assert.Equal("USD", order.CurrencyCode);
         var bundleLine = order.Items.Single(i => i.ProductId == shop.Duo.Id);
         Assert.Equal(2, bundleLine.Components.Count);
-        Assert.Equal(0, (await shop.S.StockAsync(shop.Shampoo.Id)).Reserved); // drafts reserve nothing
+        var shampoo = await shop.S.StockAsync(shop.Shampoo.Id);
+        Assert.Equal((20, 3), (shampoo.OnHand, shampoo.Reserved)); // held (2 + 1 in the duo), not deducted
     }
 
     [Fact]
@@ -96,17 +97,16 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Insufficient_stock_blocks_confirmation_and_deducts_nothing()
+    public async Task Reserving_more_than_is_available_is_refused_and_holds_nothing()
     {
         var shop = await OpenShopAsync();
-        var draft = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Shampoo.Id, 5), (shop.Mask.Id, 11));
 
-        var response = await shop.Client.PostAsync($"/api/orders/{draft.Id}/confirm", new TransitionRequest(null));
+        var response = await shop.S.CreateOrderAsync(shop.Warehouse.Id, confirm: false, lines: [(shop.Shampoo.Id, 5), (shop.Mask.Id, 11)]);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal("inventory.insufficient_stock", await response.ProblemCodeAsync());
-        Assert.Equal(OrderStatus.Draft, (await shop.Client.GetJsonAsync<OrderDetailDto>($"/api/orders/{draft.Id}")).Status);
-        Assert.Equal(0, (await shop.S.StockAsync(shop.Shampoo.Id)).Reserved); // shampoo line was rolled back too
+        Assert.Equal(0, (await shop.S.StockAsync(shop.Shampoo.Id)).Reserved); // the shampoo line was rolled back too
+        Assert.Equal(0, await shop.S.CountAsync("SELECT count(*) FROM sales.orders"));
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         // Later the catalogue changes: new price, new name, and the bundle gains a component.
         (await shop.Client.PutAsync($"/api/products/{shop.Duo.Id}", new UpdateProductRequest("Deep Repair Duo (new)",
-            null, null, null, null, null, null, null, null, null, null, 99m, null))).EnsureSuccessStatusCode();
+            null, null, null, null, null, null, null, null, null, 99m, null))).EnsureSuccessStatusCode();
         var extra = await shop.S.ProductAsync("ALR-HC-LEAVEIN", 17m);
         await shop.S.ReceiveAsync(shop.Warehouse.Id, extra.Id, 5);
         (await shop.Client.PutAsync($"/api/products/{shop.Duo.Id}/bundle-items", new ReplaceBundleItemsRequest(
@@ -209,19 +209,94 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Reopening_a_confirmed_order_returns_stock_and_allows_editing()
+    public async Task A_sold_order_moved_back_to_reserved_returns_its_stock_to_a_hold_and_can_be_edited()
     {
         var shop = await OpenShopAsync();
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 4));
 
-        var editWhileConfirmed = await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1)));
-        (await shop.Client.PostAsync($"/api/orders/{order.Id}/reopen", new TransitionRequest(null))).EnsureSuccessStatusCode();
-        var edited = await (await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1))))
+        var editWhileSold = await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1)));
+        var reserved = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/reserve", new ReserveOrderRequest(Scenario.Tomorrow, "Customer will pay Friday")))
+            .OkJsonAsync<OrderDetailDto>();
+        var mask = await shop.S.StockAsync(shop.Mask.Id);
+        var edited = await (await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1)))).OkJsonAsync<OrderDetailDto>();
+        var afterEdit = await shop.S.StockAsync(shop.Mask.Id);
+
+        Assert.Equal("orders.not_editable", await editWhileSold.ProblemCodeAsync());
+        Assert.Equal(OrderStatus.Reserved, reserved.Status);
+        Assert.Null(reserved.ConfirmedAt);                                  // no longer a sale
+        Assert.Equal((10, 4), (mask.OnHand, mask.Reserved));                // back on the shelf, held for the customer
+        Assert.Equal((OrderStatus.Reserved, 28.00m), (edited.Status, edited.GrandTotal));
+        Assert.Equal((10, 1), (afterEdit.OnHand, afterEdit.Reserved));      // the hold follows the edited lines
+    }
+
+    [Fact]
+    public async Task Reserved_stock_is_held_without_selling_and_marking_sold_deducts_it_once()
+    {
+        var shop = await OpenShopAsync();
+        var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 3));
+        var held = await shop.S.StockAsync(shop.Mask.Id);
+        var analyticsBefore = await shop.Client.GetJsonAsync<AlaraERP.Application.Analytics.AnalyticsSummaryDto>("/api/analytics/summary");
+
+        var sold = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/confirm", new TransitionRequest(null))).OkJsonAsync<OrderDetailDto>();
+        var after = await shop.S.StockAsync(shop.Mask.Id);
+        var analyticsAfter = await shop.Client.GetJsonAsync<AlaraERP.Application.Analytics.AnalyticsSummaryDto>("/api/analytics/summary");
+
+        Assert.Equal((OrderStatus.Reserved, 10, 3, 7), (order.Status, held.OnHand, held.Reserved, held.Available));
+        Assert.Equal(0, analyticsBefore.Totals.Orders);                       // reserved is not a sale
+        Assert.Equal(OrderStatus.Confirmed, sold.Status);
+        Assert.Equal((7, 0, 7), (after.OnHand, after.Reserved, after.Available)); // hold became a deduction, once
+        Assert.Equal((1, 72m), (analyticsAfter.Totals.Orders, analyticsAfter.Totals.NetSales));
+    }
+
+    [Fact]
+    public async Task Cancelling_a_reservation_frees_the_stock()
+    {
+        var shop = await OpenShopAsync();
+        var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Duo.Id, 2));
+
+        (await shop.Client.PostAsync($"/api/orders/{order.Id}/cancel", new TransitionRequest("Customer changed mind"))).EnsureSuccessStatusCode();
+
+        Assert.Equal((10, 0), ((await shop.S.StockAsync(shop.Mask.Id)).OnHand, (await shop.S.StockAsync(shop.Mask.Id)).Reserved));
+        Assert.Equal((20, 0), ((await shop.S.StockAsync(shop.Shampoo.Id)).OnHand, (await shop.S.StockAsync(shop.Shampoo.Id)).Reserved));
+    }
+
+    [Fact]
+    public async Task Short_stock_names_the_reserved_orders_holding_it()
+    {
+        var shop = await OpenShopAsync();
+        var holder = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 8));
+
+        var holds = await shop.Client.GetJsonAsync<List<ReservedStockDto>>($"/api/orders/reserved-stock?productIds={shop.Mask.Id}&productIds={shop.Shampoo.Id}");
+        var refused = await shop.S.CreateOrderAsync(shop.Warehouse.Id, confirm: true, lines: (shop.Duo.Id, 3)); // needs 3 masks, 2 free
+
+        var mask = holds.Single(h => h.ProductId == shop.Mask.Id);
+        Assert.Equal((8, holder.OrderNumber), (mask.ReservedQuantity, mask.Orders.Single().OrderNumber));
+        Assert.Equal(0, holds.Single(h => h.ProductId == shop.Shampoo.Id).ReservedQuantity);
+        var problem = await refused.Content.ReadAsStringAsync();
+        Assert.Contains("2 available", problem);
+        Assert.Contains($"8 more are reserved in {holder.OrderNumber}", problem);
+    }
+
+    [Fact]
+    public async Task Reservation_times_must_be_in_the_future_and_can_be_extended()
+    {
+        var shop = await OpenShopAsync();
+        var past = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(OrderSource.WhatsApp, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
+            new RecipientInput("A", "+961 70 000 000", null, null), null, 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
+            ReserveUntil: DateTimeOffset.UtcNow.AddMinutes(-5)));
+        var both = await shop.Client.PostAsync("/api/orders", new CreateOrderRequest(OrderSource.WhatsApp, shop.Warehouse.Id, PaymentMethod.CashOnDelivery,
+            new RecipientInput("A", "+961 70 000 000", null, null), null, 0, null, null, [new OrderLineInput(shop.Mask.Id, 1)],
+            Confirm: true, ReserveUntil: Scenario.Tomorrow));
+        var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 1));
+        var later = DateTimeOffset.UtcNow.AddDays(3);
+
+        var extended = await (await shop.Client.PutAsync($"/api/orders/{order.Id}/reservation", new ReserveOrderRequest(later, "Asked for 3 days")))
             .OkJsonAsync<OrderDetailDto>();
 
-        Assert.Equal("orders.not_editable", await editWhileConfirmed.ProblemCodeAsync());
-        Assert.Equal((OrderStatus.Draft, 28.00m), (edited.Status, edited.GrandTotal));
-        Assert.Equal((10, 0), ((await shop.S.StockAsync(shop.Mask.Id)).OnHand, (await shop.S.StockAsync(shop.Mask.Id)).Reserved));
+        Assert.Equal("orders.reservation_in_past", await past.ProblemCodeAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, both.StatusCode);
+        Assert.Equal(later.ToUnixTimeSeconds(), extended.ReservedUntil!.Value.ToUnixTimeSeconds());
+        Assert.Contains(extended.History, h => h.EventType == OrderEventType.Reservation && h.Notes == "Asked for 3 days");
     }
 
     [Fact]
@@ -268,22 +343,21 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Concurrent_orders_cannot_oversell_the_last_units()
+    public async Task Concurrent_reservations_cannot_hold_more_than_is_in_stock()
     {
         var shop = await OpenShopAsync();
-        var drafts = new List<OrderDetailDto>();
-        for (var i = 0; i < 6; i++)
-            drafts.Add(await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 4))); // 6 × 4 wanted, 10 in stock
-
         var clients = new List<ErpClient>();
-        for (var i = 0; i < drafts.Count; i++) clients.Add(await SignedInAsAsync(SystemRoles.SalesEmployee));
-        var results = await Task.WhenAll(drafts.Select((d, i) => clients[i].PostAsync($"/api/orders/{d.Id}/confirm", new TransitionRequest(null))));
+        for (var i = 0; i < 6; i++) clients.Add(await SignedInAsAsync(SystemRoles.SalesEmployee));
+
+        // 6 employees reserve 4 masks each at the same moment; only 10 exist.
+        var results = await Task.WhenAll(clients.Select(c => new Scenario(c, Factory)
+            .CreateOrderAsync(shop.Warehouse.Id, confirm: false, lines: (shop.Mask.Id, 4))));
 
         Assert.Equal(2, results.Count(r => r.IsSuccessStatusCode));
         Assert.All(results.Where(r => !r.IsSuccessStatusCode), r => Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode));
         var mask = await shop.S.StockAsync(shop.Mask.Id);
-        Assert.Equal((2, 0, 2), (mask.OnHand, mask.Reserved, mask.Available));
-        Assert.Equal(2, await shop.S.CountAsync("SELECT count(*) FROM inventory.stock_reservations WHERE status = 'Fulfilled'"));
+        Assert.Equal((10, 8, 2), (mask.OnHand, mask.Reserved, mask.Available));
+        Assert.Equal(2, await shop.S.CountAsync("SELECT count(*) FROM inventory.stock_reservations WHERE status = 'Active'"));
     }
 
     [Fact]
@@ -311,7 +385,9 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var byPhone = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?search=70123456");
         var confirmed = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?status=Confirmed");
 
-        var open = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?statuses=Draft&statuses=Confirmed&statuses=Shipped");
+        var open = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?statuses=Reserved&statuses=Confirmed&statuses=Shipped");
+        var reserved = await shop.Client.GetJsonAsync<PagedResult<OrderListItemDto>>("/api/orders?status=Reserved");
+        Assert.NotNull(Assert.Single(reserved.Items).ReservedUntil);
 
         Assert.Equal(2, byPhone.TotalCount);
         Assert.Single(confirmed.Items);

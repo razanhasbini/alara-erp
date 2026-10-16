@@ -56,6 +56,7 @@ public sealed class OrderService(
             "total" => q.OrderBy(o => o.GrandTotal),
             "-total" => q.OrderByDescending(o => o.GrandTotal),
             "number" => q.OrderBy(o => o.OrderNumber),
+            "reservedUntil" => q.OrderBy(o => o.ReservedUntil == null).ThenBy(o => o.ReservedUntil),
             _ => q.OrderByDescending(o => o.CreatedAt),
         };
 
@@ -67,7 +68,7 @@ public sealed class OrderService(
                 o.RecipientName, o.RecipientPhone, o.RecipientCity,
                 ItemCount = o.Items.Sum(i => i.Quantity), o.GrandTotal, o.CurrencyCode,
                 Company = db.DeliveryCompanies.Where(d => d.Id == o.DeliveryCompanyId).Select(d => d.Name).FirstOrDefault(),
-                o.TrackingNumber, o.CreatedAt, o.CreatedByUserId,
+                o.TrackingNumber, o.CreatedAt, o.CreatedByUserId, o.ReservedUntil,
             })
             .ToListAsync(ct);
         var names = await users.GetDisplayNamesAsync(rows.Select(r => r.CreatedByUserId), ct);
@@ -75,7 +76,7 @@ public sealed class OrderService(
         return new PagedResult<OrderListItemDto>(rows.Select(r => new OrderListItemDto(
                 r.Id, r.OrderNumber, r.Status, r.PaymentStatus, r.PaymentMethod, r.Source, r.RecipientName, r.RecipientPhone,
                 r.RecipientCity, r.ItemCount, r.GrandTotal, r.CurrencyCode, r.Company, r.TrackingNumber, r.CreatedAt,
-                r.CreatedByUserId is { } u ? names.GetValueOrDefault(u) : null)).ToList(),
+                r.CreatedByUserId is { } u ? names.GetValueOrDefault(u) : null, r.ReservedUntil)).ToList(),
             page.SafePage, page.SafePageSize, total);
     }
 
@@ -113,7 +114,8 @@ public sealed class OrderService(
                     .ToList())).ToList(),
             o.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id)
                 .Select(h => new OrderHistoryDto(h.EventType, h.OldValue, h.NewValue, h.Notes, h.ChangedAt, Name(h.ChangedByUserId)))
-                .ToList());
+                .ToList(),
+            o.ReservedAt, o.ReservedUntil);
     }
 
     // ---- commands ----------------------------------------------------------------------------
@@ -123,12 +125,12 @@ public sealed class OrderService(
         await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
         await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
 
+        var customerId = await EnsureCustomerAsync(request.CustomerId, request.Recipient, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var customer = await ResolveCustomerAsync(request.CustomerId, request.Recipient, ct);
         var number = await numbers.NextOrderNumberAsync(ct);
         var order = new Order(number, request.Source, request.WarehouseId, ToRecipient(request.Recipient),
             request.PaymentMethod, options.Value.BaseCurrency, UserId, clock.UtcNow);
-        order.SetCustomer(customer.Id);
+        order.SetCustomer(customerId);
         order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
             request.DiscountTotal,
             request.ShippingTotal ?? options.Value.DefaultDeliveryFee,
@@ -140,11 +142,16 @@ public sealed class OrderService(
         if (request.Confirm)
         {
             order.TransitionTo(OrderStatus.Confirmed, UserId, clock.UtcNow);
-            await stock.ReserveAsync(order.Id, order.WarehouseId, order.StockRequirements(), ct);
+            await ReserveStockAsync(order, ct);
             // Make the staged reservation queryable inside this transaction, then deduct it now.
-            // No reserved quantity is visible outside the confirmation transaction.
             await db.SaveChangesAsync(ct);
             await stock.ShipAsync(order.Id, order.OrderNumber, ct);
+        }
+        else
+        {
+            // Reserve: the stock is held for this customer but nothing is sold (no revenue, no cost) yet.
+            order.Reserve(request.ReserveUntil!.Value, UserId, clock.UtcNow);
+            await ReserveStockAsync(order, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -152,19 +159,30 @@ public sealed class OrderService(
         return await GetAsync(order.Id, ct);
     }
 
-    public Task<OrderDetailDto> UpdateAsync(Guid id, UpdateOrderRequest request, CancellationToken ct) =>
-        ChangeAsync(id, async order =>
+    public async Task<OrderDetailDto> UpdateAsync(Guid id, UpdateOrderRequest request, CancellationToken ct)
+    {
+        var customerId = await EnsureCustomerAsync(request.CustomerId, request.Recipient, ct);
+        return await ChangeAsync(id, async order =>
         {
             await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
             await EnsureDeliveryCompanyUsableAsync(request.DeliveryCompanyId, ct);
+            var reserved = order.Status == OrderStatus.Reserved;
+            if (reserved)
+            {
+                // Swap the hold: release what the old lines held, then hold what the new lines need.
+                await stock.ReleaseAsync(order.Id, ct);
+                await db.SaveChangesAsync(ct);
+            }
             order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
                 request.DiscountTotal, request.ShippingTotal,
                 request.WarehouseId, request.Source, request.PaymentMethod);
             order.SetRecipient(ToRecipient(request.Recipient));
-            order.SetCustomer((await ResolveCustomerAsync(request.CustomerId, request.Recipient, ct)).Id);
+            order.SetCustomer(customerId);
             order.SetDelivery(request.DeliveryCompanyId, order.TrackingNumber, order.CourierFee);
             order.SetNotes(request.Notes);
+            if (reserved) await ReserveStockAsync(order, ct);
         }, ct);
+    }
 
     public Task<OrderDetailDto> UpdateDeliveryAsync(Guid id, UpdateDeliveryRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
@@ -175,23 +193,51 @@ public sealed class OrderService(
             order.SetNotes(request.Notes);
         }, ct);
 
+    /// <summary>Sell: a reserved order turns its hold into a deduction; a legacy draft takes the stock now. Counts as a sale.</summary>
     public Task<OrderDetailDto> ConfirmAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
             await EnsureWarehouseUsableAsync(order.WarehouseId, ct);
+            var wasReserved = order.Status == OrderStatus.Reserved;
             order.TransitionTo(OrderStatus.Confirmed, UserId, clock.UtcNow, request.Notes);
-            await stock.ReserveAsync(order.Id, order.WarehouseId, order.StockRequirements(), ct);
+            if (!wasReserved) await ReserveStockAsync(order, ct);
             await db.SaveChangesAsync(ct);
             await stock.ShipAsync(order.Id, order.OrderNumber, ct);
         }, ct);
 
-    public Task<OrderDetailDto> ReopenAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
+    /// <summary>Reserve: hold the stock until a time. From a sold order, its stock is put back and held again (the sale is undone).</summary>
+    public Task<OrderDetailDto> ReserveAsync(Guid id, ReserveOrderRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
-            order.TransitionTo(OrderStatus.Draft, UserId, clock.UtcNow, request.Notes);
-            await stock.ReleaseAsync(order.Id, ct);
-            await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
+            var wasSold = order.Status == OrderStatus.Confirmed;
+            order.Reserve(request.ReservedUntil, UserId, clock.UtcNow, request.Notes);
+            if (wasSold)
+            {
+                await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
+                await db.SaveChangesAsync(ct);
+            }
+            await ReserveStockAsync(order, ct);
         }, ct);
+
+    public Task<OrderDetailDto> ChangeReservationAsync(Guid id, ReserveOrderRequest request, CancellationToken ct) =>
+        ChangeAsync(id, order =>
+        {
+            order.ChangeReservationDeadline(request.ReservedUntil, UserId, clock.UtcNow, request.Notes);
+            return Task.CompletedTask;
+        }, ct);
+
+    /// <summary>Reserved (unsold) orders holding stock of these products — shown when a new order runs short.</summary>
+    public async Task<IReadOnlyList<ReservedStockDto>> ReservedStockAsync(IReadOnlyCollection<Guid> productIds, Guid? excludeOrderId, CancellationToken ct)
+    {
+        var ids = productIds.ToHashSet();
+        var holds = await ReservedHoldsAsync(ids, excludeOrderId, ct);
+        return ids.Select(p =>
+        {
+            var orders = holds.Where(h => h.ProductId == p).Select(h => h.Order)
+                .OrderBy(o => o.ReservedUntil).ThenBy(o => o.OrderNumber).ToList();
+            return new ReservedStockDto(p, orders.Sum(o => o.Quantity), orders);
+        }).ToList();
+    }
 
     public Task<OrderDetailDto> ShipAsync(Guid id, ShipOrderRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
@@ -222,7 +268,7 @@ public sealed class OrderService(
     public Task<OrderDetailDto> CancelAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
-            var hadReservation = order.Status == OrderStatus.Confirmed;
+            var hadReservation = order.Status is OrderStatus.Confirmed or OrderStatus.Reserved;
             order.TransitionTo(OrderStatus.Cancelled, UserId, clock.UtcNow, request.Notes);
             if (hadReservation)
             {
@@ -239,6 +285,45 @@ public sealed class OrderService(
         }, ct);
 
     // ---- helpers -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Holds the order's stock. If something is short, the message also says which reserved orders hold that
+    /// product, so staff can decide whether to free a reservation.
+    /// </summary>
+    private async Task ReserveStockAsync(Order order, CancellationToken ct)
+    {
+        try
+        {
+            await stock.ReserveAsync(order.Id, order.WarehouseId, order.StockRequirements(), ct);
+        }
+        catch (InsufficientStockException e)
+        {
+            var holds = (await ReservedHoldsAsync([e.ProductId], order.Id, ct)).Select(h => h.Order).OrderBy(h => h.ReservedUntil).ToList();
+            if (holds.Count == 0) throw;
+            var who = string.Join(", ", holds.Take(5).Select(h => $"{h.OrderNumber} ({h.Quantity}, {h.RecipientName})"));
+            throw new DomainException("inventory.insufficient_stock",
+                $"{e.Message} {holds.Sum(h => h.Quantity)} more are reserved in {who}{(holds.Count > 5 ? " and others" : "")}.");
+        }
+    }
+
+    private sealed record Hold(Guid ProductId, ReservedStockOrderDto Order);
+
+    /// <summary>Units each reserved order holds, per product (bundles counted through their components).</summary>
+    private async Task<List<Hold>> ReservedHoldsAsync(IReadOnlyCollection<Guid> productIds, Guid? excludeOrderId, CancellationToken ct)
+    {
+        var ids = productIds.ToList();
+        var orders = await db.Orders.AsNoTracking()
+            .Include(o => o.Items).ThenInclude(i => i.Components)
+            .Where(o => o.Status == OrderStatus.Reserved && o.Id != excludeOrderId
+                        && o.Items.Any(i => ids.Contains(i.ProductId) || i.Components.Any(c => ids.Contains(c.ComponentProductId))))
+            .ToListAsync(ct);
+        return orders
+            .SelectMany(o => o.StockRequirements()
+                .Where(r => ids.Contains(r.Key))
+                .Select(r => new Hold(r.Key, new ReservedStockOrderDto(o.Id, o.OrderNumber, o.RecipientName, r.Value, o.ReservedUntil))))
+            .ToList();
+    }
+
 
     private async Task<OrderDetailDto> ChangeAsync(Guid id, Func<Order, Task> change, CancellationToken ct)
     {
@@ -297,19 +382,36 @@ public sealed class OrderService(
     /// Orders always link to a durable customer. Selecting a customer keeps that identity even if the delivery
     /// recipient is edited; typing a new phone reuses an existing profile or creates one automatically.
     /// </summary>
-    private async Task<Customer> ResolveCustomerAsync(Guid? customerId, RecipientInput recipient, CancellationToken ct)
+    /// <summary>
+    /// Returns the customer for this order, creating the profile first if the phone number is new. Runs in its own
+    /// save before the order's transaction: if two employees create the same new customer at the same moment, the
+    /// database's unique phone index lets one win and the other simply uses that profile.
+    /// </summary>
+    private async Task<Guid> EnsureCustomerAsync(Guid? customerId, RecipientInput recipient, CancellationToken ct)
     {
         if (customerId is { } id)
-            return await db.Customers.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new NotFoundException("Customer", id);
+            return await db.Customers.AnyAsync(c => c.Id == id, ct) ? id : throw new NotFoundException("Customer", id);
 
         var phone = Customer.NormalizePhoneKey(recipient.Phone);
-        var existing = await db.Customers.FirstOrDefaultAsync(c => c.NormalizedPhone == phone, ct);
-        if (existing is not null) return existing;
+        if (await FindCustomerByPhoneAsync(phone, ct) is { } existing) return existing;
 
         var customer = new Customer(recipient.Name, recipient.Phone, null, recipient.City, recipient.Address, null);
         db.Customers.Add(customer);
-        return customer;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return customer.Id;
+        }
+        catch (DbUpdateException)
+        {
+            db.Customers.Entry(customer).State = EntityState.Detached;
+            return await FindCustomerByPhoneAsync(phone, ct) ?? throw new ConflictException("customers.duplicate_phone",
+                "A customer with this phone number was just created; please try again.");
+        }
     }
+
+    private async Task<Guid?> FindCustomerByPhoneAsync(string normalizedPhone, CancellationToken ct) =>
+        await db.Customers.AsNoTracking().Where(c => c.NormalizedPhone == normalizedPhone).Select(c => (Guid?)c.Id).FirstOrDefaultAsync(ct);
 
     private static OrderRecipient ToRecipient(RecipientInput r) => new(r.Name, r.Phone, r.City, r.Address);
 }

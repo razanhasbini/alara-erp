@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react"
-import { useNavigate, useParams } from "react-router"
+import { Link, useNavigate, useParams } from "react-router"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ChevronDown, ChevronUp, Gift, Minus, Plus, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronUp, Clock, Gift, Minus, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { Field } from "@/components/common/controls"
 import { CustomerPicker } from "@/components/common/CustomerPicker"
@@ -14,10 +14,11 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError, errorMessage } from "@/lib/api"
-import { dateOnly, humanize, money } from "@/lib/format"
+import { dateOnly, dateTime, humanize, money } from "@/lib/format"
 import { qk, useAvailability, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
-import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType } from "@/types/api"
+import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType, ReservedStock } from "@/types/api"
+import { ReserveTimeDialog } from "./ReserveTimeDialog"
 import { SOURCES } from "@/lib/rules"
 
 interface Line {
@@ -39,7 +40,8 @@ export function OrderFormPage() {
   const { data: existing, isLoading, error } = useQuery({ queryKey: qk.order(id ?? ""), queryFn: () => api<OrderDetail>(`/api/orders/${id}`), enabled: !!id })
   if (id && isLoading) return <FullPageSpinner />
   if (error) return <ErrorState error={error} />
-  if (existing && existing.status !== "Draft") return <ErrorState error={new Error("Only draft orders can be edited. Reopen the order first.")} />
+  if (existing && existing.status !== "Reserved" && existing.status !== "Draft")
+    return <ErrorState error={new Error("Only reserved orders can be edited. Move a sold order back to reserved first.")} />
   return <OrderEditor key={existing?.id ?? "new"} existing={existing} />
 }
 
@@ -70,6 +72,8 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const [notes, setNotes] = useState(existing?.notes ?? "")
   const [submitted, setSubmitted] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [reserveOpen, setReserveOpen] = useState(false)
+  const isReservedEdit = existing?.status === "Reserved"
 
   const { data: loadedCustomer } = useQuery({
     queryKey: ["sales", "customer", customerId],
@@ -83,7 +87,14 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const effectiveWarehouse = warehouseId || warehouses?.[0]?.id || ""
   const shippingValue = shipping ?? (settings ? settings.defaultDeliveryFee.toFixed(2) : "")
   const productIds = [...new Set(lines.map((line) => line.productId))]
-  const { data: available } = useAvailability(productIds, effectiveWarehouse || undefined, !!effectiveWarehouse)
+  const { data: freeStock } = useAvailability(productIds, effectiveWarehouse || undefined, !!effectiveWarehouse)
+  // While a reserved order is edited, the units it already holds are available to it again.
+  const available = useMemo(() => {
+    if (!freeStock || !isReservedEdit || existing.warehouseId !== effectiveWarehouse) return freeStock
+    const own = { ...freeStock }
+    for (const item of existing.items) if (item.productId in own) own[item.productId] += item.quantity
+    return own
+  }, [freeStock, isReservedEdit, existing, effectiveWarehouse])
 
   const totals = useMemo(() => {
     const subtotal = paidLines.reduce((sum, line) => sum + Math.max(0, line.unitPrice * line.quantity - (Number(line.discount) || 0)), 0)
@@ -94,7 +105,14 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
 
   const required = lines.reduce<Record<string, number>>((all, line) => ({ ...all, [line.productId]: (all[line.productId] ?? 0) + line.quantity }), {})
   const shortages = Object.entries(required).filter(([productId, quantity]) => available && quantity > (available[productId] ?? 0))
-    .map(([productId]) => lines.find((line) => line.productId === productId)!).filter(Boolean)
+    .map(([productId, quantity]) => ({ line: lines.find((line) => line.productId === productId)!, needed: quantity, available: available?.[productId] ?? 0 }))
+    .filter((shortage) => shortage.line)
+  const shortIds = shortages.map((shortage) => shortage.line.productId)
+  const { data: reservedElsewhere } = useQuery({
+    queryKey: ["sales", "reserved-stock", shortIds, id ?? null],
+    queryFn: () => api<ReservedStock[]>("/api/orders/reserved-stock", { query: { productIds: shortIds, excludeOrderId: id } }),
+    enabled: shortIds.length > 0,
+  })
   const errors = {
     name: !name.trim() ? "Required." : undefined,
     phone: !/^\+?[0-9 ()\-/]{6,40}$/.test(phone.trim()) ? "Enter a valid phone number." : undefined,
@@ -106,7 +124,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const invalid = Object.values(errors).some(Boolean)
 
   const save = useMutation({
-    mutationFn: (confirm: boolean) => {
+    mutationFn: ({ sell, reserveUntil, reserveNotes }: { sell: boolean; reserveUntil?: string; reserveNotes?: string | null }) => {
       const body = {
         source, warehouseId: effectiveWarehouse, paymentMethod, customerId,
         recipient: { name: name.trim(), phone: phone.trim(), city: city.trim() || null, address: address.trim() || null },
@@ -114,10 +132,14 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
         notes: notes.trim() || null,
         items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity, lineDiscount: line.isGift ? 0 : Number(line.discount) || 0, isGift: line.isGift })),
       }
-      return isEdit
-        ? api<OrderDetail>(`/api/orders/${id}`, { method: "PUT", body }).then(async (order) =>
-            confirm ? api<OrderDetail>(`/api/orders/${order.id}/confirm`, { method: "POST", body: { notes: null } }) : order)
-        : api<OrderDetail>("/api/orders", { method: "POST", body: { ...body, confirm } })
+      if (!isEdit)
+        return api<OrderDetail>("/api/orders", { method: "POST", body: { ...body, confirm: sell, reserveUntil: sell ? null : reserveUntil } })
+      return api<OrderDetail>(`/api/orders/${id}`, { method: "PUT", body }).then((order) => {
+        if (sell) return api<OrderDetail>(`/api/orders/${order.id}/confirm`, { method: "POST", body: { notes: null } })
+        if (order.status !== "Reserved" && reserveUntil)
+          return api<OrderDetail>(`/api/orders/${order.id}/reserve`, { method: "POST", body: { reservedUntil: reserveUntil, notes: reserveNotes ?? null } })
+        return order
+      })
     },
     onSuccess: async (order) => {
       await Promise.all([
@@ -125,17 +147,22 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
         queryClient.invalidateQueries({ queryKey: ["inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ])
-      toast.success(order.status === "Confirmed" ? `${order.orderNumber} confirmed — products and gifts deducted from stock` : `${order.orderNumber} saved as draft`)
+      toast.success(order.status === "Confirmed"
+        ? `${order.orderNumber} sold — products and gifts deducted from stock`
+        : `${order.orderNumber} reserved${order.reservedUntil ? ` until ${dateTime(order.reservedUntil)}` : ""} — stock is held, nothing is sold yet`)
       navigate(`/orders/${order.id}`)
     },
     onError: (error) => toast.error(error instanceof ApiError && error.code === "inventory.insufficient_stock" ? error.message : errorMessage(error)),
   })
 
-  const submit = (confirm: boolean) => {
+  const ready = () => {
     setSubmitted(true)
-    if (!effectiveWarehouse) return void toast.error("There is no active warehouse to ship from. Create one under Warehouses first.")
-    if (!invalid) save.mutate(confirm)
+    if (!effectiveWarehouse) { toast.error("There is no active warehouse to ship from. Create one under Warehouses first."); return false }
+    return !invalid
   }
+  const sell = () => { if (ready()) save.mutate({ sell: true }) }
+  // Editing a reservation keeps its time; a new order (or a legacy draft) asks until when to hold the stock.
+  const reserve = () => { if (ready()) { if (isReservedEdit) save.mutate({ sell: false }); else setReserveOpen(true) } }
   const updateLine = (key: string, patch: Partial<Line>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line))
   const show = (key: keyof typeof errors) => submitted ? errors[key] as string | undefined : undefined
   const revealGiftPicker = () => {
@@ -147,7 +174,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
     <>
       <PageHeader back={isEdit ? { to: `/orders/${id}`, label: existing?.orderNumber ?? "Order" } : { to: "/orders", label: "Orders" }}
         title={isEdit ? `Edit ${existing?.orderNumber}` : "New order"} />
-      <form noValidate onSubmit={(event) => { event.preventDefault(); submit(true) }} className="grid gap-6 lg:grid-cols-[1fr_21rem]">
+      <form noValidate onSubmit={(event) => { event.preventDefault(); sell() }} className="grid gap-6 lg:grid-cols-[1fr_21rem]">
         <div className="grid content-start gap-6">
           <Section title="Customer" bodyClassName="grid gap-4 p-4 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
@@ -194,17 +221,12 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
                 onSelect={(product) => setLines((current) => [...current, toLine(product, false)])} />
             </div>
             {show("lines") && <p role="alert" className="text-sm font-medium text-destructive">{show("lines")}</p>}
-            {shortages.length > 0 && (
-              <div role="alert" className="flex items-start gap-3 rounded-md border border-tone-amber/30 bg-tone-amber-bg px-4 py-3 text-sm text-tone-amber">
-                <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
-                <div><p className="font-semibold">Not enough stock to confirm this order</p><p className="mt-0.5 leading-5">{shortages.map((line) => line.name).join(", ")} {shortages.length === 1 ? "needs" : "need"} more stock. You can still save a draft.</p></div>
-              </div>
-            )}
+            {shortages.length > 0 && <ShortagePanel shortages={shortages} reserved={reservedElsewhere} />}
           </Section>
 
           <div ref={giftSection}>
             <Section title="Gift with this order" bodyClassName="grid gap-3 p-4">
-              <p className="text-sm text-muted-foreground">Optional. Gift items cost the customer nothing and are deducted from stock when you confirm the order.</p>
+              <p className="text-sm text-muted-foreground">Optional. Gift items cost the customer nothing. They are held with a reservation and deducted from stock when the order is sold.</p>
               <OrderLines lines={giftLines} available={available} submitted={submitted} updateLine={updateLine}
                 removeLine={(key) => setLines((current) => current.filter((line) => line.key !== key))} />
               <div className="grid gap-2 sm:grid-cols-2">
@@ -246,13 +268,22 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
             <div className="mt-2 flex items-baseline justify-between border-t border-hairline pt-3"><span className="font-medium">Total</span><span className="font-display text-2xl tabular">{money(totals.total)}</span></div>
             <p className="mt-1 text-right text-xs text-muted-foreground">Final prices are set by the server when saved.</p>
             <div className="mt-4 grid gap-2">
-              <Button type="submit" disabled={save.isPending || shortages.length > 0}>{save.isPending && <InlineSpinner />} Save & confirm</Button>
-              <Button type="button" variant="outline" disabled={save.isPending} onClick={() => submit(false)}>Save as draft</Button>
+              <Button type="submit" disabled={save.isPending || shortages.length > 0}>{save.isPending && save.variables?.sell && <InlineSpinner />} {isReservedEdit ? "Save & mark as sold" : "Sell now"}</Button>
+              <Button type="button" variant="outline" disabled={save.isPending || shortages.length > 0} onClick={reserve}>
+                {save.isPending && !save.variables?.sell ? <InlineSpinner /> : <Clock />} {isReservedEdit ? "Save reservation" : "Reserve…"}
+              </Button>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Confirming deducts products and gifts from stock immediately. Shipping details can be added later.</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              <strong className="font-medium text-foreground">Sell now</strong> deducts stock and counts the sale.{" "}
+              <strong className="font-medium text-foreground">Reserve</strong> holds the stock for this customer until a time you choose, without counting a sale or cost. Mark it as sold later from Orders → Reserved.
+            </p>
           </div>
         </div>
       </form>
+      <ReserveTimeDialog open={reserveOpen} onOpenChange={setReserveOpen} title="Reserve stock for this order"
+        description="The products and gifts are held for this customer and can't be sold to anyone else. When the time is up you get an alert. Nothing is released automatically."
+        confirmLabel="Reserve" pending={save.isPending}
+        onConfirm={(until, reserveNotes) => save.mutate({ sell: false, reserveUntil: until, reserveNotes: reserveNotes.trim() || null }, { onSettled: () => setReserveOpen(false) })} />
     </>
   )
 }
@@ -291,6 +322,34 @@ function OrderLines({ lines, available, submitted, updateLine, removeLine }: {
           </tr>
         })}</tbody>
       </table>
+    </div>
+  )
+}
+
+function ShortagePanel({ shortages, reserved }: {
+  shortages: { line: Line; needed: number; available: number }[]
+  reserved?: ReservedStock[]
+}) {
+  const anyReserved = shortages.some((shortage) => (reserved?.find((row) => row.productId === shortage.line.productId)?.reservedQuantity ?? 0) > 0)
+  return (
+    <div role="alert" className="flex items-start gap-3 rounded-md border border-tone-amber/30 bg-tone-amber-bg px-4 py-3 text-sm text-tone-amber">
+      <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
+      <div className="grid gap-2">
+        <p className="font-semibold">{anyReserved ? "Not enough free stock — some is reserved for other orders" : "Not enough stock for this order"}</p>
+        <ul className="grid gap-1.5 leading-5">
+          {shortages.map(({ line, needed, available }) => {
+            const held = reserved?.find((row) => row.productId === line.productId)
+            return <li key={line.productId}>
+              <span className="font-medium">{line.name}</span>: needs {needed}, {available} free.
+              {held && held.reservedQuantity > 0 && <> {held.reservedQuantity} more {held.reservedQuantity === 1 ? "is" : "are"} reserved in{" "}
+                {held.orders.map((order, index) => <span key={order.orderId}>{index > 0 && ", "}
+                  <Link to={`/orders/${order.orderId}`} className="font-medium underline underline-offset-2">{order.orderNumber}</Link>
+                  {" "}({order.quantity} for {order.recipientName}{order.reservedUntil && `, until ${dateTime(order.reservedUntil)}`})</span>)}.</>}
+            </li>
+          })}
+        </ul>
+        <p className="text-xs">{anyReserved ? "Free stock by selling, cancelling or editing one of those reservations, or receive more stock." : "Receive more stock, or lower the quantity."}</p>
+      </div>
     </div>
   )
 }

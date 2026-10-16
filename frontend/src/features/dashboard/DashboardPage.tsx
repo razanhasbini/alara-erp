@@ -53,8 +53,8 @@ export function DashboardPage() {
           {finance && <Figure label="With couriers" value={money(finance.awaitingRemittance)} tone={finance.awaitingRemittance > 0 ? "warn" : undefined}
             sub={<Link to="/deliveries" className="hover:underline">Record hand-overs →</Link>}
             hint="Delivered cash-on-delivery orders whose cash the courier has not handed over yet (gross, before courier fees)." />}
-          {orders && <Figure label="To pack" value={number(orders.awaitingShipment)} sub={`${orders.drafts} draft${orders.drafts === 1 ? "" : "s"}`}
-            hint="Confirmed orders (stock reserved) not yet handed to a courier." />}
+          {orders && <Figure label="To pack" value={number(orders.awaitingShipment)} sub={<Link to="/orders?status=Reserved" className="hover:underline">{orders.reserved} reserved →</Link>}
+            hint="Sold orders (stock deducted) not yet handed to a courier. Reserved orders hold stock but aren't sold yet." />}
           {orders && <Figure label="Out for delivery" value={number(orders.outForDelivery)} sub={`${orders.createdToday} new today`}
             hint="Orders handed to a courier and not yet marked delivered or returned." />}
           {!finance && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
@@ -85,7 +85,7 @@ export function DashboardPage() {
                 </div>
               ))
             })()}
-            <p className="text-[0.7rem] text-muted-foreground">Order value excluding drafts, cancelled and returned orders.</p>
+            <p className="text-[0.7rem] text-muted-foreground">Sold orders only — reservations, cancelled and returned orders are excluded.</p>
           </Section>
         </div>
       )}

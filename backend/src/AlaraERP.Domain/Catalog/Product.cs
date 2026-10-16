@@ -32,7 +32,6 @@ public sealed class Product : IAuditable
     public Guid? CategoryId { get; private set; }
     public string Name { get; private set; } = "";
     public string Slug { get; private set; } = "";
-    public string? Barcode { get; private set; }
     public string? ShortDescription { get; private set; }
     public string? Description { get; private set; }
     public string? HowToUse { get; private set; }
@@ -55,7 +54,7 @@ public sealed class Product : IAuditable
     public IReadOnlyList<ProductImage> Images => _images;
 
     public void UpdateDetails(
-        string name, string slug, Guid? categoryId, string? barcode,
+        string name, string slug, Guid? categoryId,
         string? shortDescription, string? description, string? howToUse, string? ingredients,
         decimal? sizeValue, SizeUnit? sizeUnit, int? weightGrams)
     {
@@ -69,7 +68,6 @@ public sealed class Product : IAuditable
         Name = name.Trim();
         Slug = slug;
         CategoryId = categoryId;
-        Barcode = Clean(barcode);
         ShortDescription = Clean(shortDescription);
         Description = Clean(description);
         HowToUse = Clean(howToUse);

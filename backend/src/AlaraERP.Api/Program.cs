@@ -21,6 +21,7 @@ builder.Services.AddInfrastructure(config);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddHostedService<AlaraERP.Api.BackgroundJobs>();
 
 builder.Services
     .AddControllers(o =>

@@ -27,7 +27,6 @@ internal sealed class ProductDetailsValidator : AbstractValidator<ProductDetails
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Slug).MaximumLength(180).Matches(CatalogRules.SlugPattern).When(x => !string.IsNullOrEmpty(x.Slug))
             .WithMessage("Use lowercase letters, digits and single hyphens.");
-        RuleFor(x => x.Barcode).MaximumLength(100);
         RuleFor(x => x.ShortDescription).MaximumLength(1000);
         RuleFor(x => x.Description).MaximumLength(10_000);
         RuleFor(x => x.HowToUse).MaximumLength(5000);

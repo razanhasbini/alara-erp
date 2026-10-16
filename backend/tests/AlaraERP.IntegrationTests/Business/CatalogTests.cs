@@ -11,7 +11,7 @@ namespace AlaraERP.IntegrationTests.Business;
 public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
 {
     private static CreateProductRequest Individual(string key, decimal price, decimal? compareAt = null) =>
-        new(ProductType.Individual, $"Curl Defining Shampoo {key}", null, null, null, null, null, null, null,
+        new(ProductType.Individual, $"Curl Defining Shampoo {key}", null, null, null, null, null, null,
             250, SizeUnit.Ml, 300, price, compareAt, null);
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
         var inner = await s.BundleAsync("ALR-T-INNER", 15m, (shampoo.Id, 1));
 
         var nested = await client.PostAsync("/api/products", new CreateProductRequest(ProductType.Bundle, "Outer",
-            null, null, null, null, null, null, null, null, null, null, 20m, null, [new BundleItemInput(inner.Id, 1)]));
+            null, null, null, null, null, null, null, null, null, 20m, null, [new BundleItemInput(inner.Id, 1)]));
         var repeated = await client.PutAsync($"/api/products/{inner.Id}/bundle-items",
             new ReplaceBundleItemsRequest([new BundleItemInput(shampoo.Id, 1), new BundleItemInput(shampoo.Id, 2)]));
         var self = await client.PutAsync($"/api/products/{inner.Id}/bundle-items",
@@ -140,7 +140,7 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
             var p = await s.ProductAsync($"ALR-MIST-{i}", 20m, name: $"Hair Mist {i}");
             var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{p.Id}");
             (await client.PutAsync($"/api/products/{p.Id}", new UpdateProductRequest(detail.Name, null, hair.Id,
-                null, null, null, null, null, null, null, null, detail.SellingPrice, null))).EnsureSuccessStatusCode();
+                null, null, null, null, null, null, null, detail.SellingPrice, null))).EnsureSuccessStatusCode();
         }
         await s.ProductAsync("ALR-BRUSH", 13m, name: "Curly Hair Brush");
 
@@ -161,7 +161,7 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
 
         var product = await (await sales.PostAsync("/api/products", Individual("ALR-X", 1m))).OkJsonAsync<ProductDetailDto>();
         Assert.Equal(HttpStatusCode.OK, (await sales.PutAsync($"/api/products/{product.Id}", new UpdateProductRequest(
-            "Updated product", null, null, null, null, null, null, null, null, null, null, product.SellingPrice, null))).StatusCode);
+            "Updated product", null, null, null, null, null, null, null, null, null, product.SellingPrice, null))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.DeleteAsync($"/api/products/{product.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await stock.PostAsync("/api/products", Individual("ALR-Y", 1m))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await sales.GetAsync("/api/products")).StatusCode);

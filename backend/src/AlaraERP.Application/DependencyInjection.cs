@@ -4,6 +4,7 @@ using AlaraERP.Application.Common;
 using AlaraERP.Application.Dashboard;
 using AlaraERP.Application.Inventory;
 using AlaraERP.Application.Inventory.Contracts;
+using AlaraERP.Application.Notifications;
 using AlaraERP.Application.Sales;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
@@ -44,6 +45,14 @@ public static class DependencyInjection
         // Dashboard
         services.AddScoped<DashboardService>();
         services.AddScoped<AnalyticsService>();
+
+        // Alerts & WhatsApp
+        services.Configure<WhatsAppOptions>(configuration.GetSection(WhatsAppOptions.Section));
+        services.Configure<AppLinks>(configuration.GetSection("App"));
+        services.AddScoped<INotificationPublisher, NotificationPublisher>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<WhatsAppDispatcher>();
+        services.AddScoped<ReservationExpiryJob>();
         return services;
     }
 }

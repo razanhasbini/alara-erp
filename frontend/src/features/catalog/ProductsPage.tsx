@@ -126,7 +126,7 @@ export function ProductsPage({ type }: { type?: ProductType }) {
         </>}
       />
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search name or barcode" />
+        <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Search products" />
         <Select value={categoryId || "all"} onValueChange={(v) => set({ category: v === "all" ? "" : v })}>
           <SelectTrigger className="h-8 w-48 bg-card" aria-label="Category"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -144,7 +144,7 @@ export function ProductsPage({ type }: { type?: ProductType }) {
         onRowClick={(p) => navigate(`/products/${p.id}`)}
         rowClassName={(p) => (p.isActive ? undefined : "opacity-60")}
         empty={<EmptyState title={search ? "No matches" : isBundles ? "No bundles yet" : "No products yet"}>
-          {search ? "Try another product name or barcode." : "Products you create appear here."}</EmptyState>}
+          {search ? "Try another product name." : "Products you create appear here."}</EmptyState>}
         footer={data && data.totalCount > 0 && <Pager page={data.page} pageSize={data.pageSize} total={data.totalCount} onPage={(p) => set({ page: String(p) })} />}
       />
     </>

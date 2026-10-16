@@ -1,23 +1,27 @@
 import { useState, type ComponentType } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import {
-  ArrowLeftRight, BarChart3, Boxes, Globe, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
+  ArrowLeftRight, BarChart3, Bell, Boxes, Globe, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
   ContactRound, Package, PackageOpen, Settings2, ShieldCheck, Truck, UserRound, Users, Warehouse,
 } from "lucide-react"
-import monogram from "@/assets/monogram.png"
+import logo from "@/assets/logo.png"
 import { useAuth } from "@/auth/auth"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import { useUnreadAlerts } from "@/lib/alerts"
 import { P } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 
-interface NavItem { to: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string; role?: string; end?: boolean; badge?: string }
+interface NavItem { to: string; label: string; icon: ComponentType<{ className?: string }>; permission?: string; role?: string; end?: boolean; badge?: string; unreadAlerts?: boolean }
 
 const NAV: { group: string; items: NavItem[] }[] = [
-  { group: "", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, permission: P.reports.view }] },
+  { group: "", items: [
+    { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, permission: P.reports.view },
+    { to: "/alerts", label: "Alerts", icon: Bell, unreadAlerts: true },
+  ] },
   {
     group: "Sales",
     items: [
@@ -63,18 +67,16 @@ const NAV: { group: string; items: NavItem[] }[] = [
 
 function Brand() {
   return (
-    <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
-      <img src={monogram} alt="" className="size-8 rounded-md bg-blush object-contain p-0.5" />
-      <div className="leading-tight">
-        <div className="font-display text-lg font-semibold">ÀLara Line</div>
-        <div className="text-[0.66rem] tracking-[0.18em] text-muted-foreground uppercase">Operations</div>
-      </div>
+    <div className="px-5 pt-5 pb-4">
+      <img src={logo} alt="ÀLara Line" className="h-11 w-auto" />
+      <div className="mt-1.5 text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Operations</div>
     </div>
   )
 }
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const { can, user } = useAuth()
+  const { data: unread = 0 } = useUnreadAlerts()
   return (
     <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 pb-4">
       {NAV.map(({ group, items }) => {
@@ -84,7 +86,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
           <div key={group || "home"} className="mt-3 first:mt-0">
             {group && <div className="eyebrow px-2.5 pb-1.5 text-[0.62rem]">{group}</div>}
             <ul className="grid gap-px">
-              {visible.map(({ to, label, icon: Icon, end, badge }) => (
+              {visible.map(({ to, label, icon: Icon, end, badge, unreadAlerts }) => (
                 <li key={to}>
                   <NavLink to={to} end={end} onClick={onNavigate}
                     className={({ isActive }) => cn(
@@ -95,6 +97,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
                     )}>
                     <Icon className="size-4 shrink-0" />
                     {label}
+                    {unreadAlerts && unread > 0 && <span className="ml-auto rounded-full bg-rose px-1.5 py-px text-[0.66rem] font-semibold text-white tabular" aria-label={`${unread} unread`}>{unread > 99 ? "99+" : unread}</span>}
                     {badge && <span className="ml-auto rounded-full bg-blush px-1.5 py-px text-[0.6rem] font-semibold tracking-wide text-rose-ink uppercase">{badge}</span>}
                   </NavLink>
                 </li>
@@ -104,6 +107,18 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
         )
       })}
     </nav>
+  )
+}
+
+function AlertsBell() {
+  const { data: unread = 0 } = useUnreadAlerts()
+  return (
+    <Button variant="ghost" size="icon-sm" asChild className="relative">
+      <NavLink to="/alerts" aria-label={unread ? `Alerts, ${unread} unread` : "Alerts"}>
+        <Bell />
+        {unread > 0 && <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose px-1 text-[0.6rem] font-semibold text-white tabular">{unread > 99 ? "99+" : unread}</span>}
+      </NavLink>
+    </Button>
   )
 }
 
@@ -161,10 +176,10 @@ export function AppShell() {
         <header className="sticky top-0 z-20 flex h-12 items-center justify-between gap-3 border-b border-hairline bg-background/90 px-4 backdrop-blur-sm md:px-6">
           <div className="flex items-center gap-2 lg:hidden">
             <Button variant="ghost" size="icon-sm" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu /></Button>
-            <img src={monogram} alt="ÀLara Line" className="size-6 object-contain" />
+            <img src={logo} alt="ÀLara Line" className="h-7 w-auto" />
           </div>
           <div className="hidden lg:block" />
-          <UserMenu />
+          <div className="flex items-center gap-1"><AlertsBell /><UserMenu /></div>
         </header>
         <main key={location.pathname.split("/")[1]} className="mx-auto w-full max-w-[1320px] flex-1 px-4 py-6 md:px-6 lg:px-8">
           <Outlet />

@@ -130,11 +130,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Barcode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("barcode");
-
                     b.Property<Guid?>("CategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("category_id");
@@ -216,10 +211,6 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_products");
-
-                    b.HasIndex("Barcode")
-                        .IsUnique()
-                        .HasDatabaseName("ix_products_barcode");
 
                     b.HasIndex("CategoryId")
                         .HasDatabaseName("ix_products_category_id");
@@ -895,6 +886,153 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.ToTable("warehouses", "inventory");
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("link");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reference_id");
+
+                    b.Property<string>("ReferenceType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("reference_type");
+
+                    b.Property<string>("RequiredPermission")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("required_permission");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_notifications_created_at");
+
+                    b.HasIndex("ReferenceType", "ReferenceId")
+                        .HasDatabaseName("ix_notifications_reference_type_reference_id");
+
+                    b.ToTable("notifications", "notifications");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Notifications.NotificationRead", b =>
+                {
+                    b.Property<Guid>("NotificationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("notification_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.HasKey("NotificationId", "UserId")
+                        .HasName("pk_notification_reads");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_notification_reads_user_id");
+
+                    b.ToTable("notification_reads", "notifications");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Notifications.WhatsAppMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<Guid>("NotificationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("notification_id");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_message_id");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("ToPhone")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("to_phone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_whatsapp_messages");
+
+                    b.HasIndex("NotificationId")
+                        .HasDatabaseName("ix_whatsapp_messages_notification_id");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_whatsapp_messages_status_created_at");
+
+                    b.ToTable("whatsapp_messages", "notifications", t =>
+                        {
+                            t.HasCheckConstraint("ck_whatsapp_messages_attempts", "attempts >= 0");
+                        });
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Sales.CourierRemittance", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1185,6 +1323,18 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("recipient_phone");
 
+                    b.Property<DateTimeOffset?>("ReservationExpiryNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reservation_expiry_notified_at");
+
+                    b.Property<DateTimeOffset?>("ReservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reserved_at");
+
+                    b.Property<DateTimeOffset?>("ReservedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reserved_until");
+
                     b.Property<DateTimeOffset?>("ReturnedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("returned_at");
@@ -1264,6 +1414,10 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status", "CreatedAt")
                         .HasDatabaseName("ix_orders_status_created_at");
+
+                    b.HasIndex("Status", "ReservedUntil")
+                        .HasDatabaseName("ix_orders_open_reservations")
+                        .HasFilter("status = 'Reserved'");
 
                     b.ToTable("orders", "sales", t =>
                         {
@@ -1992,6 +2146,33 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_stock_transfer_lines_stock_transfers_transfer_id");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Notifications.NotificationRead", b =>
+                {
+                    b.HasOne("AlaraERP.Domain.Notifications.Notification", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_reads_notifications_notification_id");
+
+                    b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_reads_users_user_id");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Notifications.WhatsAppMessage", b =>
+                {
+                    b.HasOne("AlaraERP.Domain.Notifications.Notification", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_whatsapp_messages_notifications_notification_id");
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Sales.CourierRemittance", b =>

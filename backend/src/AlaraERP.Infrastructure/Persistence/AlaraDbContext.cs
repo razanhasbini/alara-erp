@@ -40,6 +40,10 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<DeliveryCompany> DeliveryCompanies => Set<DeliveryCompany>();
     public DbSet<CourierRemittance> CourierRemittances => Set<CourierRemittance>();
 
+    public DbSet<AlaraERP.Domain.Notifications.Notification> Notifications => Set<AlaraERP.Domain.Notifications.Notification>();
+    public DbSet<AlaraERP.Domain.Notifications.NotificationRead> NotificationReads => Set<AlaraERP.Domain.Notifications.NotificationRead>();
+    public DbSet<AlaraERP.Domain.Notifications.WhatsAppMessage> WhatsAppMessages => Set<AlaraERP.Domain.Notifications.WhatsAppMessage>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

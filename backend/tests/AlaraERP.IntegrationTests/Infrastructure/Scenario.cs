@@ -18,7 +18,7 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
     public async Task<ProductDetailDto> ProductAsync(string key, decimal price, bool tracksExpiry = true, string? name = null, decimal? standardCost = null)
     {
         var product = await (await client.PostAsync("/api/products", new CreateProductRequest(
-            Type: ProductType.Individual, Name: name ?? $"Product {key}", Slug: null, CategoryId: null, Barcode: null,
+            Type: ProductType.Individual, Name: name ?? $"Product {key}", Slug: null, CategoryId: null,
             ShortDescription: null, Description: null, HowToUse: null, Ingredients: null, SizeValue: null, SizeUnit: null,
             WeightGrams: null, SellingPrice: price, CompareAtPrice: null, BundleItems: null, StandardCost: standardCost))).OkJsonAsync<ProductDetailDto>();
         if (!tracksExpiry)
@@ -29,7 +29,7 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
 
     public async Task<ProductDetailDto> BundleAsync(string key, decimal price, params (Guid ProductId, int Quantity)[] items) =>
         await (await client.PostAsync("/api/products", new CreateProductRequest(
-            Type: ProductType.Bundle, Name: $"Bundle {key}", Slug: null, CategoryId: null, Barcode: null,
+            Type: ProductType.Bundle, Name: $"Bundle {key}", Slug: null, CategoryId: null,
             ShortDescription: null, Description: null, HowToUse: null, Ingredients: null, SizeValue: null, SizeUnit: null,
             WeightGrams: null, SellingPrice: price, CompareAtPrice: null,
             BundleItems: items.Select(i => new BundleItemInput(i.ProductId, i.Quantity)).ToList()))).OkJsonAsync<ProductDetailDto>();
@@ -39,13 +39,17 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
         await (await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouseId, "Supplier", "PO-1", null, null,
             [new ReceiveLineInput(productId, quantity, unitCost, batch, expiry ?? InAYear)]))).OkJsonAsync<ReceiptDto>();
 
+    /// <summary>confirm = sell now; otherwise the order is reserved for a day.</summary>
     public async Task<HttpResponseMessage> CreateOrderAsync(Guid warehouseId, bool confirm, decimal discount = 0,
         decimal? shipping = null, Guid? deliveryCompanyId = null, params (Guid ProductId, int Quantity)[] lines) =>
         await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.WhatsApp, warehouseId, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", "Hamra, Bliss St."),
             deliveryCompanyId, discount, shipping, null,
-            lines.Select(l => new OrderLineInput(l.ProductId, l.Quantity)).ToList(), confirm));
+            lines.Select(l => new OrderLineInput(l.ProductId, l.Quantity)).ToList(), confirm,
+            ReserveUntil: confirm ? null : DateTimeOffset.UtcNow.AddDays(1)));
+
+    public static DateTimeOffset Tomorrow => DateTimeOffset.UtcNow.AddDays(1);
 
     public async Task<OrderDetailDto> OrderAsync(Guid warehouseId, bool confirm, params (Guid ProductId, int Quantity)[] lines) =>
         await (await CreateOrderAsync(warehouseId, confirm, lines: lines)).OkJsonAsync<OrderDetailDto>();
@@ -66,6 +70,16 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
         await using var cmd = new NpgsqlCommand("UPDATE inventory.batches SET expiry_date = @e WHERE id = @id", conn);
         cmd.Parameters.AddWithValue("e", expiry);
         cmd.Parameters.AddWithValue("id", batchId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Test-only: run a statement as the schema owner (e.g. to move a deadline into the past).</summary>
+    public async Task ExecuteAsync(string sql, params (string Name, object Value)[] parameters)
+    {
+        await using var conn = new NpgsqlConnection(factory.OwnerConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        foreach (var (name, value) in parameters) cmd.Parameters.AddWithValue(name, value);
         await cmd.ExecuteNonQueryAsync();
     }
 

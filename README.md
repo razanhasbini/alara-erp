@@ -86,6 +86,19 @@ dotnet user-secrets set --project src/AlaraERP.Api "ConnectionStrings:TestOwner"
 
 In production, use environment variables. [`.env.example`](.env.example) lists every setting.
 
+**WhatsApp alerts (optional).** Until these are set, alerts are only recorded in the app's Alerts page with status "WhatsApp not connected". They use the Meta WhatsApp Cloud API:
+
+```bash
+dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:Enabled" "true"
+dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:PhoneNumberId" "…"      # from Meta Business → WhatsApp → API setup
+dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:AccessToken" "…"        # a permanent system-user token
+dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:Recipients:0" "96170123456"
+dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:TemplateName" "erp_alert"  # approved template with one {{1}} body parameter
+dotnet user-secrets set --project src/AlaraERP.Api "App:FrontendUrl" "https://erp.example.com"  # link added to messages
+```
+
+Without a template, plain text messages only reach numbers that messaged the business in the last 24 hours (Meta's rule).
+
 ## First run
 
 ```bash
@@ -214,11 +227,12 @@ Roles are defined in code and synced to the database by `migrate`.
 - Taking a bundle out for a PR box, gift, loss or damage deducts its component products; bundles never gain a separate stock balance.
 
 **Order lifecycle**
-- **Draft:** editable, stock is unchanged.
-- **Confirmed:** stock is deducted immediately from FEFO batches. "Reopen" returns it.
+- **Reserved:** stock is held for the customer (it can't be sold to anyone else) until a chosen time, but nothing is deducted and no revenue or cost is counted. The order can still be edited. When the time is up an alert is raised (in **Alerts**, and on WhatsApp once connected); nothing is released automatically.
+- **Sold** (`Confirmed` in the API): stock is deducted immediately from FEFO batches and the sale counts. "Back to reserved" undoes the sale and holds the stock again.
+- Creating an order with too little free stock is refused, and the message names the reserved orders (number, quantity, customer, deadline) holding the rest.
 - **Shipped:** courier and tracking details are recorded separately; stock is not changed again.
 - **Delivered**, or **Returned** (stock goes back into the same batches it left from).
-- **Cancelled** is possible only before shipping, and returns stock deducted at confirmation.
+- **Cancelled** is possible only before shipping; it releases a reservation or returns stock deducted when the order was sold.
 - Prices, names and bundle contents are frozen when the order is placed.
 
 **Customers**

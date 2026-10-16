@@ -16,8 +16,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = Text.ContainsPattern(query.Search);
-            q = q.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\")
-                          || (p.Barcode != null && EF.Functions.Like(p.Barcode.ToLower(), term, "\\")));
+            q = q.Where(p => EF.Functions.Like(p.Name.ToLower(), term, "\\"));
         }
         if (query.CategoryId is { } categoryId)
             q = q.Where(p => p.CategoryId == categoryId
@@ -65,7 +64,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
             .ToList();
 
         return new ProductDetailDto(
-            p.Id, p.Type, p.Name, p.Slug, p.Barcode, p.CategoryId, categoryName,
+            p.Id, p.Type, p.Name, p.Slug, p.CategoryId, categoryName,
             p.ShortDescription, p.Description, p.HowToUse, p.Ingredients,
             p.SizeValue, p.SizeUnit, p.WeightGrams, p.SellingPrice, p.CompareAtPrice,
             currentUser.HasPermission(Permissions.Costs.View) ? p.StandardCost : null, p.IsActive,
@@ -168,7 +167,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
     }
 
     private static void ApplyDetails(Product product, ProductDetailsInput r, string slug) =>
-        product.UpdateDetails(r.Name, slug, r.CategoryId, r.Barcode, r.ShortDescription, r.Description,
+        product.UpdateDetails(r.Name, slug, r.CategoryId, r.ShortDescription, r.Description,
             r.HowToUse, r.Ingredients, r.SizeValue, r.SizeUnit, r.WeightGrams);
 
     private async Task<List<(Product, int)>> ResolveComponentsAsync(IReadOnlyList<BundleItemInput> items, CancellationToken ct)

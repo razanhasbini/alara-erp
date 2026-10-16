@@ -21,9 +21,18 @@ public sealed record CreateOrderRequest(
     OrderSource Source, Guid WarehouseId, PaymentMethod PaymentMethod, RecipientInput Recipient,
     Guid? DeliveryCompanyId, decimal DiscountTotal, decimal? ShippingTotal, string? Notes,
     IReadOnlyList<OrderLineInput> Items,
-    /// <summary>Confirm (and reserve stock) immediately instead of saving a draft.</summary>
+    /// <summary>Sell now: deducts stock and counts as a sale.</summary>
     bool Confirm = false,
-    Guid? CustomerId = null);
+    Guid? CustomerId = null,
+    /// <summary>Reserve instead: holds the stock until this time (no sale, no cost yet). Exactly one of Confirm / ReserveUntil.</summary>
+    DateTimeOffset? ReserveUntil = null);
+
+public sealed record ReserveOrderRequest(DateTimeOffset ReservedUntil, string? Notes);
+
+/// <summary>Who is holding stock of a product: reserved (not yet sold) orders.</summary>
+public sealed record ReservedStockOrderDto(Guid OrderId, string OrderNumber, string RecipientName, int Quantity, DateTimeOffset? ReservedUntil);
+
+public sealed record ReservedStockDto(Guid ProductId, int ReservedQuantity, IReadOnlyList<ReservedStockOrderDto> Orders);
 
 public sealed record UpdateOrderRequest(
     OrderSource Source, Guid WarehouseId, PaymentMethod PaymentMethod, RecipientInput Recipient,
@@ -46,7 +55,8 @@ public sealed record OrderListQuery(
 public sealed record OrderListItemDto(
     Guid Id, string OrderNumber, OrderStatus Status, PaymentStatus PaymentStatus, PaymentMethod PaymentMethod, OrderSource Source,
     string RecipientName, string RecipientPhone, string? RecipientCity, int ItemCount, decimal GrandTotal, string CurrencyCode,
-    string? DeliveryCompanyName, string? TrackingNumber, DateTimeOffset CreatedAt, string? CreatedBy);
+    string? DeliveryCompanyName, string? TrackingNumber, DateTimeOffset CreatedAt, string? CreatedBy,
+    DateTimeOffset? ReservedUntil = null);
 
 public sealed record OrderItemComponentDto(Guid ProductId, string Name, int QuantityPerBundle, int TotalQuantity);
 
@@ -67,7 +77,8 @@ public sealed record OrderDetailDto(
     DateTimeOffset? ConfirmedAt, DateTimeOffset? ShippedAt, DateTimeOffset? DeliveredAt, DateTimeOffset? CancelledAt,
     DateTimeOffset? ReturnedAt, DateTimeOffset? PaidAt,
     IReadOnlyList<OrderStatus> AllowedTransitions,
-    IReadOnlyList<OrderItemDto> Items, IReadOnlyList<OrderHistoryDto> History);
+    IReadOnlyList<OrderItemDto> Items, IReadOnlyList<OrderHistoryDto> History,
+    DateTimeOffset? ReservedAt = null, DateTimeOffset? ReservedUntil = null);
 
 public sealed record DeliveryCompanyDto(
     Guid Id, string Name, string? Phone, bool IsActive, int AwaitingRemittanceOrders, decimal AwaitingRemittanceAmount,

@@ -148,10 +148,11 @@ Adjustment reasons: `Damaged, Expired, CountCorrection, Lost, Sample/Gift, Other
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft
-    Draft --> Confirmed: confirm (deduct stock FEFO)
-    Draft --> Cancelled: cancel
-    Confirmed --> Draft: reopen (return stock)
+    [*] --> Reserved: reserve until a time (hold stock)
+    [*] --> Confirmed: sell now (deduct stock FEFO)
+    Reserved --> Confirmed: mark as sold (deduct held stock)
+    Reserved --> Cancelled: cancel (release hold)
+    Confirmed --> Reserved: back to reserved (return stock, hold it again)
     Confirmed --> Shipped: record shipping details
     Confirmed --> Cancelled: cancel (return stock)
     Shipped --> Delivered: delivered
@@ -161,8 +162,11 @@ stateDiagram-v2
     Returned --> [*]
 ```
 
-- Items are editable only in **Draft**. To change a confirmed order, reopen it (returns stock) or cancel.
-- Stock is deducted exactly once, at **Confirmed**, using FEFO batches. Shipping records logistics only. Reopening or cancelling a confirmed order, and recording a return, restores the units from the movement records.
+- Orders are created internally as Draft and moved in the same transaction to **Reserved** or **Confirmed** ("Sold" in the UI); legacy drafts can still be reserved or sold.
+- **Reserved** holds stock (`quantity_reserved`) without deducting it; revenue, cost and profit ignore it. `reserved_until` (future, ≤ 90 days) is required. Items are editable only while Reserved (the hold is released and re-taken in one transaction).
+- When `reserved_until` passes, `ReservationExpiryJob` (hosted `BackgroundJobs`, every `Jobs:IntervalSeconds`, default 60) raises one alert per deadline. Nothing is released automatically.
+- Stock is deducted exactly once, at **Confirmed**, using FEFO batches. Shipping records logistics only. Moving a sold order back to Reserved, cancelling it, or recording a return restores the units from the movement records.
+- A shortage error lists the Reserved orders holding the product (`GET /api/orders/reserved-stock` gives the same to the order form).
 - Delivered → Returned is **not** allowed in the MVP (no returns policy yet).
 
 **Payment** (separate from fulfilment)
@@ -177,7 +181,7 @@ Read-only aggregation endpoints. Metric definitions:
 - **Collected revenue** = Σ grand_total of orders with `payment_status = Paid`.
 - **Delivered, awaiting cash** = Σ grand_total of Delivered orders with `CollectedByCourier` (owed by couriers).
 - **Open order value** = Confirmed + Shipped.
-- Cancelled/Returned/Draft are never counted as revenue.
+- Cancelled/Returned/Draft/Reserved are never counted as revenue.
 - Inventory: total units on hand, by warehouse, low-stock products (available ≤ threshold), expired / expiring batches.
 
 Analytics uses the inclusive Beirut business-date range supplied by the UI:
@@ -248,7 +252,6 @@ erDiagram
         uuid category_id FK "nullable"
         varchar name
         varchar slug UK
-        varchar barcode UK "nullable"
         varchar product_type "Individual | Bundle"
         text short_description
         text description
@@ -534,7 +537,11 @@ POST         /api/inventory/bundle-withdrawals
 GET          /api/inventory/movements
 
 GET/POST/PUT /api/orders  ·  GET /api/orders/{id}
-POST         /api/orders/{id}/confirm | reopen | ship | deliver | return | cancel
+POST         /api/orders/{id}/confirm | reserve | ship | deliver | return | cancel
+PUT          /api/orders/{id}/reservation          (change the reservation time)
+GET          /api/orders/reserved-stock?productIds=&excludeOrderId=
+GET          /api/notifications (?unreadOnly) · /unread-count · /channels
+POST         /api/notifications/{id}/read · /read-all · /{id}/resend-whatsapp
 GET          /api/orders/{id}/history
 GET/POST/PUT /api/delivery-companies
 GET/POST     /api/courier-remittances   (+ GET /api/courier-remittances/outstanding)
@@ -577,7 +584,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 | # | Topic | Default used unless you say otherwise |
 |---|---|---|
 | 1 | Payment methods | COD only in UI; enum already supports Whish / OMT / bank transfer / cash. |
-| 2 | Order edits | Items editable only in Draft; reopen Confirmed → Draft to edit. |
+| 2 | Order edits | Items editable only while Reserved; move a sold order back to Reserved to edit. |
 | 3 | Returns after delivery | Not supported (no returns policy yet). Courier refusal → Returned is supported. |
 | 4 | Expiry warning window | 60 days, configurable. Expired stock blocks shipment, must be written off. |
 | 5 | Discounts | Line discounts and order discount allowed for `orders.create`; no approval limits. |
@@ -626,7 +633,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 - **`stock_movements.reference_number`.** The ledger stores the human-readable document number, so Inventory never has to query Sales just to display "AL-000123".
 - **COD without a courier.** A cash-on-delivery order delivered by ÀLara Line staff (no delivery company) becomes `Paid` on delivery. With a courier it becomes `CollectedByCourier` until a remittance is recorded.
 - **Remittances** store `amount_collected`, `courier_fees` (from the orders' courier fees), `net_amount` and `order_count`.
-- **Order list** accepts `statuses=` (repeatable) for the "open" view (Draft, Confirmed, Shipped).
+- **Order list** accepts `statuses=` (repeatable) for the "open" view (Confirmed, Shipped); `sort=reservedUntil` orders the Reserved view by deadline.
 - **Recipient phones** are stored normalised (`+96170123456`), so searches match however the number was typed.
 - **Paid orders cannot be cancelled or returned** until refunds are supported. This only affects non-COD prepaid orders.
 - **Entity keys** are UUIDv7, generated in the domain (EF `ValueGenerated.Never`).

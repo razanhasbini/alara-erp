@@ -65,8 +65,15 @@ public sealed class CreateOrderRequestValidator : AbstractValidator<CreateOrderR
         RuleFor(x => x.Source).IsInEnum();
         RuleFor(x => x.PaymentMethod).IsInEnum();
         RuleFor(x => x.ShippingTotal).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).When(x => x.ShippingTotal.HasValue);
+        RuleFor(x => x).Must(x => x.Confirm != x.ReserveUntil.HasValue).OverridePropertyName("reserveUntil")
+            .WithMessage("Choose either “Sell now” or “Reserve until” a date and time.");
         OrderRules.Apply(this, x => x.Recipient, x => x.Items, x => x.DiscountTotal, x => x.Notes);
     }
+}
+
+public sealed class ReserveOrderRequestValidator : AbstractValidator<ReserveOrderRequest>
+{
+    public ReserveOrderRequestValidator() => RuleFor(x => x.Notes).MaximumLength(2000);
 }
 
 public sealed class UpdateOrderRequestValidator : AbstractValidator<UpdateOrderRequest>

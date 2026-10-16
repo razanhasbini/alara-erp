@@ -1,6 +1,10 @@
 namespace AlaraERP.Domain.Sales;
 
-public enum OrderStatus { Draft, Confirmed, Shipped, Delivered, Cancelled, Returned }
+/// <summary>
+/// Reserved: stock is held for the customer (not sold: no revenue, no cost) until <c>ReservedUntil</c>.
+/// Confirmed: sold — stock deducted, counted in sales. Draft exists only for orders created before reservations.
+/// </summary>
+public enum OrderStatus { Draft, Confirmed, Shipped, Delivered, Cancelled, Returned, Reserved }
 
 public enum OrderSource { WhatsApp, Instagram, Website, Other }
 
@@ -13,4 +17,4 @@ public enum PaymentMethod { CashOnDelivery, Whish, Omt, BankTransfer, Cash }
 /// </summary>
 public enum PaymentStatus { Unpaid, CollectedByCourier, Paid, Void }
 
-public enum OrderEventType { Status, Payment }
+public enum OrderEventType { Status, Payment, Reservation }

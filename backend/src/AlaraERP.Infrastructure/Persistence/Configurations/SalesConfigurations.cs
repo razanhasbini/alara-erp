@@ -61,6 +61,8 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.HasIndex(o => o.RecipientPhone);
         b.HasIndex(o => o.CustomerId);
         b.HasIndex(o => new { o.DeliveryCompanyId, o.PaymentStatus });
+        // Finds reservations whose time is up and that have not been alerted yet.
+        b.HasIndex(o => new { o.Status, o.ReservedUntil }).HasFilter("status = 'Reserved'").HasDatabaseName("ix_orders_open_reservations");
 
         b.HasOne<Warehouse>().WithMany().HasForeignKey(o => o.WarehouseId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Customer>().WithMany().HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Restrict);

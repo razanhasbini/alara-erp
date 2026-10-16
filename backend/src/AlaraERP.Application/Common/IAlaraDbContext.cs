@@ -38,6 +38,11 @@ public interface IAlaraDbContext
     DbSet<DeliveryCompany> DeliveryCompanies { get; }
     DbSet<CourierRemittance> CourierRemittances { get; }
 
+    // notifications
+    DbSet<AlaraERP.Domain.Notifications.Notification> Notifications { get; }
+    DbSet<AlaraERP.Domain.Notifications.NotificationRead> NotificationReads { get; }
+    DbSet<AlaraERP.Domain.Notifications.WhatsAppMessage> WhatsAppMessages { get; }
+
     DatabaseFacade Database { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

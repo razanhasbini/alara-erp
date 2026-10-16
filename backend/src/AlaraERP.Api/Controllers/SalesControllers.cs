@@ -71,10 +71,27 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     [HttpPost("{id:guid}/confirm")]
     [HasPermission(Orders.Update)]
     public Task<OrderDetailDto> Confirm(Guid id, TransitionRequest request, CancellationToken ct) => orders.ConfirmAsync(id, request, ct);
-
-    [HttpPost("{id:guid}/reopen")]
+    /// <summary>Hold the stock until a time (from a sold order: undoes the sale and holds the stock again).</summary>
+    [HttpPost("{id:guid}/reserve")]
     [HasPermission(Orders.Update)]
-    public Task<OrderDetailDto> Reopen(Guid id, TransitionRequest request, CancellationToken ct) => orders.ReopenAsync(id, request, ct);
+    public Task<OrderDetailDto> Reserve(Guid id, ReserveOrderRequest request, CancellationToken ct) => orders.ReserveAsync(id, request, ct);
+
+    /// <summary>Change how long a reserved order is held.</summary>
+    [HttpPut("{id:guid}/reservation")]
+    [HasPermission(Orders.Update)]
+    public Task<OrderDetailDto> ChangeReservation(Guid id, ReserveOrderRequest request, CancellationToken ct) =>
+        orders.ChangeReservationAsync(id, request, ct);
+
+    /// <summary>Which reserved (unsold) orders are holding these products.</summary>
+    [HttpGet("reserved-stock")]
+    [HasPermission(Orders.View)]
+    public async Task<ActionResult<IReadOnlyList<ReservedStockDto>>> ReservedStock(
+        [FromQuery] Guid[] productIds, [FromQuery] Guid? excludeOrderId, CancellationToken ct)
+    {
+        if (productIds.Length is 0 or > 200)
+            return ProblemWithCode(400, "validation_failed", "Pass between 1 and 200 productIds.");
+        return Ok(await orders.ReservedStockAsync(productIds, excludeOrderId, ct));
+    }
 
     [HttpPost("{id:guid}/ship")]
     [HasPermission(Orders.Update)]

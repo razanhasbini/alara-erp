@@ -47,7 +47,7 @@ public sealed class CatalogImporter(AlaraDbContext db, ILogger<CatalogImporter> 
         {
             if (existing.Contains(p.Slug)) { skipped++; continue; }
             var product = new Product(ProductType.Individual, p.Name, p.Slug, p.SellingPrice, p.CompareAtPrice);
-            product.UpdateDetails(p.Name, p.Slug, categories[p.Category].Id, null, p.ShortDescription, p.Description,
+            product.UpdateDetails(p.Name, p.Slug, categories[p.Category].Id, p.ShortDescription, p.Description,
                 p.HowToUse, p.Ingredients, null, null, p.WeightGrams);
             db.Products.Add(product);
             db.ProductInventorySettings.Add(new ProductInventorySettings(product.Id, lowStockThreshold: 0, p.TracksExpiry));
@@ -60,7 +60,7 @@ public sealed class CatalogImporter(AlaraDbContext db, ILogger<CatalogImporter> 
         {
             if (existing.Contains(b.Slug)) { skipped++; continue; }
             var bundle = new Product(ProductType.Bundle, b.Name, b.Slug, b.SellingPrice, b.CompareAtPrice);
-            bundle.UpdateDetails(b.Name, b.Slug, categories[b.Category].Id, null, b.ShortDescription, b.Description,
+            bundle.UpdateDetails(b.Name, b.Slug, categories[b.Category].Id, b.ShortDescription, b.Description,
                 null, null, null, null, null);
             bundle.ReplaceBundleItems(b.Components.Select(c => (bySlug[c.Slug], c.Quantity)).ToList());
             db.Products.Add(bundle);

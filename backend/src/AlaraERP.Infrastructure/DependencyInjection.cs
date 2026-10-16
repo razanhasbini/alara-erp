@@ -1,6 +1,7 @@
 using AlaraERP.Application.Common;
 using AlaraERP.Application.Identity;
 using AlaraERP.Application.Inventory;
+using AlaraERP.Infrastructure.Notifications;
 using AlaraERP.Infrastructure.Seeding;
 using AlaraERP.Infrastructure.Storage;
 using AlaraERP.Infrastructure.Identity;
@@ -65,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<UserProvisioner>();
         services.AddSingleton<DatabaseMigrator>();
         services.AddScoped<CatalogImporter>();
+        services.AddHttpClient<AlaraERP.Application.Notifications.IWhatsAppSender, MetaWhatsAppSender>(c => c.Timeout = TimeSpan.FromSeconds(20));
 
         return services;
     }

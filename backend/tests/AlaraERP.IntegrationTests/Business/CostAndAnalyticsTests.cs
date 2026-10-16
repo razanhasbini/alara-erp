@@ -109,7 +109,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
 
         var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}");
         await (await client.PutAsync($"/api/products/{product.Id}", new UpdateProductRequest(
-            detail.Name, detail.Slug, detail.CategoryId, detail.Barcode,
+            detail.Name, detail.Slug, detail.CategoryId,
             detail.ShortDescription, detail.Description, detail.HowToUse, detail.Ingredients,
             detail.SizeValue, detail.SizeUnit, detail.WeightGrams, detail.SellingPrice, detail.CompareAtPrice, 7m)))
             .EnsureSuccessWithBodyAsync();
@@ -177,7 +177,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
         var order = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2));
 
-        (await client.PostAsync($"/api/orders/{order.Id}/reopen", new TransitionRequest(null))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/api/orders/{order.Id}/reserve", new ReserveOrderRequest(Scenario.Tomorrow, null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{order.Id}/confirm", new TransitionRequest(null))).EnsureSuccessStatusCode();
 
         var summary = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
@@ -277,7 +277,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}");
 
         var updated = await (await client.PutAsync($"/api/products/{product.Id}", new UpdateProductRequest(detail.Name, null, null,
-            null, null, null, null, null, null, null, null, 20m, null, 4.75m))).OkJsonAsync<ProductDetailDto>();
+            null, null, null, null, null, null, null, 20m, null, 4.75m))).OkJsonAsync<ProductDetailDto>();
 
         Assert.Equal(4m, detail.StandardCost);
         Assert.Equal(4.75m, updated.StandardCost);

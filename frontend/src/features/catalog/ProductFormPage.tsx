@@ -28,7 +28,6 @@ const schema = z.object({
   name: z.string().trim().min(1, "Required.").max(200),
   slug: optional(z.string().trim().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "Lowercase letters, digits and single hyphens.")),
   categoryId: z.string(),
-  barcode: z.string().trim().max(100),
   sizeValue: optional(z.string().regex(/^\d{1,6}(\.\d{1,2})?$/, "Enter a number.")),
   sizeUnit: z.enum(["", "Ml", "G", "Pcs"]),
   weightGrams: optional(z.string().regex(/^\d{1,6}$/, "Whole grams.")),
@@ -45,13 +44,13 @@ const schema = z.object({
 type Values = z.infer<typeof schema>
 
 const empty: Values = {
-  name: "", slug: "", categoryId: "", barcode: "", sizeValue: "", sizeUnit: "", weightGrams: "",
+  name: "", slug: "", categoryId: "", sizeValue: "", sizeUnit: "", weightGrams: "",
   sellingPrice: "", compareAtPrice: "", standardCost: "", shortDescription: "", description: "", howToUse: "", ingredients: "",
 }
 
 function toValues(p: ProductDetail): Values {
   return {
-    name: p.name, slug: p.slug, categoryId: p.categoryId ?? "", barcode: p.barcode ?? "",
+    name: p.name, slug: p.slug, categoryId: p.categoryId ?? "",
     sizeValue: p.sizeValue?.toString() ?? "", sizeUnit: p.sizeUnit ?? "", weightGrams: p.weightGrams?.toString() ?? "",
     sellingPrice: p.sellingPrice.toFixed(2), compareAtPrice: p.compareAtPrice?.toFixed(2) ?? "",
     standardCost: p.standardCost?.toString() ?? "",
@@ -62,7 +61,7 @@ function toValues(p: ProductDetail): Values {
 function toRequest(v: Values, includeCost: boolean) {
   const opt = (s: string) => (s.trim() === "" ? null : s.trim())
   return {
-    name: v.name.trim(), slug: opt(v.slug), categoryId: v.categoryId || null, barcode: opt(v.barcode),
+    name: v.name.trim(), slug: opt(v.slug), categoryId: v.categoryId || null,
     shortDescription: opt(v.shortDescription), description: opt(v.description), howToUse: opt(v.howToUse), ingredients: opt(v.ingredients),
     sizeValue: v.sizeValue ? Number(v.sizeValue) : null, sizeUnit: (v.sizeUnit || null) as SizeUnit | null,
     weightGrams: v.weightGrams ? Number(v.weightGrams) : null,
@@ -187,9 +186,6 @@ export function ProductFormPage() {
                   </SelectContent>
                 </Select>
               )} />
-            </Field>
-            <Field label="Barcode" htmlFor="barcode" error={errors.barcode?.message}>
-              <Input id="barcode" className="font-mono" {...register("barcode")} />
             </Field>
             <Field label="Web address (slug)" htmlFor="slug" error={errors.slug?.message} hint="Leave empty to generate from the name.">
               <Input id="slug" className="font-mono" {...register("slug")} />

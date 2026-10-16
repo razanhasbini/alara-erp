@@ -22,7 +22,7 @@ public sealed record BundleItemDto(Guid ComponentProductId, string Name, int Qua
 public sealed record ProductImageDto(Guid Id, string ContentType, long SizeBytes, int DisplayOrder, bool IsPrimary);
 
 public sealed record ProductDetailDto(
-    Guid Id, ProductType Type, string Name, string Slug, string? Barcode,
+    Guid Id, ProductType Type, string Name, string Slug,
     Guid? CategoryId, string? CategoryName,
     string? ShortDescription, string? Description, string? HowToUse, string? Ingredients,
     decimal? SizeValue, SizeUnit? SizeUnit, int? WeightGrams,
@@ -39,29 +39,29 @@ public sealed record ProductDetailDto(
 public sealed record BundleItemInput(Guid ComponentProductId, int Quantity);
 
 public record ProductDetailsInput(
-    string Name, string? Slug, Guid? CategoryId, string? Barcode,
+    string Name, string? Slug, Guid? CategoryId,
     string? ShortDescription, string? Description, string? HowToUse, string? Ingredients,
     decimal? SizeValue, SizeUnit? SizeUnit, int? WeightGrams,
     decimal SellingPrice, decimal? CompareAtPrice, decimal? StandardCost = null);
 
 public sealed record CreateProductRequest(
-    ProductType Type, string Name, string? Slug, Guid? CategoryId, string? Barcode,
+    ProductType Type, string Name, string? Slug, Guid? CategoryId,
     string? ShortDescription, string? Description, string? HowToUse, string? Ingredients,
     decimal? SizeValue, SizeUnit? SizeUnit, int? WeightGrams,
     decimal SellingPrice, decimal? CompareAtPrice,
     IReadOnlyList<BundleItemInput>? BundleItems,
     decimal? StandardCost = null)
-    : ProductDetailsInput(Name, Slug, CategoryId, Barcode, ShortDescription, Description, HowToUse, Ingredients,
+    : ProductDetailsInput(Name, Slug, CategoryId, ShortDescription, Description, HowToUse, Ingredients,
         SizeValue, SizeUnit, WeightGrams, SellingPrice, CompareAtPrice, StandardCost);
 
 public sealed record UpdateProductRequest(
-    string Name, string? Slug, Guid? CategoryId, string? Barcode,
+    string Name, string? Slug, Guid? CategoryId,
     string? ShortDescription, string? Description, string? HowToUse, string? Ingredients,
     decimal? SizeValue, SizeUnit? SizeUnit, int? WeightGrams,
     decimal SellingPrice, decimal? CompareAtPrice,
     /// <summary>Ignored (left unchanged) for employees without costs.view, so they cannot erase a cost they can't see.</summary>
     decimal? StandardCost = null)
-    : ProductDetailsInput(Name, Slug, CategoryId, Barcode, ShortDescription, Description, HowToUse, Ingredients,
+    : ProductDetailsInput(Name, Slug, CategoryId, ShortDescription, Description, HowToUse, Ingredients,
         SizeValue, SizeUnit, WeightGrams, SellingPrice, CompareAtPrice, StandardCost);
 
 public sealed record ReplaceBundleItemsRequest(IReadOnlyList<BundleItemInput> Items);

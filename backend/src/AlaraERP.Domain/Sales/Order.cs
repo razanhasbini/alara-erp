@@ -14,8 +14,9 @@ public sealed class Order : IAuditable
 {
     private static readonly Dictionary<OrderStatus, OrderStatus[]> AllowedTransitions = new()
     {
-        [OrderStatus.Draft] = [OrderStatus.Confirmed, OrderStatus.Cancelled],
-        [OrderStatus.Confirmed] = [OrderStatus.Draft, OrderStatus.Shipped, OrderStatus.Cancelled],
+        [OrderStatus.Draft] = [OrderStatus.Reserved, OrderStatus.Confirmed, OrderStatus.Cancelled],
+        [OrderStatus.Reserved] = [OrderStatus.Confirmed, OrderStatus.Cancelled],
+        [OrderStatus.Confirmed] = [OrderStatus.Reserved, OrderStatus.Shipped, OrderStatus.Cancelled],
         [OrderStatus.Shipped] = [OrderStatus.Delivered, OrderStatus.Returned],
         [OrderStatus.Delivered] = [],
         [OrderStatus.Cancelled] = [],
@@ -81,6 +82,11 @@ public sealed class Order : IAuditable
     public DateTimeOffset? CancelledAt { get; private set; }
     public DateTimeOffset? ReturnedAt { get; private set; }
     public DateTimeOffset? PaidAt { get; private set; }
+    public DateTimeOffset? ReservedAt { get; private set; }
+    /// <summary>When the hold on the stock should be reviewed. Nothing is released automatically; an alert is raised.</summary>
+    public DateTimeOffset? ReservedUntil { get; private set; }
+    /// <summary>Set once the "reservation time is up" alert has been sent, so it is sent only once per deadline.</summary>
+    public DateTimeOffset? ReservationExpiryNotifiedAt { get; private set; }
 
     /// <summary>Optimistic concurrency token (PostgreSQL xmin).</summary>
     public uint Version { get; private set; }
@@ -122,8 +128,8 @@ public sealed class Order : IAuditable
     public void ReplaceLines(IReadOnlyList<OrderItem> items, decimal discountTotal, decimal shippingTotal,
         Guid warehouseId, OrderSource source, PaymentMethod paymentMethod)
     {
-        if (Status != OrderStatus.Draft)
-            throw new DomainException("orders.not_editable", "Only draft orders can be edited. Reopen the order first.");
+        if (Status is not (OrderStatus.Draft or OrderStatus.Reserved))
+            throw new DomainException("orders.not_editable", "Only reserved orders can be edited. Move a sold order back to reserved first.");
         if (items.Count == 0)
             throw new DomainException("orders.no_items", "An order needs at least one item.");
 
@@ -153,7 +159,54 @@ public sealed class Order : IAuditable
 
     public static bool CanTransition(OrderStatus from, OrderStatus to) => AllowedTransitions[from].Contains(to);
 
+    /// <summary>Holds the stock for the customer until <paramref name="until"/> (from a new, legacy-draft or sold order).</summary>
+    public void Reserve(DateTimeOffset until, Guid? userId, DateTimeOffset at, string? notes = null)
+    {
+        EnsureFutureDeadline(until, at);
+        ApplyTransition(OrderStatus.Reserved, userId, at, notes);
+        ReservedAt = at;
+        SetDeadline(until, userId, at, null);
+    }
+
+    /// <summary>Gives the customer more (or less) time; a new deadline gets its own alert.</summary>
+    public void ChangeReservationDeadline(DateTimeOffset until, Guid? userId, DateTimeOffset at, string? notes = null)
+    {
+        if (Status != OrderStatus.Reserved)
+            throw new DomainException("orders.not_reserved", "Only reserved orders have a reservation time.");
+        EnsureFutureDeadline(until, at);
+        SetDeadline(until, userId, at, notes);
+    }
+
+    /// <summary>The reservation-time-is-up alert went out for the current deadline.</summary>
+    public void MarkReservationExpiryNotified(DateTimeOffset at) => ReservationExpiryNotifiedAt = at;
+
+    public bool ReservationExpiredAt(DateTimeOffset now) => Status == OrderStatus.Reserved && ReservedUntil is { } u && u <= now;
+
+    private void SetDeadline(DateTimeOffset until, Guid? userId, DateTimeOffset at, string? notes)
+    {
+        var previous = ReservedUntil;
+        ReservedUntil = until;
+        ReservationExpiryNotifiedAt = null;
+        _history.Add(new OrderHistoryEntry(Id, OrderEventType.Reservation, previous?.ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ"),
+            until.ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ"), notes, userId, at));
+    }
+
+    private static void EnsureFutureDeadline(DateTimeOffset until, DateTimeOffset now)
+    {
+        if (until <= now)
+            throw new DomainException("orders.reservation_in_past", "Choose a reservation time in the future.");
+        if (until > now.AddDays(90))
+            throw new DomainException("orders.reservation_too_long", "A reservation can last at most 90 days.");
+    }
+
     public void TransitionTo(OrderStatus target, Guid? userId, DateTimeOffset at, string? notes = null)
+    {
+        if (target == OrderStatus.Reserved)
+            throw new InvalidOperationException("Use Reserve(...) so the reservation time is recorded.");
+        ApplyTransition(target, userId, at, notes);
+    }
+
+    private void ApplyTransition(OrderStatus target, Guid? userId, DateTimeOffset at, string? notes)
     {
         if (!CanTransition(Status, target))
             throw new DomainException("orders.invalid_transition", $"An order cannot go from {Status} to {target}.");
@@ -168,7 +221,7 @@ public sealed class Order : IAuditable
         switch (target)
         {
             case OrderStatus.Confirmed: ConfirmedAt = at; break;
-            case OrderStatus.Draft: ConfirmedAt = null; break;
+            case OrderStatus.Reserved: ConfirmedAt = null; break;
             case OrderStatus.Shipped: ShippedAt = at; break;
             case OrderStatus.Delivered:
                 DeliveredAt = at;
