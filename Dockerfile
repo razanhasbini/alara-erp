@@ -19,6 +19,7 @@ COPY data/catalog ./data/catalog
 COPY deploy/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 ENV ASPNETCORE_ENVIRONMENT=Production \
-    Storage__LocalPath=/app/App_Data/uploads
+    Storage__LocalPath=/app/App_Data/uploads \
+    DataProtection__KeysPath=/app/App_Data/keys
 EXPOSE 8080
 ENTRYPOINT ["/app/entrypoint.sh"]

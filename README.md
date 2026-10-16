@@ -154,8 +154,9 @@ so browser sessions, CSRF protection, images and API calls all use one HTTPS ori
    PGPASSWORD=${{Postgres.PGPASSWORD}}
    ```
 
-3. Add a volume mounted at **`/app/App_Data`**. Product photos are stored under
-   `/app/App_Data/uploads`; without this volume, uploaded photos disappear on a redeploy.
+3. Add a volume mounted at **`/app/App_Data`**. Product photos are stored under `/app/App_Data/uploads` and the
+   sign-in encryption keys under `/app/App_Data/keys`. Without this volume, photos disappear and everyone is signed
+   out on every redeploy.
 4. Generate a public domain and set `App__FrontendUrl` to its full `https://...` address.
 5. Set the initial account variables below. They are read only when an account does not yet exist, so restarts do
    not reset a password that was changed later.

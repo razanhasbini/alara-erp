@@ -7,6 +7,7 @@ using AlaraERP.Application;
 using AlaraERP.Application.Common;
 using AlaraERP.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -42,6 +43,13 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
     o.KnownIPNetworks.Clear();
     o.KnownProxies.Clear();
 });
+
+// Session cookies and CSRF tokens are encrypted with data-protection keys. In a container they must live on persistent
+// storage, or every redeploy signs everyone out and rejects forms that were already open.
+if (config["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+    builder.Services.AddDataProtection()
+        .SetApplicationName("AlaraERP")
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 
 // ---- Authentication: Identity cookie, HttpOnly, SameSite=Strict -------------------------------
 builder.Services
