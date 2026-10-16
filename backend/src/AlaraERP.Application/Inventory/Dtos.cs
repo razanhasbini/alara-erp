@@ -59,7 +59,10 @@ public sealed record ReceiveStockRequest(
 
 public sealed record ReceiptLineDto(
     Guid ProductId, string ProductName, Guid BatchId, string BatchNumber, DateOnly? ExpiryDate,
-    int Quantity, decimal? UnitCost);
+    int Quantity, decimal? UnitCost,
+    /// <summary>True when no cost was recorded on the receipt line and UnitCost is the stored cost of the stock
+    /// (the delivery's batch cost, or the product's saved cost).</summary>
+    bool CostFromSaved = false);
 
 public sealed record ReceiptDto(
     Guid Id, string ReceiptNumber, Guid WarehouseId, string WarehouseName, string? SupplierName, string? SupplierReference,

@@ -55,6 +55,7 @@ export function ReceiptsPage() {
 
 export function ReceiptDetailPage() {
   const { id = "" } = useParams()
+  const showCost = useAuth().can(P.costs.view)
   const { data: settings } = useSettings()
   const { data: r, isLoading, error } = useQuery({ queryKey: qk.receipt(id), queryFn: () => api<Receipt>(`/api/inventory/receipts/${id}`) })
   if (isLoading) return <FullPageSpinner />
@@ -65,14 +66,17 @@ export function ReceiptDetailPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Section title={`${r.lines.length} line(s) · ${number(r.totalUnits)} units`}>
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-hairline"><th className="eyebrow px-4 py-2 text-left">Product</th>{settings?.expiryDatesEnabled && <th className="eyebrow px-4 py-2 text-left">Batch</th>}<th className="eyebrow px-4 py-2 text-right">Units</th><th className="eyebrow px-4 py-2 text-right">Unit cost</th></tr></thead>
+            <thead><tr className="border-b border-hairline"><th className="eyebrow px-4 py-2 text-left">Product</th>{settings?.expiryDatesEnabled && <th className="eyebrow px-4 py-2 text-left">Batch</th>}<th className="eyebrow px-4 py-2 text-right">Units</th>{showCost && <th className="eyebrow px-4 py-2 text-right">Unit cost</th>}</tr></thead>
             <tbody>
               {r.lines.map((l) => (
                 <tr key={`${l.productId}-${l.batchId}`} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5"><Link to={`/products/${l.productId}`} className="hover:underline">{l.productName}</Link></td>
                   {settings?.expiryDatesEnabled && <td className="px-4 py-2.5"><span className="code">{l.batchNumber}</span><div className="text-xs text-muted-foreground">{l.expiryDate ? `Expires ${dateOnly(l.expiryDate)}` : "No expiry"}</div></td>}
                   <td className="px-4 py-2.5 text-right tabular">{l.quantity}</td>
-                  <td className="px-4 py-2.5 text-right tabular">{l.unitCost !== null ? money(l.unitCost) : "—"}</td>
+                  {showCost && <td className="px-4 py-2.5 text-right tabular">
+                    {l.unitCost !== null ? money(l.unitCost) : "—"}
+                    {l.costFromSaved && <div className="text-xs text-muted-foreground" title="No cost was typed on this receipt; this is the cost the stock is valued at.">saved cost</div>}
+                  </td>}
                 </tr>
               ))}
             </tbody>
@@ -81,7 +85,8 @@ export function ReceiptDetailPage() {
         <Section title="Details" bodyClassName="p-4">
           <Facts items={[
             ["Warehouse", r.warehouseName], ["Received", dateTime(r.receivedAt)], ["Supplier", r.supplierName],
-            ["Reference", r.supplierReference], ["Total cost", r.totalCost !== null ? money(r.totalCost) : <span key="f82-109" className="text-muted-foreground">Not all lines costed</span>],
+            ["Reference", r.supplierReference],
+            ...(showCost ? [["Total cost", r.totalCost !== null ? money(r.totalCost) : <span key="f82-109" className="text-muted-foreground">Some products have no cost yet</span>]] as [string, React.ReactNode][] : []),
             ["Recorded by", r.performedBy], ["Notes", r.notes],
           ]} />
         </Section>

@@ -21,7 +21,8 @@ public static class SystemRoles
         new(SuperAdmin, "Full system access, including employee and role administration.",
             Permissions.All.ToHashSet()),
 
-        new(Manager, "Runs day-to-day operations: catalogue, pricing, inventory, orders, payments and reports.",
+        // Costs (unit costs, receipt costs, profit) are for the Super Admin only.
+        new(Manager, "Runs day-to-day operations: catalogue, pricing, inventory, orders, payments and reports. Does not see costs.",
             new HashSet<string>
             {
                 P.Products.View, P.Products.Create, P.Products.Update, P.Products.Delete, P.Products.ManagePricing,
@@ -29,7 +30,7 @@ public static class SystemRoles
                 P.Warehouses.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
                 P.DeliveryCompanies.Manage,
-                P.Reports.View, P.Costs.View,
+                P.Reports.View,
                 P.Users.View,
             }),
 

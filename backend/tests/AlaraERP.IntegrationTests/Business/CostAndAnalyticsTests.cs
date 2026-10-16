@@ -24,7 +24,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Cost_of_goods_uses_the_cost_of_the_actual_batches_shipped()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 2, Soon, "OLD", unitCost: 5m);          // ships first (expires first)
@@ -56,7 +56,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Gross_sales_and_discounts_include_both_line_and_order_discounts()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 20m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 5, unitCost: 4m);
@@ -78,7 +78,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Standard_cost_is_used_when_stock_arrives_without_an_invoice_cost()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mist = await s.ProductAsync("ALR-HC-MIST-OH", 20m, standardCost: 6.5m);
         await s.ReceiveAsync(warehouse.Id, mist.Id, 10);
@@ -96,7 +96,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Restocking_uses_the_saved_cost_and_a_one_off_cost_does_not_change_it()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-SAVED-COST", 20m, standardCost: 6m);
 
@@ -113,9 +113,28 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
+    public async Task Receipts_saved_without_a_line_cost_show_the_cost_the_stock_is_valued_at()
+    {
+        var (client, s) = await AdminAsync();
+        var warehouse = await s.WarehouseAsync();
+        var serum = await s.ProductAsync("ALR-LEGACY", 22m, standardCost: 7.5m);
+        var receipt = await s.ReceiveAsync(warehouse.Id, serum.Id, 4, batch: "OLD");
+        // A receipt recorded before costs were copied onto the line, for stock whose batch had no cost either.
+        await s.ExecuteAsync("UPDATE inventory.stock_receipt_lines SET unit_cost = NULL WHERE receipt_id = @id", ("id", receipt.Id));
+        await s.ExecuteAsync("UPDATE inventory.batches SET unit_cost = NULL WHERE id = @id", ("id", receipt.Lines.Single().BatchId));
+
+        var shown = await client.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}");
+
+        var line = Assert.Single(shown.Lines);
+        Assert.Equal(7.5m, line.UnitCost);
+        Assert.True(line.CostFromSaved);
+        Assert.Equal(30m, shown.TotalCost);
+    }
+
+    [Fact]
     public async Task Stock_cannot_be_received_without_a_cost_when_the_product_has_none_saved()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var product = await s.ProductAsync("ALR-NO-COST", 20m, standardCost: null);
 
@@ -132,7 +151,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Current_average_cost_uses_standard_cost_for_only_the_uncosted_batches()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var product = await s.ProductAsync("ALR-MIXED", 20m, standardCost: null);
         await s.ReceiveAsync(warehouse.Id, product.Id, 2, batch: "COSTED", unitCost: 5m);
@@ -162,7 +181,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Bundle_revenue_and_cost_are_attributed_to_the_products_inside_it()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var shampoo = await s.ProductAsync("ALR-SH", 15m);
         var mask = await s.ProductAsync("ALR-MA", 24m);
@@ -189,7 +208,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Confirmed_orders_are_sales_and_returned_orders_are_excluded()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
@@ -209,7 +228,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Reopening_and_reconfirming_an_order_does_not_double_count_cost_or_units()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
@@ -230,7 +249,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Grouping_by_week_and_month_and_validating_ranges()
     {
-        var (client, _) = await ManagerAsync();
+        var (client, _) = await AdminAsync();
 
         var weeks = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary?from=2026-09-01&to=2026-09-30&groupBy=Week");
         var months = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary?from=2026-01-01&to=2026-12-31&groupBy=Month");
@@ -250,7 +269,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Costs_are_hidden_from_employees_without_costs_view()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m, standardCost: 5m);
         var receipt = await s.ReceiveAsync(warehouse.Id, mask.Id, 4, unitCost: 5m);
@@ -261,6 +280,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         using var viewer = await SignedInAsAsync(SystemRoles.Viewer);           // has reports.view, not costs.view
         using var stockKeeper = await SignedInAsAsync(SystemRoles.InventoryManager);
         using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
+        using var manager = await SignedInAsAsync(SystemRoles.Manager);         // runs operations, but costs are admin-only
 
         var summary = await viewer.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
         var products = await viewer.GetJsonAsync<ProductAnalyticsDto>("/api/analytics/products");
@@ -278,13 +298,15 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         Assert.Null(stock.Cost);
         Assert.All(stock.Batches, b => Assert.Null(b.UnitCost));
         Assert.All(receiptView.Lines, l => Assert.Null(l.UnitCost));
+        Assert.All((await manager.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}")).Lines, l => Assert.Null(l.UnitCost));
+        Assert.Null((await manager.GetJsonAsync<ProductStockDto>($"/api/inventory/products/{mask.Id}")).Cost);
         Assert.Equal(HttpStatusCode.Forbidden, (await sales.GetAsync("/api/analytics/summary")).StatusCode);
     }
 
     [Fact]
     public async Task Taking_a_bundle_out_of_stock_deducts_its_components()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var shampoo = await s.ProductAsync("ALR-SH", 15m);
         var mask = await s.ProductAsync("ALR-MA", 24m);
@@ -310,7 +332,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     [Fact]
     public async Task Only_managers_can_set_product_costs()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var product = await s.ProductAsync("ALR-X", 20m, standardCost: 4m);
         var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}");
 

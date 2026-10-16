@@ -243,17 +243,29 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var names = await users.GetDisplayNamesAsync([receipt.PerformedByUserId], ct);
         var canSeeCosts = currentUser.HasPermission(Permissions.Costs.View);
 
-        var dtoLines = receipt.Lines.Select(l =>
+        // Lines saved before a cost was required can be blank: show the cost the stock is actually valued at.
+        var storedCosts = new Dictionary<Guid, decimal?>();
+        if (canSeeCosts && receipt.Lines.Any(l => l.UnitCost is null))
         {
-            var (name, batch, expiry) = lines[(l.ProductId, l.BatchId)];
-            return new ReceiptLineDto(l.ProductId, name, l.BatchId, batch, expiry, l.Quantity, canSeeCosts ? l.UnitCost : null);
+            var batchIds = receipt.Lines.Select(l => l.BatchId).ToList();
+            storedCosts = await db.Batches.AsNoTracking().Where(b => batchIds.Contains(b.Id))
+                .Select(b => new { b.Id, Cost = b.UnitCost ?? db.Products.Where(p => p.Id == b.ProductId).Select(p => p.StandardCost).FirstOrDefault() })
+                .ToDictionaryAsync(b => b.Id, b => b.Cost, ct);
+        }
+
+        var costs = receipt.Lines.Select(l => (Line: l, Cost: !canSeeCosts ? null : l.UnitCost ?? storedCosts.GetValueOrDefault(l.BatchId))).ToList();
+        var dtoLines = costs.Select(x =>
+        {
+            var (name, batch, expiry) = lines[(x.Line.ProductId, x.Line.BatchId)];
+            return new ReceiptLineDto(x.Line.ProductId, name, x.Line.BatchId, batch, expiry, x.Line.Quantity, x.Cost,
+                canSeeCosts && x.Line.UnitCost is null && x.Cost is not null);
         }).OrderBy(l => l.ProductName).ThenBy(l => l.BatchNumber).ToList();
-        var costed = canSeeCosts && receipt.Lines.All(l => l.UnitCost.HasValue);
+        var costed = canSeeCosts && costs.All(x => x.Cost.HasValue);
         return new ReceiptDto(receipt.Id, receipt.ReceiptNumber, receipt.WarehouseId, warehouse, receipt.SupplierName,
             receipt.SupplierReference, receipt.ReceivedAt, receipt.Notes,
             receipt.PerformedByUserId is { } u ? names.GetValueOrDefault(u) : null, receipt.CreatedAt,
             receipt.Lines.Sum(l => l.Quantity),
-            costed ? Math.Round(receipt.Lines.Sum(l => l.UnitCost!.Value * l.Quantity), 2) : null,
+            costed ? Math.Round(costs.Sum(x => x.Cost!.Value * x.Line.Quantity), 2) : null,
             dtoLines);
     }
 

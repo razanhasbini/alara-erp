@@ -15,13 +15,18 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
     public async Task<WarehouseDto> WarehouseAsync(string code = "MAIN") =>
         await (await client.PostAsync("/api/warehouses", new WarehouseRequest($"Warehouse {code}", code, null))).OkJsonAsync<WarehouseDto>();
 
-    /// <summary>Products get a saved cost by default, because stock can only be received with a cost.</summary>
+    /// <summary>
+    /// Products get a saved cost by default, because stock can only be received with a cost. The cost is written the
+    /// way the admin would set it, so scenarios run by roles that can't see costs still work.
+    /// </summary>
     public async Task<ProductDetailDto> ProductAsync(string key, decimal price, bool tracksExpiry = true, string? name = null, decimal? standardCost = 4m)
     {
         var product = await (await client.PostAsync("/api/products", new CreateProductRequest(
             Type: ProductType.Individual, Name: name ?? $"Product {key}", Slug: null, CategoryId: null,
             ShortDescription: null, Description: null, HowToUse: null, Ingredients: null, SizeValue: null, SizeUnit: null,
-            WeightGrams: null, SellingPrice: price, CompareAtPrice: null, BundleItems: null, StandardCost: standardCost))).OkJsonAsync<ProductDetailDto>();
+            WeightGrams: null, SellingPrice: price, CompareAtPrice: null, BundleItems: null, StandardCost: null))).OkJsonAsync<ProductDetailDto>();
+        if (standardCost is { } cost)
+            await ExecuteAsync("UPDATE catalog.products SET standard_cost = @cost WHERE id = @id", ("cost", cost), ("id", product.Id));
         if (!tracksExpiry)
             (await client.PutAsync($"/api/inventory/settings/{product.Id}", new UpdateInventorySettingsRequest(0, false)))
                 .EnsureSuccessStatusCode();

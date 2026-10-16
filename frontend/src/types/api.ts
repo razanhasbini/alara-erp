@@ -240,7 +240,7 @@ export interface Receipt {
   createdAt: string
   totalUnits: number
   totalCost: number | null
-  lines: { productId: string; productName: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number; unitCost: number | null }[]
+  lines: { productId: string; productName: string; batchId: string; batchNumber: string; expiryDate: string | null; quantity: number; unitCost: number | null; costFromSaved: boolean }[]
 }
 
 export interface Transfer {

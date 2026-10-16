@@ -136,4 +136,11 @@ public abstract class ApiTestBase(AlaraApiFactory factory) : IAsyncLifetime
         var client = await SignedInAsAsync(AlaraERP.Application.Common.Security.SystemRoles.Manager);
         return (client, new Scenario(client, Factory));
     }
+
+    /// <summary>A Super Admin session: the only role that sees costs and profit.</summary>
+    protected async Task<(ErpClient Client, Scenario Scenario)> AdminAsync()
+    {
+        var client = await SignedInAsAsync(AlaraERP.Application.Common.Security.SystemRoles.SuperAdmin);
+        return (client, new Scenario(client, Factory));
+    }
 }

@@ -40,7 +40,7 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
     [Fact]
     public async Task Receiving_stock_creates_batch_balance_and_receipt_movement()
     {
-        var (client, s) = await ManagerAsync();
+        var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         var expiry = Scenario.InAYear;
