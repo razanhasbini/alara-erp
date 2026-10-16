@@ -94,6 +94,25 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
+    public async Task Restocking_uses_the_saved_cost_and_a_one_off_cost_does_not_change_it()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-SAVED-COST", 20m, standardCost: 6m);
+
+        var usual = await s.ReceiveAsync(warehouse.Id, mask.Id, 10, batch: "USUAL");
+        var oneOff = await s.ReceiveAsync(warehouse.Id, mask.Id, 10, batch: "PRICIER", unitCost: 8m);
+        var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{mask.Id}");
+        var stock = await s.StockAsync(mask.Id);
+
+        Assert.Equal(6m, usual.Lines.Single().UnitCost);   // recorded on the receipt, not left blank
+        Assert.Equal(60m, usual.TotalCost);
+        Assert.Equal(8m, oneOff.Lines.Single().UnitCost);
+        Assert.Equal(6m, detail.StandardCost);             // the saved cost is untouched
+        Assert.Equal(7m, stock.Cost!.AverageCost);         // (10 × $6 + 10 × $8) / 20
+    }
+
+    [Fact]
     public async Task Current_average_cost_uses_standard_cost_for_only_the_uncosted_batches()
     {
         var (client, s) = await ManagerAsync();

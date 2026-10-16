@@ -43,9 +43,11 @@ public sealed class StockOperationsService(
         {
             var product = products[line.ProductId];
             var batch = await _ledger.ResolveIncomingBatchAsync(product, line.BatchNumber, line.ExpiryDate, number, ct);
-            receipt.AddLine(product.Id, batch.Id, line.Quantity, line.UnitCost);
-            // No cost on the invoice line → fall back to the product's standard cost.
-            batch.ApplyReceivedCost(await _ledger.UnitsOnHandAsync(batch.Id, ct), line.Quantity, line.UnitCost ?? product.StandardCost);
+            // No cost typed for this delivery → the product's saved cost. A typed cost applies to this delivery only;
+            // the product's saved cost is never changed here.
+            var unitCost = line.UnitCost ?? product.StandardCost;
+            receipt.AddLine(product.Id, batch.Id, line.Quantity, unitCost);
+            batch.ApplyReceivedCost(await _ledger.UnitsOnHandAsync(batch.Id, ct), line.Quantity, unitCost);
 
             _ledger.GetOrCreateBatchBalance(batchBalances, warehouseId, batch).Add(line.Quantity);
             balances[(warehouseId, product.Id)].Add(line.Quantity);

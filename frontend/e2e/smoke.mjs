@@ -64,7 +64,7 @@ const costInputs = await page.$$("input[id^='c-']")
 for (let i = 0; i < qtyInputs.length; i++) {
   await qtyInputs[i].type(String(20 + i * 5))
   await expInputs[i].evaluate((el, v) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })) }, `2027-0${3 + (i % 5)}-15`)
-  await costInputs[i].type("4.5")
+  await costInputs[i]?.type("4.5")
 }
 await page.type("#rc-sup", "Beauty Labs Istanbul"); await page.type("#rc-ref", "INV-2026-0912")
 await shot("06-receive-form")

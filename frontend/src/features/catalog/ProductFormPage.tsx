@@ -246,17 +246,20 @@ export function ProductFormPage() {
               hint={type === "Bundle" ? "Usually the components' total at full price." : "Shown crossed out when on offer."}>
               <Input id="compareAtPrice" inputMode="decimal" className="tabular" disabled={!canPrice} {...register("compareAtPrice")} />
             </Field>
-            {showCost && type === "Individual" && (
+          </Section>
+          {showCost && type === "Individual" && (
+            <Section title="Cost" bodyClassName="grid gap-4 p-4">
               <Field label="Unit cost (USD)" htmlFor="standardCost" error={errors.standardCost?.message}
-                hint="What one unit costs you, incl. shipping & customs. Pre-fills stock receipts; used when a delivery has no cost.">
+                hint="What one unit costs you, including shipping and customs. Used automatically when you receive stock, so you only type a cost there if a delivery costs something different.">
                 <Input id="standardCost" inputMode="decimal" className="tabular" disabled={!canPrice} {...register("standardCost")} />
               </Field>
-            )}
-            {showCost && type === "Individual" && Number(sellingPrice) > 0 && standardCost && (
-              <p className="text-xs text-muted-foreground">You earn <span className="tabular font-medium text-foreground">{money(Number(sellingPrice) - Number(standardCost))}</span> per unit
-                ({Math.round(((Number(sellingPrice) - Number(standardCost)) / Number(sellingPrice)) * 100)}% margin).</p>
-            )}
-          </Section>
+              {Number(sellingPrice) > 0 && standardCost && (
+                <p className="text-xs text-muted-foreground">You earn <span className="tabular font-medium text-foreground">{money(Number(sellingPrice) - Number(standardCost))}</span> per unit
+                  ({Math.round(((Number(sellingPrice) - Number(standardCost)) / Number(sellingPrice)) * 100)}% margin).</p>
+              )}
+              <p className="text-xs text-muted-foreground">Only people allowed to see costs see this section. Changing it affects future deliveries, not stock already received.</p>
+            </Section>
+          )}
           {type === "Individual" && (
             <Section title="Size & shipping" bodyClassName="grid grid-cols-2 gap-4 p-4">
               <Field label="Size" htmlFor="sizeValue" error={errors.sizeValue?.message}>
