@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/common/states"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { dateTime, humanize, money, when } from "@/lib/format"
+import { dateTime, money, when } from "@/lib/format"
 import { P } from "@/lib/permissions"
 import { qk } from "@/lib/queries"
 import { SOURCES } from "@/lib/rules"
@@ -33,7 +33,9 @@ export function OrdersPage() {
   const search = params.get("search") ?? ""
   const customerId = params.get("customerId") ?? ""
   const status = (params.get("status") ?? (customerId ? "all" : "open")) as OrderStatus | "open" | "all"
-  const paymentStatus = (params.get("payment") ?? "") as PaymentStatus | ""
+  // The payment filter is simply All / Paid / Reserved (reserved orders aren't paid yet).
+  const paymentStatus: PaymentStatus | "" = params.get("payment") === "Paid" ? "Paid" : ""
+  const paymentView = status === "Reserved" ? "reserved" : paymentStatus === "Paid" ? "paid" : "all"
   const source = (params.get("source") ?? "") as OrderSource | ""
   const page = Number(params.get("page") ?? 1)
 
@@ -90,11 +92,14 @@ export function OrdersPage() {
             <SelectItem value="Shipped">Out for delivery</SelectItem>
           </SelectContent>
         </Select>}
-        <Select value={paymentStatus || "any"} onValueChange={(v) => set({ payment: v === "any" ? "" : v })}>
+        <Select value={paymentView} onValueChange={(v) => set(
+          v === "reserved" ? { status: "Reserved", payment: "" }
+            : { payment: v === "paid" ? "Paid" : "", ...(status === "Reserved" ? { status: "all" } : {}) })}>
           <SelectTrigger className="h-8 w-40 bg-card" aria-label="Payment"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">Any payment</SelectItem>
-            {(["Unpaid", "CollectedByCourier", "Paid", "Void"] as const).map((s) => <SelectItem key={s} value={s}>{humanize(s)}</SelectItem>)}
+            <SelectItem value="all">All payments</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="reserved">Reserved</SelectItem>
           </SelectContent>
         </Select>
         <Select value={source || "any"} onValueChange={(v) => set({ source: v === "any" ? "" : v })}>
