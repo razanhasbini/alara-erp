@@ -134,7 +134,8 @@ export function NewReceiptPage() {
     quantity: !/^\d+$/.test(l.quantity) || Number(l.quantity) < 1 ? "Required" : undefined,
     expiryDate: !expiryEnabled ? undefined : l.tracksExpiry && !l.expiryDate ? "Required" : l.expiryDate && l.expiryDate < todayIso() ? "In the past" : undefined,
     unitCost: (l.overrideCost || l.savedCost === null) && l.unitCost && !costRe.test(l.unitCost) ? "Invalid"
-      : l.overrideCost && !l.unitCost ? "Enter the cost, or use the saved one" : undefined,
+      : l.overrideCost && !l.unitCost ? "Enter the cost, or use the saved one"
+      : showCost && l.savedCost === null && !l.unitCost ? "Required: this product has no saved cost" : undefined,
   })
   const hasErrors = lines.some((l) => Object.values(lineErrors(l)).some(Boolean))
   const totalUnits = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
@@ -264,9 +265,9 @@ function LineCost({ line, error, update }: { line: Line; error?: string; update:
       </div>
     )
   return (
-    <Field label="Unit cost $" htmlFor={id} error={error}
+    <Field label="Unit cost $" htmlFor={id} error={error} required={line.savedCost === null}
       hint={line.savedCost !== null ? <>This delivery only. <button type="button" className="font-medium text-primary hover:underline" onClick={() => update({ overrideCost: false, unitCost: "" })}>Use saved {money(line.savedCost)}</button></>
-        : "No saved cost. Set it on the product to skip this next time."}>
+        : error ? undefined : "No saved cost. Save one on the product to skip this next time."}>
       <Input id={id} inputMode="decimal" autoFocus={line.overrideCost} value={line.unitCost} aria-invalid={!!error} onChange={(e) => update({ unitCost: e.target.value })} className="tabular" />
     </Field>
   )

@@ -142,8 +142,7 @@ export function ProductFormPage() {
       navigate(`/products/${saved.id}`)
     },
     onError: (e) => {
-      if (e instanceof ApiError && e.code === "products.duplicate_slug") setError("slug", { message: e.message })
-      else if (e instanceof ApiError && Object.keys(e.fieldErrors).length) {
+      if (e instanceof ApiError && Object.keys(e.fieldErrors).length) {
         for (const [k, msgs] of Object.entries(e.fieldErrors)) setError(k as keyof Values, { message: msgs[0] })
       } else toast.error(errorMessage(e))
     },
@@ -173,7 +172,7 @@ export function ProductFormPage() {
       <form onSubmit={onSubmit} noValidate className="grid gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="grid gap-6">
           <Section title="Basics" bodyClassName="grid gap-4 p-4 sm:grid-cols-2">
-            <Field label="Name" htmlFor="name" error={errors.name?.message} className="sm:col-span-2" required>
+            <Field label="Name" htmlFor="name" error={errors.name?.message} required>
               <Input id="name" {...register("name")} aria-invalid={!!errors.name} />
             </Field>
             <Field label="Category" htmlFor="categoryId">
@@ -186,9 +185,6 @@ export function ProductFormPage() {
                   </SelectContent>
                 </Select>
               )} />
-            </Field>
-            <Field label="Web address (slug)" htmlFor="slug" error={errors.slug?.message} hint="Leave empty to generate from the name.">
-              <Input id="slug" className="font-mono" {...register("slug")} />
             </Field>
           </Section>
 

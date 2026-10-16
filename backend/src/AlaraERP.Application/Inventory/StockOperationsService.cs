@@ -31,6 +31,14 @@ public sealed class StockOperationsService(
             throw new DomainException("inventory.duplicate_receipt_line",
                 $"{products[duplicate.Key.ProductId].Label} is listed twice for the same batch. Combine the lines or enter distinct batch numbers.");
 
+        // Every unit received must have a cost, or profit can't be worked out: the cost typed for this delivery,
+        // otherwise the product's saved cost.
+        var uncosted = request.Lines.Where(l => l.UnitCost is null && products[l.ProductId].StandardCost is null)
+            .Select(l => products[l.ProductId].Label).Distinct().ToList();
+        if (uncosted.Count > 0)
+            throw new DomainException("inventory.cost_required",
+                $"{string.Join(", ", uncosted)} {(uncosted.Count == 1 ? "has" : "have")} no saved cost. Enter the unit cost for this delivery, or save a cost on the product first.");
+
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var number = await _numbers.NextReceiptNumberAsync(ct);
         var receipt = new StockReceipt(number, warehouseId, request.SupplierName, request.SupplierReference,

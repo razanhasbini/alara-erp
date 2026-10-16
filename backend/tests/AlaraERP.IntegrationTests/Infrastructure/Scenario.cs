@@ -15,7 +15,8 @@ public sealed class Scenario(ErpClient client, AlaraApiFactory factory)
     public async Task<WarehouseDto> WarehouseAsync(string code = "MAIN") =>
         await (await client.PostAsync("/api/warehouses", new WarehouseRequest($"Warehouse {code}", code, null))).OkJsonAsync<WarehouseDto>();
 
-    public async Task<ProductDetailDto> ProductAsync(string key, decimal price, bool tracksExpiry = true, string? name = null, decimal? standardCost = null)
+    /// <summary>Products get a saved cost by default, because stock can only be received with a cost.</summary>
+    public async Task<ProductDetailDto> ProductAsync(string key, decimal price, bool tracksExpiry = true, string? name = null, decimal? standardCost = 4m)
     {
         var product = await (await client.PostAsync("/api/products", new CreateProductRequest(
             Type: ProductType.Individual, Name: name ?? $"Product {key}", Slug: null, CategoryId: null,

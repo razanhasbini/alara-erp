@@ -113,13 +113,32 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
+    public async Task Stock_cannot_be_received_without_a_cost_when_the_product_has_none_saved()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var product = await s.ProductAsync("ALR-NO-COST", 20m, standardCost: null);
+
+        var refused = await client.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, "Supplier", null, null, null,
+            [new ReceiveLineInput(product.Id, 5, null, null, Scenario.InAYear)]));
+        var receipt = await s.ReceiveAsync(warehouse.Id, product.Id, 5, unitCost: 3m);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
+        Assert.Equal("inventory.cost_required", await refused.ProblemCodeAsync());
+        Assert.Equal(15m, receipt.TotalCost);
+        Assert.Equal(5, (await s.StockAsync(product.Id)).OnHand);
+    }
+
+    [Fact]
     public async Task Current_average_cost_uses_standard_cost_for_only_the_uncosted_batches()
     {
         var (client, s) = await ManagerAsync();
         var warehouse = await s.WarehouseAsync();
-        var product = await s.ProductAsync("ALR-MIXED", 20m);
+        var product = await s.ProductAsync("ALR-MIXED", 20m, standardCost: null);
         await s.ReceiveAsync(warehouse.Id, product.Id, 2, batch: "COSTED", unitCost: 5m);
-        await s.ReceiveAsync(warehouse.Id, product.Id, 2, batch: "UNCOSTED");
+        // Stock received before costs were required has batches with no cost.
+        var legacy = await s.ReceiveAsync(warehouse.Id, product.Id, 2, batch: "UNCOSTED", unitCost: 1m);
+        await s.ExecuteAsync("UPDATE inventory.batches SET unit_cost = NULL WHERE id = @id", ("id", legacy.Lines.Single().BatchId));
 
         var incomplete = await s.StockAsync(product.Id);
         Assert.Null(incomplete.Cost!.AverageCost);
