@@ -27,20 +27,20 @@ public sealed record StockListQuery(
 public sealed record StockRowDto(
     Guid ProductId, string Name, string? CategoryName, bool IsActive,
     int OnHand, int Reserved, int Available, int LowStockThreshold, StockStatus Status,
-    DateOnly? NearestExpiry, int ExpiringUnits, int ExpiredUnits);
+    DateOnly? NearestExpiry, int ExpiringUnits, int ExpiredUnits, Guid? PrimaryImageId = null);
 
 public sealed record WarehouseStockDto(Guid WarehouseId, string Name, string Code, int OnHand, int Reserved, int Available);
 
 public sealed record BatchStockDto(
     Guid BatchId, string BatchNumber, DateOnly? ExpiryDate, Guid WarehouseId, string WarehouseCode,
-    int OnHand, bool IsExpired, int? DaysToExpiry, decimal? UnitCost);
+    int OnHand, bool IsExpired, int? DaysToExpiry, decimal? UnitCost, DateTimeOffset? ReceivedAt = null);
 
 public sealed record ProductStockDto(
     Guid ProductId, string Name, InventorySettingsDto Settings,
     int OnHand, int Reserved, int Available, StockStatus Status,
     IReadOnlyList<WarehouseStockDto> Warehouses, IReadOnlyList<BatchStockDto> Batches,
     /// <summary>Cost fields are only filled for employees with costs.view.</summary>
-    ProductCostDto? Cost);
+    ProductCostDto? Cost, Guid? PrimaryImageId = null);
 
 /// <summary>
 /// AverageCost: on-hand units valued at their batch costs (falls back to the standard cost).

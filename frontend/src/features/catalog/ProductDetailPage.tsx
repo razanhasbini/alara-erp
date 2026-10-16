@@ -15,6 +15,7 @@ import { cost as fmtCost, date, dateOnly, dateTime, money, number, percent, toda
 import { P } from "@/lib/permissions"
 import { qk, useAvailability, useSettings } from "@/lib/queries"
 import { cn } from "@/lib/utils"
+import { deliveryLabel } from "@/features/inventory/deliveryLabel"
 import type { ProductAnalytics, ProductDetail, ProductStock } from "@/types/api"
 import { WithdrawBundleDialog } from "./WithdrawBundleDialog"
 import { BundleComponentsEditor, type ComponentLine } from "./BundleComponentsEditor"
@@ -180,7 +181,7 @@ export function ProductDetailPage() {
             <Section title="Stock" actions={<Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>}
               bodyClassName="p-4">
               <div className="grid grid-cols-3 gap-2 text-center">
-                {[["On hand", stock.onHand], ["Reserved", stock.reserved], ["Available", stock.available]].map(([l, v]) => (
+                {[["In stock", stock.onHand], ["Reserved", stock.reserved], ["Available", stock.available]].map(([l, v]) => (
                   <div key={l as string}><div className="font-display text-2xl tabular">{v}</div><div className="eyebrow">{l}</div></div>
                 ))}
               </div>
@@ -191,7 +192,7 @@ export function ProductDetailPage() {
                 <ul className="mt-3 divide-y divide-hairline border-t border-hairline text-xs">
                   {stock.batches.map((b) => (
                     <li key={`${b.batchId}-${b.warehouseId}`} className="flex justify-between py-1.5">
-                      <span><span className="code">{b.batchNumber}</span> <span className="text-muted-foreground">· {b.warehouseCode}</span></span>
+                      <span>{deliveryLabel(b, expiryEnabled)}{new Set(stock.batches.map((x) => x.warehouseId)).size > 1 && <span className="text-muted-foreground"> · {b.warehouseCode}</span>}</span>
                       <span className={cn("tabular", expiryEnabled && b.isExpired && "text-tone-red")}>{b.onHand}{expiryEnabled && <> · {b.expiryDate ? dateOnly(b.expiryDate) : "no expiry"}</>}</span>
                     </li>
                   ))}

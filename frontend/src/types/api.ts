@@ -141,6 +141,7 @@ export interface StockRow {
   nearestExpiry: string | null
   expiringUnits: number
   expiredUnits: number
+  primaryImageId: string | null
 }
 
 export interface InventorySettings {
@@ -154,6 +155,7 @@ export interface InventorySettings {
 export interface ProductStock {
   productId: string
   name: string
+  primaryImageId: string | null
   settings: InventorySettings
   onHand: number
   reserved: number
@@ -170,6 +172,8 @@ export interface ProductStock {
     isExpired: boolean
     daysToExpiry: number | null
     unitCost: number | null
+    /** When this delivery was added to stock. */
+    receivedAt: string | null
   }[]
   /** Only present for employees with costs.view. */
   cost: {

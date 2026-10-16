@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import { humanize, when } from "@/lib/format"
-import { qk, useWarehouses } from "@/lib/queries"
+import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Movement, MovementType, Paged } from "@/types/api"
 
@@ -25,6 +25,7 @@ export function MovementsPage() {
   const type = (params.get("type") ?? undefined) as MovementType | undefined
   const page = Number(params.get("page") ?? 1)
   const { data: warehouses } = useWarehouses(true)
+  const expiryEnabled = useSettings().data?.expiryDatesEnabled ?? false
   const query = { productId, warehouseId, type, page, pageSize: 50 }
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: qk.movements(query), queryFn: () => api<Paged<Movement>>("/api/inventory/movements", { query }), placeholderData: keepPreviousData,
@@ -33,7 +34,7 @@ export function MovementsPage() {
 
   const columns: Column<Movement>[] = [
     { key: "when", header: "When", cell: (m) => <span className="whitespace-nowrap">{when(m.createdAt)}</span> },
-    { key: "product", header: "Product", cell: (m) => <div><Link to={`/products/${m.productId}`} className="hover:underline">{m.productName}</Link><div className="text-xs text-muted-foreground">Batch {m.batchNumber}</div></div> },
+    { key: "product", header: "Product", cell: (m) => <div><Link to={`/products/${m.productId}`} className="hover:underline">{m.productName}</Link>{expiryEnabled && <div className="text-xs text-muted-foreground">Batch {m.batchNumber}</div>}</div> },
     { key: "type", header: "Movement", cell: (m) => <span className="whitespace-nowrap">{typeLabel[m.type]}{m.reason && <span className="text-muted-foreground"> · {humanize(m.reason)}</span>}</span> },
     { key: "qty", header: "Units", align: "right", cell: (m) => <span className={cn("tabular font-semibold", m.quantityChange > 0 ? "text-tone-green" : "text-tone-red")}>{m.quantityChange > 0 ? `+${m.quantityChange}` : m.quantityChange}</span> },
     { key: "wh", header: "Warehouse", hideOnMobile: true, cell: (m) => <span className="code">{m.warehouseCode}</span> },

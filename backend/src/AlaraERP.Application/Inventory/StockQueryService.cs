@@ -34,6 +34,7 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var rows = products.Select(p => new
         {
             p.Id, p.Name, p.IsActive,
+            PrimaryImageId = p.Images.Where(i => i.IsPrimary).Select(i => (Guid?)i.Id).FirstOrDefault(),
             CategoryName = db.Categories.Where(c => c.Id == p.CategoryId).Select(c => c.Name).FirstOrDefault(),
             OnHand = db.StockBalances.Where(b => b.ProductId == p.Id && (warehouseId == null || b.WarehouseId == warehouseId))
                 .Sum(b => (int?)b.QuantityOnHand) ?? 0,
@@ -78,14 +79,15 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         return new PagedResult<StockRowDto>(
             items.Select(r => new StockRowDto(r.Id, r.Name, r.CategoryName, r.IsActive, r.OnHand, r.Reserved,
                 r.OnHand - r.Reserved, r.Threshold, StatusOf(r.OnHand - r.Reserved, r.Threshold),
-                r.NearestExpiry, r.ExpiringUnits, r.ExpiredUnits)).ToList(),
+                r.NearestExpiry, r.ExpiringUnits, r.ExpiredUnits, r.PrimaryImageId)).ToList(),
             page.SafePage, page.SafePageSize, total);
     }
 
     public async Task<ProductStockDto> GetProductStockAsync(Guid productId, CancellationToken ct)
     {
         var product = await db.Products.AsNoTracking().Where(p => p.Id == productId)
-                          .Select(p => new { p.Id, p.Name, p.Type, p.StandardCost }).FirstOrDefaultAsync(ct)
+                          .Select(p => new { p.Id, p.Name, p.Type, p.StandardCost,
+                              PrimaryImageId = p.Images.Where(i => i.IsPrimary).Select(i => (Guid?)i.Id).FirstOrDefault() }).FirstOrDefaultAsync(ct)
                       ?? throw new NotFoundException("Product", productId);
         if (product.Type == ProductType.Bundle)
             throw new Domain.Common.DomainException("inventory.bundle_not_stocked",
@@ -107,7 +109,7 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         var batches = await (from bb in db.BatchBalances.AsNoTracking()
                              join w in db.Warehouses on bb.WarehouseId equals w.Id
                              where bb.Batch!.ProductId == productId && bb.QuantityOnHand > 0
-                             select new { bb.BatchId, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate, bb.Batch.UnitCost, w.Id, w.Code, bb.QuantityOnHand })
+                             select new { bb.BatchId, bb.Batch!.BatchNumber, bb.Batch.ExpiryDate, bb.Batch.UnitCost, bb.Batch.CreatedAt, w.Id, w.Code, bb.QuantityOnHand })
             .ToListAsync(ct);
 
         var onHand = warehouses.Sum(w => w.OnHand);
@@ -136,13 +138,13 @@ public sealed class StockQueryService(IAlaraDbContext db, BusinessClock clock, I
         return new ProductStockDto(product.Id, product.Name, settings, onHand, reserved, onHand - reserved,
             StatusOf(onHand - reserved, settings.LowStockThreshold),
             warehouses,
-            batches.OrderBy(b => b.ExpiryDate is null).ThenBy(b => b.ExpiryDate).ThenBy(b => b.Code)
+            batches.OrderBy(b => b.ExpiryDate is null).ThenBy(b => b.ExpiryDate).ThenBy(b => b.CreatedAt).ThenBy(b => b.Code)
                 .Select(b => new BatchStockDto(b.BatchId, b.BatchNumber, expiryEnabled ? b.ExpiryDate : null, b.Id, b.Code, b.QuantityOnHand,
                     expiryEnabled && b.ExpiryDate is { } e && e < today,
                     expiryEnabled && b.ExpiryDate is { } d ? d.DayNumber - today.DayNumber : null,
-                    canSeeCosts ? b.UnitCost : null))
+                    canSeeCosts ? b.UnitCost : null, b.CreatedAt))
                 .ToList(),
-            cost);
+            cost, product.PrimaryImageId);
     }
 
     /// <summary>

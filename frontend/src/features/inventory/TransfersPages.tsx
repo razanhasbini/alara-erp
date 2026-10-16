@@ -66,7 +66,7 @@ export function TransferDetailPage() {
           <ul className="divide-y divide-hairline">
             {t.lines.map((l) => (
               <li key={`${l.productId}-${l.batchId}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <div><div>{l.productName}</div><div className="text-xs text-muted-foreground">Batch {l.batchNumber}{settings?.expiryDatesEnabled && l.expiryDate && ` · exp. ${dateOnly(l.expiryDate)}`}</div></div>
+                <div><div>{l.productName}</div>{settings?.expiryDatesEnabled && <div className="text-xs text-muted-foreground">Batch {l.batchNumber}{l.expiryDate && ` · exp. ${dateOnly(l.expiryDate)}`}</div>}</div>
                 <span className="tabular font-medium">{l.quantity}</span>
               </li>
             ))}

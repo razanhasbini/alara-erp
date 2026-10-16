@@ -18,7 +18,8 @@ export interface AdjustTarget {
   tracksExpiry: boolean
   warehouseId: string
   direction: "increase" | "decrease"
-  batch?: { id: string; number: string; onHand: number; isExpired: boolean }
+  /** label: how staff recognise this stock, e.g. "the delivery added 16 Oct 2026". */
+  batch?: { id: string; label: string; onHand: number; isExpired: boolean }
 }
 
 const reasons: AdjustmentReason[] = ["CountCorrection", "Damaged", "Expired", "Lost", "SampleOrGift", "Other"]
@@ -36,7 +37,7 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
   const [expiry, setExpiry] = useState("")
   const qty = Number(quantity)
   const qtyError = !/^\d+$/.test(quantity) || qty < 1 ? "Enter a whole number above zero."
-    : decrease && target.batch && qty > target.batch.onHand ? `This batch has ${target.batch.onHand}.` : undefined
+    : decrease && target.batch && qty > target.batch.onHand ? `Only ${target.batch.onHand} left from this delivery.` : undefined
   const notesError = reason === "Other" && !notes.trim() ? "Explain the adjustment." : undefined
   const expiryError = expiryEnabled && !decrease && target.tracksExpiry && !expiry ? "This product tracks expiry dates." : undefined
   const availableReasons = expiryEnabled ? reasons : reasons.filter((value) => value !== "Expired")
@@ -65,7 +66,7 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
         <DialogHeader>
           <DialogTitle>{decrease ? "Remove stock" : "Add stock"} · {target.productName}</DialogTitle>
           <DialogDescription>
-            {decrease ? `From batch ${target.batch?.number}. Reserved units cannot be removed.` : "For corrections found during a count. Use “Receive stock” for supplier deliveries."}
+            {decrease ? `From ${target.batch?.label}. Reserved units cannot be removed.` : "For corrections found during a count. Use “Receive stock” for supplier deliveries."}
           </DialogDescription>
         </DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!qtyError && !notesError && !expiryError) save.mutate() }}>
@@ -81,13 +82,13 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
             </Field>
           </div>
           {!decrease && (
-            <div className={expiryEnabled ? "grid grid-cols-2 gap-4" : "grid gap-4"}>
+            expiryEnabled && <div className="grid grid-cols-2 gap-4">
               <Field label="Batch number" htmlFor="adj-batch" hint="Existing or new; blank = today's adjustment batch.">
                 <Input id="adj-batch" className="font-mono" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} />
               </Field>
-              {expiryEnabled && <Field label="Expiry date" htmlFor="adj-expiry" error={expiryError} required={target.tracksExpiry}>
+              <Field label="Expiry date" htmlFor="adj-expiry" error={expiryError} required={target.tracksExpiry}>
                 <Input id="adj-expiry" type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
-              </Field>}
+              </Field>
             </div>
           )}
           <Field label="Notes" htmlFor="adj-notes" error={notesError} required={reason === "Other"}>

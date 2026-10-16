@@ -65,12 +65,12 @@ export function ReceiptDetailPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Section title={`${r.lines.length} line(s) · ${number(r.totalUnits)} units`}>
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-hairline"><th className="eyebrow px-4 py-2 text-left">Product</th><th className="eyebrow px-4 py-2 text-left">Batch</th><th className="eyebrow px-4 py-2 text-right">Units</th><th className="eyebrow px-4 py-2 text-right">Unit cost</th></tr></thead>
+            <thead><tr className="border-b border-hairline"><th className="eyebrow px-4 py-2 text-left">Product</th>{settings?.expiryDatesEnabled && <th className="eyebrow px-4 py-2 text-left">Batch</th>}<th className="eyebrow px-4 py-2 text-right">Units</th><th className="eyebrow px-4 py-2 text-right">Unit cost</th></tr></thead>
             <tbody>
               {r.lines.map((l) => (
                 <tr key={`${l.productId}-${l.batchId}`} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5"><Link to={`/products/${l.productId}`} className="hover:underline">{l.productName}</Link></td>
-                  <td className="px-4 py-2.5"><span className="code">{l.batchNumber}</span>{settings?.expiryDatesEnabled && <div className="text-xs text-muted-foreground">{l.expiryDate ? `Expires ${dateOnly(l.expiryDate)}` : "No expiry"}</div>}</td>
+                  {settings?.expiryDatesEnabled && <td className="px-4 py-2.5"><span className="code">{l.batchNumber}</span><div className="text-xs text-muted-foreground">{l.expiryDate ? `Expires ${dateOnly(l.expiryDate)}` : "No expiry"}</div></td>}
                   <td className="px-4 py-2.5 text-right tabular">{l.quantity}</td>
                   <td className="px-4 py-2.5 text-right tabular">{l.unitCost !== null ? money(l.unitCost) : "—"}</td>
                 </tr>
@@ -204,14 +204,14 @@ export function NewReceiptPage() {
           {lines.map((l) => {
             const err: Partial<ReturnType<typeof lineErrors>> = submitted ? lineErrors(l) : {}
             return (
-              <div key={l.key} className={`grid gap-3 rounded-md border border-hairline p-3 sm:items-start ${expiryEnabled ? (showCost ? "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_9rem_auto]" : "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_auto]") : (showCost ? "sm:grid-cols-[1fr_5.5rem_8rem_9rem_auto]" : "sm:grid-cols-[1fr_5.5rem_8rem_auto]")}`}>
+              <div key={l.key} className={`grid gap-3 rounded-md border border-hairline p-3 sm:items-start ${expiryEnabled ? (showCost ? "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_9rem_auto]" : "sm:grid-cols-[1fr_5.5rem_8rem_9.5rem_auto]") : (showCost ? "sm:grid-cols-[1fr_6rem_11rem_auto]" : "sm:grid-cols-[1fr_6rem_auto]")}`}>
                 <div className="min-w-0 truncate text-sm font-medium">{l.name}</div>
                 <Field label="Units" htmlFor={`q-${l.key}`} error={err.quantity} required>
                   <Input id={`q-${l.key}`} inputMode="numeric" value={l.quantity} aria-invalid={!!err.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} className="tabular" />
                 </Field>
-                <Field label="Batch" htmlFor={`b-${l.key}`}>
+                {expiryEnabled && <Field label="Batch" htmlFor={`b-${l.key}`}>
                   <Input id={`b-${l.key}`} placeholder="auto" className="font-mono" value={l.batchNumber} onChange={(e) => update(l.key, { batchNumber: e.target.value })} />
-                </Field>
+                </Field>}
                 {expiryEnabled && <Field label={l.tracksExpiry ? "Expiry *" : "Expiry"} htmlFor={`e-${l.key}`} error={err.expiryDate}>
                   <Input id={`e-${l.key}`} type="date" value={l.expiryDate} aria-invalid={!!err.expiryDate} onChange={(e) => update(l.key, { expiryDate: e.target.value })} />
                 </Field>}
