@@ -92,6 +92,16 @@ public sealed class ProductsController(ProductService products, ProductImageServ
         return CreatedAtAction(nameof(GetImage), new { id, imageId = image.Id }, image);
     }
 
+    /// <summary>Replaces one photo with a new file, keeping its position and "main" status.</summary>
+    [HttpPut("{id:guid}/images/{imageId:guid}")]
+    [HasPermission(Products.Update)]
+    [RequestSizeLimit(ProductImageService.MaxBytes + 64 * 1024)]
+    public async Task<ProductImageDto> ReplaceImage(Guid id, Guid imageId, IFormFile file, CancellationToken ct)
+    {
+        await using var stream = file.OpenReadStream();
+        return await images.ReplaceAsync(id, imageId, stream, file.Length, ct);
+    }
+
     [HttpGet("{id:guid}/images/{imageId:guid}")]
     [HasPermission(Products.View)]
     [ResponseCache(Duration = 3600, Location = ResponseCacheLocation.Client)]

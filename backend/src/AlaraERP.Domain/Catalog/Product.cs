@@ -142,6 +142,28 @@ public sealed class Product : IAuditable
         return image;
     }
 
+    /// <summary>
+    /// Swaps a photo for a new file. The new image takes the old one's position and "main" flag; it gets a new id
+    /// (and so a new URL), so browsers never keep showing the old picture from their cache.
+    /// </summary>
+    public (ProductImage Added, ProductImage Removed) ReplaceImage(Guid imageId, string storageKey, string contentType, long sizeBytes)
+    {
+        var old = FindImage(imageId);
+        var replacement = new ProductImage(Id, storageKey, contentType, sizeBytes, old.DisplayOrder, old.IsPrimary);
+        _images.Remove(old);
+        _images.Add(replacement);
+        return (replacement, old);
+    }
+
+    /// <summary>
+    /// Un-marks the current main photo. Used as the first of two saves when switching the main photo, because the
+    /// database allows only one main photo per product and does not guarantee the order of the two updates.
+    /// </summary>
+    public void ClearPrimaryImage()
+    {
+        foreach (var image in _images) image.IsPrimary = false;
+    }
+
     public void SetPrimaryImage(Guid imageId)
     {
         var target = FindImage(imageId);

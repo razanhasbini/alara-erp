@@ -196,6 +196,57 @@ public sealed class CatalogTests(AlaraApiFactory factory) : ApiTestBase(factory)
         Assert.Equal(secondImage.Id, Assert.Single(listed.Items).PrimaryImageId);
     }
 
+    [Fact]
+    public async Task Photos_can_be_replaced_reordered_and_deleted()
+    {
+        var (client, s) = await ManagerAsync();
+        var product = await s.ProductAsync("ALR-PHOTOS", 10m);
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 9, 9, 9];
+        var main = await (await UploadAsync(client, product.Id, png, "a.png", "image/png")).ReadJsonAsync<ProductImageDto>();
+        var second = await (await UploadAsync(client, product.Id, png, "b.png", "image/png")).ReadJsonAsync<ProductImageDto>();
+
+        // Replace the main photo: same position, still main, new id, new bytes; the old URL is gone.
+        var replaced = await (await SendFileAsync(client, HttpMethod.Put, $"/api/products/{product.Id}/images/{main.Id}", jpeg, "new.jpg", "image/jpeg"))
+            .OkJsonAsync<ProductImageDto>();
+        Assert.NotEqual(main.Id, replaced.Id);
+        Assert.Equal((true, main.DisplayOrder, "image/jpeg"), (replaced.IsPrimary, replaced.DisplayOrder, replaced.ContentType));
+        Assert.Equal(jpeg, await (await client.GetAsync($"/api/products/{product.Id}/images/{replaced.Id}")).Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/products/{product.Id}/images/{main.Id}")).StatusCode);
+
+        var notAnImage = await SendFileAsync(client, HttpMethod.Put, $"/api/products/{product.Id}/images/{second.Id}", "text"u8.ToArray(), "x.png", "image/png");
+        Assert.Equal("images.invalid_type", await notAnImage.ProblemCodeAsync());
+
+        // Switching the main photo back and forth must never trip the one-main-photo rule.
+        for (var i = 0; i < 4; i++)
+        {
+            var target = i % 2 == 0 ? second.Id : replaced.Id;
+            (await client.PutAsync($"/api/products/{product.Id}/images/{target}/primary", new { })).EnsureSuccessStatusCode();
+            Assert.Equal(target, (await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}")).Images.Single(x => x.IsPrimary).Id);
+        }
+        (await client.PutAsync($"/api/products/{product.Id}/images/{replaced.Id}/primary", new { })).EnsureSuccessStatusCode();
+
+        // Move the second photo first, then delete the main one: the remaining photo becomes main.
+        (await client.PutAsync($"/api/products/{product.Id}/images/order", new ReorderImagesRequest([second.Id, replaced.Id]))).EnsureSuccessStatusCode();
+        (await client.DeleteAsync($"/api/products/{product.Id}/images/{replaced.Id}")).EnsureSuccessStatusCode();
+        var detail = await client.GetJsonAsync<ProductDetailDto>($"/api/products/{product.Id}");
+        var only = Assert.Single(detail.Images);
+        Assert.Equal((second.Id, true), (only.Id, only.IsPrimary));
+
+        using var viewer = await SignedInAsAsync(SystemRoles.Viewer); // read-only role
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await SendFileAsync(viewer, HttpMethod.Put, $"/api/products/{product.Id}/images/{second.Id}", png, "c.png", "image/png")).StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> SendFileAsync(ErpClient client, HttpMethod method, string url, byte[] bytes, string name, string type)
+    {
+        var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(type);
+        content.Add(file, "file", name);
+        return client.Http.SendAsync(new HttpRequestMessage(method, url) { Content = content });
+    }
+
     private static Task<HttpResponseMessage> UploadAsync(ErpClient client, Guid productId, byte[] bytes, string name, string type)
     {
         var content = new MultipartFormDataContent();

@@ -12,13 +12,34 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
     /// <summary>Validates the real file type from its bytes (not the client's claim) and stores it under a generated key.</summary>
     public async Task<ProductImageDto> UploadAsync(Guid productId, Stream content, long length, CancellationToken ct)
     {
-        if (length <= 0 || length > MaxBytes)
-            throw new DomainException("images.invalid_size", "Images must be between 1 byte and 5 MB.");
-
-        var product = await db.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId, ct)
-                      ?? throw new NotFoundException("Product", productId);
+        var product = await LoadAsync(productId, ct);
         if (product.Images.Count >= MaxImagesPerProduct)
             throw new DomainException("images.too_many", $"A product can have at most {MaxImagesPerProduct} images.");
+
+        var key = await StoreAsync(productId, content, length, ct);
+        var image = product.AddImage(key.Key, key.ContentType, key.Size);
+        await SaveOrDiscardAsync(key.Key, ct);
+        return ToDto(image);
+    }
+
+    /// <summary>Replaces one photo with a new file, keeping its position and "main" status. The old file is removed.</summary>
+    public async Task<ProductImageDto> ReplaceAsync(Guid productId, Guid imageId, Stream content, long length, CancellationToken ct)
+    {
+        var product = await LoadAsync(productId, ct);
+        if (product.Images.All(i => i.Id != imageId))
+            throw new NotFoundException("Image", imageId);
+
+        var key = await StoreAsync(productId, content, length, ct);
+        var (added, removed) = product.ReplaceImage(imageId, key.Key, key.ContentType, key.Size);
+        await SaveOrDiscardAsync(key.Key, ct);
+        await storage.DeleteAsync(removed.StorageKey, CancellationToken.None);
+        return ToDto(added);
+    }
+
+    private async Task<(string Key, string ContentType, long Size)> StoreAsync(Guid productId, Stream content, long length, CancellationToken ct)
+    {
+        if (length <= 0 || length > MaxBytes)
+            throw new DomainException("images.invalid_size", "Images must be between 1 byte and 5 MB.");
 
         await using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, ct);
@@ -31,19 +52,24 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
         var key = $"products/{productId:N}/{Guid.CreateVersion7():N}.{extension}";
         buffer.Position = 0;
         await storage.SaveAsync(key, buffer, ct);
+        return (key, contentType, buffer.Length);
+    }
 
-        var image = product.AddImage(key, contentType, buffer.Length);
+    /// <summary>Commits the database change; if that fails, the just-written file is removed so no orphan remains.</summary>
+    private async Task SaveOrDiscardAsync(string storedKey, CancellationToken ct)
+    {
         try
         {
             await db.SaveChangesAsync(ct);
         }
         catch
         {
-            await storage.DeleteAsync(key, CancellationToken.None);
+            await storage.DeleteAsync(storedKey, CancellationToken.None);
             throw;
         }
-        return new ProductImageDto(image.Id, image.ContentType, image.SizeBytes, image.DisplayOrder, image.IsPrimary);
     }
+
+    private static ProductImageDto ToDto(Domain.Catalog.ProductImage i) => new(i.Id, i.ContentType, i.SizeBytes, i.DisplayOrder, i.IsPrimary);
 
     public async Task<ImageContent> OpenAsync(Guid productId, Guid imageId, CancellationToken ct)
     {
@@ -65,8 +91,16 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
     public async Task SetPrimaryAsync(Guid productId, Guid imageId, CancellationToken ct)
     {
         var product = await LoadAsync(productId, ct);
+        if (product.Images.All(i => i.Id != imageId)) throw new NotFoundException("Image", imageId);
+
+        // Two saves in one transaction: clear the old main photo, then set the new one, so the
+        // "one main photo per product" index never sees two at once.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        product.ClearPrimaryImage();
+        await db.SaveChangesAsync(ct);
         product.SetPrimaryImage(imageId);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 
     public async Task ReorderAsync(Guid productId, ReorderImagesRequest request, CancellationToken ct)

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ImagePlus, PackageMinus, Pencil, Star, Trash2 } from "lucide-react"
+import { ArrowLeft, ArrowRight, ImagePlus, PackageMinus, Pencil, RefreshCw, Star, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog } from "@/components/common/controls"
@@ -248,12 +248,18 @@ function ComponentsDialog({ product, onClose }: { product: ProductDetail; onClos
 function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: boolean }) {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
+  const replaceInput = useRef<HTMLInputElement>(null)
+  const replaceTarget = useRef<string | null>(null)
   const [pendingImages, setPendingImages] = useState<File[]>([])
+  const [replacing, setReplacing] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["catalog"] })
+  const tooBig = (file: File) => { if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} is larger than 5 MB.`) }
+
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
       for (const file of files) {
-        if (file.size > 5 * 1024 * 1024) throw new Error(`${file.name} is larger than 5 MB.`)
+        tooBig(file)
         const body = new FormData()
         body.append("file", file)
         await api(`/api/products/${product.id}/images`, { method: "POST", body })
@@ -262,18 +268,41 @@ function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: 
     onSuccess: async (_, files) => { await refresh(); setPendingImages([]); toast.success(files.length === 1 ? "Photo uploaded and now visible" : `${files.length} photos uploaded and now visible`) },
     onError: async (e) => { await refresh(); setPendingImages([]); toast.error(errorMessage(e)) },
   })
+  const replace = useMutation({
+    mutationFn: async ({ imageId, file }: { imageId: string; file: File }) => {
+      tooBig(file)
+      const body = new FormData()
+      body.append("file", file)
+      await api(`/api/products/${product.id}/images/${imageId}`, { method: "PUT", body })
+    },
+    onSuccess: async () => { await refresh(); toast.success("Photo replaced") },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setReplacing(null),
+  })
   const primary = useMutation({
     mutationFn: (imageId: string) => api(`/api/products/${product.id}/images/${imageId}/primary`, { method: "PUT" }),
+    onSuccess: async () => { await refresh(); toast.success("Main photo changed") },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const reorder = useMutation({
+    mutationFn: (imageIds: string[]) => api(`/api/products/${product.id}/images/order`, { method: "PUT", body: { imageIds } }),
     onSuccess: refresh, onError: (e) => toast.error(errorMessage(e)),
   })
   const remove = useMutation({
     mutationFn: (imageId: string) => api(`/api/products/${product.id}/images/${imageId}`, { method: "DELETE" }),
-    onSuccess: refresh, onError: (e) => toast.error(errorMessage(e)),
+    onSuccess: async () => { setConfirmDelete(null); await refresh(); toast.success("Photo deleted") },
+    onError: (e) => { setConfirmDelete(null); toast.error(errorMessage(e)) },
   })
   const images = [...product.images].sort((a, b) => a.displayOrder - b.displayOrder)
+  const move = (index: number, by: -1 | 1) => {
+    const ids = images.map((i) => i.id)
+    ;[ids[index], ids[index + by]] = [ids[index + by], ids[index]]
+    reorder.mutate(ids)
+  }
+  const busy = upload.isPending || replace.isPending || primary.isPending || reorder.isPending || remove.isPending
 
   return (
-    <Section title="Images" actions={canEdit && (
+    <Section title="Photos" actions={canEdit && (
       <>
         <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
           onChange={(e) => {
@@ -284,25 +313,46 @@ function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: 
             }
             e.target.value = ""
           }} />
+        <input ref={replaceInput} type="file" accept="image/jpeg,image/png,image/webp" hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            const imageId = replaceTarget.current
+            if (file && imageId) { setReplacing(imageId); replace.mutate({ imageId, file }) }
+            e.target.value = ""
+          }} />
         <Button size="sm" variant="outline" onClick={() => input.current?.click()} disabled={upload.isPending}>
-          {upload.isPending ? <InlineSpinner /> : <ImagePlus />} {upload.isPending ? "Uploading…" : "Upload"}
+          {upload.isPending ? <InlineSpinner /> : <ImagePlus />} {upload.isPending ? "Uploading…" : "Add photos"}
         </Button>
       </>
     )} bodyClassName="p-3">
       {images.length === 0 && pendingImages.length === 0 ? (
-        <p className="px-1 py-6 text-center text-xs text-muted-foreground">No images yet. JPEG, PNG or WebP up to 5 MB.</p>
+        <p className="px-1 py-6 text-center text-xs text-muted-foreground">No photos yet. JPEG, PNG or WebP up to 5 MB.</p>
       ) : (
         <ul className="grid grid-cols-2 gap-2">
-          {images.map((img) => (
-            <li key={img.id} className={cn("group relative overflow-hidden rounded-md border bg-white", img.isPrimary ? "border-rose" : "border-hairline")}>
-              <img src={`/api/products/${product.id}/images/${img.id}`} alt={`${product.name} image`} className="aspect-square w-full object-cover" />
-              {img.isPrimary && <span className="absolute top-1.5 left-1.5 rounded bg-white/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-rose-ink">Main</span>}
+          {images.map((img, index) => (
+            <li key={img.id} className={cn("overflow-hidden rounded-md border bg-white", img.isPrimary ? "border-rose" : "border-hairline")}>
+              <div className="relative">
+                <img src={`/api/products/${product.id}/images/${img.id}`} alt={`${product.name} photo ${index + 1}`}
+                  className={cn("aspect-square w-full object-cover", replacing === img.id && "opacity-40")} />
+                {img.isPrimary && <span className="absolute top-1.5 left-1.5 rounded bg-white/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-rose-ink">Main</span>}
+                {replacing === img.id && <span className="absolute inset-0 grid place-items-center"><InlineSpinner className="size-5 text-rose-ink" /></span>}
+              </div>
               {canEdit && (
-                <div className="absolute inset-x-1.5 bottom-1.5 flex justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  {!img.isPrimary && (
-                    <Button size="icon-xs" variant="secondary" aria-label="Make main image" onClick={() => primary.mutate(img.id)}><Star /></Button>
-                  )}
-                  <Button size="icon-xs" variant="secondary" aria-label="Delete image" onClick={() => remove.mutate(img.id)}><Trash2 /></Button>
+                <div className="flex items-center justify-between gap-0.5 border-t border-hairline px-1 py-1">
+                  <div className="flex">
+                    <Button size="icon-xs" variant="ghost" title="Move earlier" aria-label="Move photo earlier" disabled={busy || index === 0} onClick={() => move(index, -1)}><ArrowLeft /></Button>
+                    <Button size="icon-xs" variant="ghost" title="Move later" aria-label="Move photo later" disabled={busy || index === images.length - 1} onClick={() => move(index, 1)}><ArrowRight /></Button>
+                  </div>
+                  <div className="flex">
+                    <Button size="icon-xs" variant="ghost" title={img.isPrimary ? "This is the main photo" : "Make main photo"} aria-label="Make main photo"
+                      disabled={busy || img.isPrimary} onClick={() => primary.mutate(img.id)}>
+                      <Star className={img.isPrimary ? "fill-rose text-rose" : undefined} />
+                    </Button>
+                    <Button size="icon-xs" variant="ghost" title="Replace photo" aria-label="Replace photo" disabled={busy}
+                      onClick={() => { replaceTarget.current = img.id; replaceInput.current?.click() }}><RefreshCw /></Button>
+                    <Button size="icon-xs" variant="ghost" title="Delete photo" aria-label="Delete photo" disabled={busy}
+                      className="hover:text-destructive" onClick={() => setConfirmDelete(img.id)}><Trash2 /></Button>
+                  </div>
                 </div>
               )}
             </li>
@@ -310,6 +360,12 @@ function ImagesSection({ product, canEdit }: { product: ProductDetail; canEdit: 
           {pendingImages.map((file) => <PendingImagePreview key={`${file.name}-${file.size}-${file.lastModified}`} file={file} />)}
         </ul>
       )}
+      <ConfirmDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)} destructive
+        title="Delete this photo?" confirmLabel="Delete photo" pending={remove.isPending}
+        onConfirm={() => confirmDelete && remove.mutate(confirmDelete)}
+        description={images.find((i) => i.id === confirmDelete)?.isPrimary && images.length > 1
+          ? "This is the main photo; the next photo will become the main one."
+          : "The photo is removed permanently."} />
     </Section>
   )
 }
