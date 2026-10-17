@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlarmClock, Check, Clock, Pencil, Printer, RotateCcw, Trash2, Undo2, X } from "lucide-react"
+import { Check, Clock, Pencil, Printer, RotateCcw, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog, Field, SubmitButton } from "@/components/common/controls"
 import { Facts, PageHeader, Section } from "@/components/common/page"
 import { OrderStatusPill, PaymentStatusPill, Pill } from "@/components/common/StatusBadge"
 import { ErrorState, FullPageSpinner } from "@/components/common/states"
+import { PhoneInput } from "@/components/common/PhoneInput"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -18,10 +19,9 @@ import { P } from "@/lib/permissions"
 import { qk } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { OrderDetail, OrderStatus } from "@/types/api"
-import { ReserveTimeDialog } from "./ReserveTimeDialog"
+import { formatPhone } from "@/lib/phone"
 
 type Action = "confirm" | "return" | "cancel"
-type ReserveMode = "reserve" | "change"
 
 const actionDone: Record<Action, string> = {
   confirm: "sold — paid and stock deducted", 
@@ -31,7 +31,7 @@ const actionDone: Record<Action, string> = {
 const actionCopy: Record<Action, { title: string; description: string; label: string; destructive?: boolean; note?: boolean }> = {
   confirm: { title: "Mark as sold?", description: "The held stock for every item, including products inside bundles, is deducted and the sale is counted in revenue and profit.", label: "Mark as sold" },
   return: { title: "Record a return?", description: "Use when the customer sent the order back or refused it. The units go back into stock and the sale is taken out of revenue and profit.", label: "Record return", destructive: true, note: true },
-  cancel: { title: "Cancel this order?", description: "Reserved stock is released and any stock deducted when it was sold is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
+  cancel: { title: "Cancel this order?", description: "Its stock goes back on the shelf and the sale is taken out of sales and profit. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
 }
 
 export function OrderDetailPage() {
@@ -43,7 +43,6 @@ export function OrderDetailPage() {
   const [action, setAction] = useState<Action | null>(null)
   const [note, setNote] = useState("")
   const [editingRecipient, setEditingRecipient] = useState(false)
-  const [reserveMode, setReserveMode] = useState<ReserveMode | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const afterChange = async (updated: OrderDetail, message: string) => {
@@ -56,18 +55,7 @@ export function OrderDetailPage() {
     onSuccess: async (updated, { a }) => { setAction(null); setNote(""); await afterChange(updated, `${updated.orderNumber} ${actionDone[a]}`) },
     onError: (e) => { setAction(null); toast.error(errorMessage(e)) },
   })
-  const reserve = useMutation({
-    mutationFn: ({ mode, until, notes }: { mode: ReserveMode; until: string; notes: string }) => mode === "reserve"
-      ? api<OrderDetail>(`/api/orders/${id}/reserve`, { method: "POST", body: { reservedUntil: until, notes: notes || null } })
-      : api<OrderDetail>(`/api/orders/${id}/reservation`, { method: "PUT", body: { reservedUntil: until, notes: notes || null } }),
-    onSuccess: async (updated, { mode }) => {
-      setReserveMode(null)
-      await afterChange(updated, mode === "reserve"
-        ? `${updated.orderNumber} moved back to reserved — the sale is undone and the stock is held until ${dateTime(updated.reservedUntil)}`
-        : `Reservation now ends ${dateTime(updated.reservedUntil)}`)
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
+
   const remove = useMutation({
     mutationFn: () => api(`/api/orders/${id}`, { method: "DELETE" }),
     onSuccess: async () => {
@@ -83,10 +71,8 @@ export function OrderDetailPage() {
 
   const allowed = (s: OrderStatus) => o.allowedTransitions.includes(s)
   const buttons: ReactNode[] = []
-  if ((o.status === "Reserved" || o.status === "Draft") && can(P.orders.update)) buttons.push(<Button key="edit" variant="outline" asChild><Link to={`/orders/${o.id}/edit`}><Pencil /> Edit</Link></Button>)
+  if (["Reserved", "Draft", "Confirmed"].includes(o.status) && can(P.orders.update)) buttons.push(<Button key="edit" variant="outline" asChild><Link to={`/orders/${o.id}/edit`}><Pencil /> Edit</Link></Button>)
   if (allowed("Cancelled") && can(P.orders.cancel)) buttons.push(<Button key="cancel" variant="ghost" onClick={() => setAction("cancel")}><X /> Cancel</Button>)
-  if (o.status === "Reserved" && can(P.orders.update)) buttons.push(<Button key="change" variant="outline" onClick={() => setReserveMode("change")}><Clock /> Change time</Button>)
-  if (allowed("Reserved") && can(P.orders.update)) buttons.push(<Button key="reserve" variant="outline" onClick={() => setReserveMode("reserve")}><Undo2 /> {o.status === "Draft" ? "Reserve" : "Back to reserved"}</Button>)
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
   if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Mark as sold</Button>)
   if (can(P.orders.delete)) buttons.push(<Button key="delete" variant="destructive" onClick={() => setConfirmDelete(true)}><Trash2 /> Delete test order</Button>)
@@ -176,7 +162,7 @@ export function OrderDetailPage() {
             <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(true)}>Edit</Button>} bodyClassName="p-4">
             <Facts items={[
               ["Name", o.customerId ? <Link key="customer" to={`/customers?search=${encodeURIComponent(o.recipientPhone)}`} className="font-medium text-primary hover:underline">{o.recipientName}</Link> : o.recipientName],
-              ["Phone", <a key="f145-26" className="hover:underline" href={`https://wa.me/${o.recipientPhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">{o.recipientPhone}</a>],
+              ["Phone", <a key="f145-26" className="hover:underline" href={`https://wa.me/${o.recipientPhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">{formatPhone(o.recipientPhone)}</a>],
               ["City", o.recipientCity], ["Address", o.recipientAddress],
             ]} />
           </Section>
@@ -196,17 +182,6 @@ export function OrderDetailPage() {
           {copy.note && <Textarea aria-label="Note" placeholder="Note (optional)" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />}
         </ConfirmDialog>
       )}
-      {reserveMode && (
-        <ReserveTimeDialog open onOpenChange={(open) => !open && setReserveMode(null)} pending={reserve.isPending}
-          initial={reserveMode === "change" ? o.reservedUntil : null}
-          title={reserveMode === "change" ? "Change reservation time" : o.status === "Draft" ? "Reserve stock for this order" : "Move back to reserved?"}
-          description={reserveMode === "change"
-            ? "Choose a new time. You get a new alert when it's up."
-            : o.status === "Draft" ? "The products and gifts are held for this customer until the time you choose."
-            : "The sale is undone: the deducted stock is returned and held again for this customer, and revenue and profit stop counting it. You can then edit the order."}
-          confirmLabel={reserveMode === "change" ? "Save time" : "Reserve"}
-          onConfirm={(until, notes) => reserve.mutate({ mode: reserveMode, until, notes: notes.trim() })} />
-      )}
       <ConfirmDialog open={confirmDelete} onOpenChange={setConfirmDelete}
         title={`Permanently delete ${o.orderNumber}?`}
         description="Use this only for deployment testing. The order, its sales result and its inventory history will be removed, and any stock it held or deducted will be restored. This cannot be undone."
@@ -219,19 +194,14 @@ export function OrderDetailPage() {
 /** Confirmed orders are shown to staff as "Sold". */
 const statusLabel = (value: string) => value === "Confirmed" ? "Sold" : humanize(value)
 
+/** Only orders reserved before reserving was removed can still be in this state. */
 function ReservationBanner({ order }: { order: OrderDetail }) {
-  const expired = !!order.reservedUntil && new Date(order.reservedUntil).getTime() <= Date.now()
   return (
-    <div role="status" className={cn("mb-6 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm",
-      expired ? "border-tone-red/30 bg-tone-red-bg text-tone-red" : "border-tone-amber/30 bg-tone-amber-bg text-tone-amber")}>
-      {expired ? <AlarmClock className="mt-0.5 size-5 shrink-0" aria-hidden /> : <Clock className="mt-0.5 size-5 shrink-0" aria-hidden />}
+    <div role="status" className="mb-6 flex items-start gap-3 rounded-lg border border-tone-amber/30 bg-tone-amber-bg px-4 py-3 text-sm text-tone-amber">
+      <Clock className="mt-0.5 size-5 shrink-0" aria-hidden />
       <div>
-        <p className="font-semibold">{expired ? `Reservation time is up (${dateTime(order.reservedUntil)})` : `Reserved until ${dateTime(order.reservedUntil)}`}</p>
-        <p className="mt-0.5 leading-5">
-          {expired
-            ? "The stock is still held. Mark the order as sold, give it more time, or cancel it to release the stock."
-            : "Stock is held for this customer and can't be sold to anyone else. Nothing is counted as sold, and no cost is recorded, until you mark it as sold."}
-        </p>
+        <p className="font-semibold">This order is still reserved{order.reservedUntil ? ` (until ${dateTime(order.reservedUntil)})` : ""}</p>
+        <p className="mt-0.5 leading-5">Reserving is no longer used. Mark it as sold, or cancel it to put its stock back.</p>
       </div>
     </div>
   )
@@ -257,7 +227,7 @@ function RecipientDialog({ order, onClose, onDone }: { order: OrderDetail; onClo
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Name" htmlFor="d-name" required><Input id="d-name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <Field label="Phone" htmlFor="d-phone" required><Input id="d-phone" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+            <Field label="Phone" htmlFor="d-phone" required><PhoneInput id="d-phone" value={phone} onChange={setPhone} /></Field>
             <Field label="City" htmlFor="d-city"><Input id="d-city" value={city} onChange={(e) => setCity(e.target.value)} /></Field>
           </div>
           <Field label="Address" htmlFor="d-address"><Textarea id="d-address" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} /></Field>

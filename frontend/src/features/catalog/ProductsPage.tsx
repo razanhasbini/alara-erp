@@ -68,7 +68,7 @@ export function ProductsPage({ type }: { type?: ProductType }) {
     onSuccess: ({ rows, available: exportAvailability }) => {
       const withStock = can(P.inventory.view)
       downloadCsv(`alara-products_${todayIso()}.csv`,
-        ["Product", "Category", "Selling price", "Compare-at price", ...(withStock ? ["Available units"] : []), "Status"],
+        ["Product", "Category", "Selling price", "Compare-at price", ...(withStock ? ["Units in stock"] : []), "Status"],
         rows.map((p) => [p.name, p.categoryName, p.sellingPrice, p.compareAtPrice,
           ...(withStock ? [exportAvailability[p.id] ?? 0] : []), p.isActive ? "Active" : "Inactive"]))
       toast.success(`${rows.length} products exported`)
@@ -99,7 +99,7 @@ export function ProductsPage({ type }: { type?: ProductType }) {
       ),
     },
     ...(can(P.inventory.view) ? [{
-      key: "available", header: "Available", align: "right" as const,
+      key: "available", header: "In stock", align: "right" as const,
       cell: (p: ProductListItem) => {
         const qty = available?.[p.id]
         return qty === undefined ? "…" : <span className={cn("tabular", qty <= 0 && "text-tone-red")}>{qty}</span>

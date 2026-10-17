@@ -157,10 +157,17 @@ public sealed class OrderService(
         {
             await EnsureWarehouseUsableAsync(request.WarehouseId, ct);
             var reserved = order.Status == OrderStatus.Reserved;
+            var sold = order.Status == OrderStatus.Confirmed;
             if (reserved)
             {
                 // Swap the hold: release what the old lines held, then hold what the new lines need.
                 await stock.ReleaseAsync(order.Id, ct);
+                await db.SaveChangesAsync(ct);
+            }
+            if (sold)
+            {
+                // Put the old lines' stock back; the new lines' stock is taken below, all in this transaction.
+                await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
                 await db.SaveChangesAsync(ct);
             }
             order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
@@ -169,7 +176,12 @@ public sealed class OrderService(
             order.SetRecipient(ToRecipient(request.Recipient));
             order.SetCustomer(customerId);
             order.SetNotes(request.Notes);
-            if (reserved) await ReserveStockAsync(order, ct);
+            if (reserved || sold) await ReserveStockAsync(order, ct);
+            if (sold)
+            {
+                await db.SaveChangesAsync(ct);
+                await stock.ShipAsync(order.Id, order.OrderNumber, ct);
+            }
         }, ct);
     }
 

@@ -97,13 +97,15 @@ public sealed class OrderTests
     }
 
     [Fact]
-    public void Lines_can_only_change_on_drafts_and_discounts_cannot_exceed_goods()
+    public void Lines_cannot_change_once_cancelled_and_discounts_cannot_exceed_goods()
     {
         var order = NewOrder();
         Assert.Equal("orders.discount_exceeds_subtotal", Assert.Throws<DomainException>(() =>
             order.ReplaceLines([Line(order, 10m, 1)], 11m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
 
         order.TransitionTo(OrderStatus.Confirmed, null, Now);
+        order.ReplaceLines([Line(order, 10m, 2)], 0m, order.WarehouseId, order.Source, order.PaymentMethod); // sold orders can be corrected
+        order.TransitionTo(OrderStatus.Cancelled, null, Now);
         Assert.Equal("orders.not_editable", Assert.Throws<DomainException>(() =>
             order.ReplaceLines([Line(order, 10m, 1)], 0m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
     }

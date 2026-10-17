@@ -179,10 +179,8 @@ export function ProductDetailPage() {
           {stock && (
             <Section title="Stock" actions={<Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>}
               bodyClassName="p-4">
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {[["In stock", stock.onHand], ["Reserved", stock.reserved], ["Available", stock.available]].map(([l, v]) => (
-                  <div key={l as string}><div className="font-display text-2xl tabular">{v}</div><div className="eyebrow">{l}</div></div>
-                ))}
+              <div className="text-center">
+                <div className="font-display text-3xl tabular">{stock.available}</div><div className="eyebrow">In stock</div>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 Low-stock alert at {stock.settings.lowStockThreshold}{expiryEnabled && <> · {stock.settings.tracksExpiry ? "tracks expiry dates" : "no expiry tracking"}</>}

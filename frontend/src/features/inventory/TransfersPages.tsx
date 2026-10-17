@@ -95,7 +95,7 @@ export function NewTransferPage() {
   const errors = lines.map((l) => {
     const q = Number(l.quantity)
     if (!/^\d+$/.test(l.quantity) || q < 1) return "Enter units"
-    if (available && q > (available[l.productId] ?? 0)) return `Only ${available[l.productId] ?? 0} available`
+    if (available && q > (available[l.productId] ?? 0)) return `Only ${available[l.productId] ?? 0} in stock`
     return undefined
   })
   const valid = from && to && from !== to && lines.length > 0 && errors.every((e) => !e)
@@ -119,14 +119,14 @@ export function NewTransferPage() {
   return (
     <>
       <PageHeader back={{ to: "/inventory/transfers", label: "Transfers" }} title="New transfer"
-        description={settings?.expiryDatesEnabled ? "Only unreserved stock can move. Batches are picked automatically, earliest expiry first; expired units never move automatically." : "Only unreserved stock can move. Available batches are picked automatically."} />
+        description={settings?.expiryDatesEnabled ? "Stock is picked automatically, earliest expiry first; expired units never move automatically." : "Stock is picked automatically from what's in the warehouse."} />
       <form noValidate onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate() }} className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Section title="Products" bodyClassName="grid gap-3 p-4">
           {!from && <p className="text-sm text-muted-foreground">Choose the source warehouse first.</p>}
           {lines.map((l, i) => (
             <div key={l.productId} className="flex items-start gap-3 rounded-md border border-hairline p-3">
               <div className="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</div>
-              <Field label={`Units · ${available?.[l.productId] ?? "…"} available`} htmlFor={`tq-${l.productId}`} error={errors[i]} className="w-44">
+              <Field label={`Units · ${available?.[l.productId] ?? "…"} in stock`} htmlFor={`tq-${l.productId}`} error={errors[i]} className="w-44">
                 <Input id={`tq-${l.productId}`} inputMode="numeric" className="tabular" value={l.quantity}
                   onChange={(e) => setLines((ls) => ls.map((x) => (x.productId === l.productId ? { ...x, quantity: e.target.value } : x)))} />
               </Field>

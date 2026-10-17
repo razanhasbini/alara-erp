@@ -9,6 +9,7 @@ import { Field, SearchInput, Segmented, SubmitButton } from "@/components/common
 import { PageHeader } from "@/components/common/page"
 import { ActivePill } from "@/components/common/StatusBadge"
 import { EmptyState } from "@/components/common/states"
+import { PhoneInput } from "@/components/common/PhoneInput"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,7 @@ import { money, when } from "@/lib/format"
 import { P } from "@/lib/permissions"
 import { qk } from "@/lib/queries"
 import type { Customer, Paged } from "@/types/api"
+import { formatPhone } from "@/lib/phone"
 
 export function CustomersPage() {
   const { can } = useAuth()
@@ -41,7 +43,7 @@ export function CustomersPage() {
   })
 
   const columns: Column<Customer>[] = [
-    { key: "customer", header: "Customer", cell: (c) => <div className="min-w-0"><div className="truncate font-medium">{c.name}</div><div className="text-xs text-muted-foreground">{c.phone}{c.city && ` · ${c.city}`}</div></div> },
+    { key: "customer", header: "Customer", cell: (c) => <div className="min-w-0"><div className="truncate font-medium">{c.name}</div><div className="text-xs text-muted-foreground">{formatPhone(c.phone)}{c.city && ` · ${c.city}`}</div></div> },
     { key: "email", header: "Email", hideOnMobile: true, cell: (c) => c.email ?? <span className="text-muted-foreground">—</span> },
     { key: "orders", header: "Orders", align: "right", cell: (c) => <Link to={`/orders?customerId=${c.id}`} onClick={(event) => event.stopPropagation()} className="tabular font-medium text-primary hover:underline">{c.orderCount}</Link> },
     { key: "spent", header: "Total ordered", align: "right", cell: (c) => <span className="tabular font-medium">{money(c.totalSpent)}</span> },
@@ -100,7 +102,7 @@ function CustomerDialog({ customer, onClose }: { customer: Customer | null; onCl
         <form noValidate className="grid gap-4" onSubmit={(event) => { event.preventDefault(); submit() }}>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Name" htmlFor="cu-name" error={submitted && !name.trim() ? "Required." : undefined} required><Input id="cu-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field>
-            <Field label="Phone" htmlFor="cu-phone" error={submitted ? phoneError : undefined} required><Input id="cu-phone" type="tel" placeholder="+961 70 123 456" value={phone} onChange={(event) => setPhone(event.target.value)} /></Field>
+            <Field label="Phone" htmlFor="cu-phone" error={submitted ? phoneError : undefined} required><PhoneInput id="cu-phone" value={phone} invalid={submitted && !!phoneError} onChange={setPhone} /></Field>
             <Field label="Email" htmlFor="cu-email" error={submitted ? emailError : undefined}><Input id="cu-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
             <Field label="City / area" htmlFor="cu-city"><Input id="cu-city" value={city} onChange={(event) => setCity(event.target.value)} /></Field>
           </div>

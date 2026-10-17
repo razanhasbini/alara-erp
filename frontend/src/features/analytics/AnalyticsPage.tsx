@@ -17,6 +17,7 @@ import { qk } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { AnalyticsSummary, BundleProfit, CustomerAnalytics, CustomerLoyalty, GiftGiven, Grouping, ProductAnalytics, ProductProfit } from "@/types/api"
 import { PRESETS, presetRange, type Preset } from "./range"
+import { formatPhone } from "@/lib/phone"
 
 // Single series (net sales) in the brand rose; passes the dataviz contrast check on the light surface.
 const BAR_COLOR = "#b8306f"
@@ -339,7 +340,7 @@ function useSort<T>(rows: T[] | undefined, initial: keyof T) {
 function CustomerLoyaltyTable({ data, loading, error }: { data?: CustomerAnalytics; loading: boolean; error: unknown }) {
   const customers = useSort<CustomerLoyalty>(data?.customers, "orderCount")
   const columns: Column<CustomerLoyalty>[] = [
-    { key: "customer", header: customers.header("name", "Customer"), cell: (row) => <div className="min-w-0"><Link to={`/customers?search=${encodeURIComponent(row.phone)}`} className="font-medium hover:underline">{row.name}</Link><div className="text-xs text-muted-foreground">{row.phone}{row.city && ` · ${row.city}`}</div></div> },
+    { key: "customer", header: customers.header("name", "Customer"), cell: (row) => <div className="min-w-0"><Link to={`/customers?search=${encodeURIComponent(row.phone)}`} className="font-medium hover:underline">{row.name}</Link><div className="text-xs text-muted-foreground">{formatPhone(row.phone)}{row.city && ` · ${row.city}`}</div></div> },
     { key: "orders", header: customers.header("orderCount", "Orders"), align: "right", cell: (row) => <Link to={`/orders?customerId=${row.customerId}`} className="tabular font-semibold text-primary hover:underline">{row.orderCount}</Link> },
     { key: "spent", header: customers.header("totalOrdered", "Spent"), align: "right", cell: (row) => <span className="tabular font-medium">{money(row.totalOrdered)}</span> },
     { key: "average", header: customers.header("averageOrderValue", "Avg order"), align: "right", hideOnMobile: true, cell: (row) => <span className="tabular">{money(row.averageOrderValue)}</span> },

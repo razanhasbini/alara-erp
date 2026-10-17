@@ -272,9 +272,10 @@ Roles are defined in code and synced to the database by `migrate`.
 - Taking a bundle out for a PR box, gift, loss or damage deducts its component products; bundles never gain a separate stock balance.
 
 **Order lifecycle**
-- **Reserved:** stock is held for the customer (it can't be sold to anyone else) until a chosen time, but nothing is deducted and no revenue or cost is counted. The order can still be edited. When the time is up an alert is raised (in **Alerts**, and on WhatsApp once connected); nothing is released automatically.
-- **Sold** (`Confirmed` in the API): stock is deducted immediately from FEFO batches and the sale counts. "Back to reserved" undoes the sale and holds the stock again.
-- Creating an order with too little free stock is refused, and the message names the reserved orders (number, quantity, customer, deadline) holding the rest.
+- **Sold** (`Confirmed` in the API): saving an order deducts its stock (FEFO batches) and counts the sale, paid. A sold order can be edited: its stock is put back and the new items' stock taken, keeping the original sale date.
+- Creating or editing an order with too little stock is refused.
+- Reserving is not used in the app for now (the API still supports it; orders reserved earlier can be sold or cancelled).
+- Phone numbers default to Lebanon (+961); another country code can be picked per number. Customers are matched on the digits, so +961 03…, +961 3… and 03… are the same customer.
 - **Returned:** the customer sent a sold order back or refused it; the stock goes back into the batches it left from.
 - **Cancelled** releases a reservation, or returns the stock of a sold order.
 - Delivery is not tracked: the delivery company handles it end to end, with no fee on the order and no cost to the business.

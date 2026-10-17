@@ -27,7 +27,6 @@ export function WarehousesPage() {
     { key: "name", header: "Name", cell: (w) => <div>{w.name}{w.address && <div className="text-xs text-muted-foreground">{w.address}</div>}</div> },
     { key: "products", header: "Products in stock", align: "right", hideOnMobile: true, cell: (w) => number(w.productsInStock) },
     { key: "units", header: "Units on hand", align: "right", cell: (w) => <span className="tabular font-medium">{number(w.unitsOnHand)}</span> },
-    { key: "reserved", header: "Reserved", align: "right", hideOnMobile: true, cell: (w) => <span className="tabular text-muted-foreground">{number(w.unitsReserved)}</span> },
     { key: "status", header: "Status", cell: (w) => <ActivePill active={w.isActive} /> },
   ]
   return (

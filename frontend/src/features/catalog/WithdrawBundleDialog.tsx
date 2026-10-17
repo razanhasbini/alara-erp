@@ -50,7 +50,7 @@ export function WithdrawBundleDialog({ bundle, onClose }: { bundle: ProductDetai
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Take {bundle.name} out of stock</DialogTitle>
-          <DialogDescription>For sets given away or damaged outside an order. Each product inside is deducted from available batches; reserved units are never touched.</DialogDescription>
+          <DialogDescription>For sets given away or damaged outside an order. Each product inside is deducted from stock.</DialogDescription>
         </DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!invalid) save.mutate() }}>
           <div className="grid grid-cols-2 gap-4">
@@ -82,7 +82,7 @@ export function WithdrawBundleDialog({ bundle, onClose }: { bundle: ProductDetai
                   <li key={b.componentProductId} className="flex justify-between gap-3 px-3 py-2">
                     <span className="min-w-0 truncate">{b.name}</span>
                     <span className={cn("shrink-0 tabular", have !== undefined && need > have ? "text-tone-red" : "text-muted-foreground")}>
-                      −{need} <span className="text-xs">({have ?? "…"} available)</span>
+                      −{need} <span className="text-xs">({have ?? "…"} in stock)</span>
                     </span>
                   </li>
                 )

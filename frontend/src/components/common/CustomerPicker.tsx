@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Customer, Paged } from "@/types/api"
+import { formatPhone } from "@/lib/phone"
 
 /** Server-searched customer selector used during order entry. */
 export function CustomerPicker({ selectedId, selectedLabel, onSelect, onClear, className }: {
@@ -52,7 +53,7 @@ export function CustomerPicker({ selectedId, selectedLabel, onSelect, onClear, c
                     className="flex items-center gap-3">
                     <Check className={cn("size-4 shrink-0", customer.id === selectedId ? "opacity-100" : "opacity-0")} />
                     <span className="min-w-0 flex-1"><span className="block truncate font-medium">{customer.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{customer.phone}{customer.city && ` · ${customer.city}`}</span></span>
+                      <span className="block truncate text-xs text-muted-foreground">{formatPhone(customer.phone)}{customer.city && ` · ${customer.city}`}</span></span>
                     <span className="shrink-0 text-xs tabular text-muted-foreground">{customer.orderCount} order{customer.orderCount === 1 ? "" : "s"}</span>
                   </CommandItem>
                 ))}

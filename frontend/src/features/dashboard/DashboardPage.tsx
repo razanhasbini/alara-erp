@@ -49,25 +49,24 @@ export function DashboardPage() {
       {(finance || orders) && (
         <FigureRow>
           {finance && <Figure label="Sales this month" value={money(finance.collectedThisMonth)} sub={`${money(finance.collectedRevenue)} all time`}
-            hint="Order totals of orders sold this calendar month. An order counts as paid the moment it's sold; reserved, cancelled and returned orders are excluded." />}
+            hint="Order totals of orders sold this calendar month. An order counts as paid the moment it's sold; cancelled and returned orders are excluded." />}
           {finance?.netProfitThisMonth != null && <Figure label="Net profit this month" value={money(finance.netProfitThisMonth)}
             tone={finance.netProfitThisMonth < 0 ? "bad" : undefined}
             sub={<Link to="/analytics?range=this-month" className="hover:underline">bills {money(finance.billsThisMonth)} · gifts {money(finance.giftsThisMonth)} →</Link>}
             hint="This month's sales minus what the products cost, the gifts given and the bills. The same figure as in Sales & profit." />}
           {orders && <Figure label="Sold today" value={number(orders.soldToday)} sub={`${orders.createdToday} new order${orders.createdToday === 1 ? "" : "s"} today`}
             hint="Orders marked as sold today. Selling deducts the stock and counts as paid straight away." />}
-          {orders && <Figure label="Reserved" value={number(orders.reserved)}
-            sub={<Link to="/orders?status=Reserved" className="hover:underline">{finance ? `${money(finance.reservedValue)} waiting →` : "See reservations →"}</Link>}
-            hint="Orders holding stock for a customer who hasn't bought yet. They aren't sales until marked as sold." />}
-          {(!finance || finance.netProfitThisMonth == null) && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
-          {!finance && catalog && <Figure label="Active products" value={number(catalog.activeProducts)} sub={`${catalog.activeBundles} bundles`} hint="Individual products currently for sale." />}
+          {inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand - inventory.unitsReserved)}
+            sub={<Link to="/inventory?filter=Low" className="hover:underline">{inventory.lowStockCount} low · {inventory.outOfStockCount} out →</Link>}
+            hint="Units of all products you have in stock." />}
+          {finance?.netProfitThisMonth == null && catalog && <Figure label="Active products" value={number(catalog.activeProducts)} sub={`${catalog.activeBundles} bundles`} hint="Individual products currently for sale." />}
         </FigureRow>
       )}
       {!finance && !orders && inventory && (
         <FigureRow>
-          <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved for orders`} hint="Physical units on hand across warehouses." />
-          <Figure label="Low stock" value={number(inventory.lowStockCount)} tone={inventory.lowStockCount ? "warn" : undefined} hint="Products whose available quantity is at or below their alert threshold (but above zero)." />
-          <Figure label="Out of stock" value={number(inventory.outOfStockCount)} tone={inventory.outOfStockCount ? "bad" : undefined} hint="Active products with nothing available to sell." />
+          <Figure label="Units in stock" value={number(inventory.unitsOnHand - inventory.unitsReserved)} hint="Units of all products you have in stock." />
+          <Figure label="Low stock" value={number(inventory.lowStockCount)} tone={inventory.lowStockCount ? "warn" : undefined} hint="Products whose stock is at or below their alert level (but above zero)." />
+          <Figure label="Out of stock" value={number(inventory.outOfStockCount)} tone={inventory.outOfStockCount ? "bad" : undefined} hint="Active products with no stock left." />
           {expiryEnabled && <Figure label="Expiring" value={number(inventory.expiringUnits)} tone={inventory.expiringUnits ? "warn" : undefined} hint={`Units in batches expiring within ${inventory.expiryWarningDays} days.`} />}
         </FigureRow>
       )}
@@ -87,7 +86,7 @@ export function DashboardPage() {
                 </div>
               ))
             })()}
-            <p className="text-[0.7rem] text-muted-foreground">Sold orders only — reservations, cancelled and returned orders are excluded.</p>
+            <p className="text-[0.7rem] text-muted-foreground">Sold orders only — cancelled and returned orders are excluded.</p>
           </Section>
         </div>
       )}
@@ -163,7 +162,6 @@ export function DashboardPage() {
                 <div key={w.warehouseId}>
                   <div className="mb-1 flex justify-between text-sm"><span><span className="code">{w.code}</span> {w.name}</span><span className="tabular text-muted-foreground">{number(w.onHand)}</span></div>
                   <div className="h-2.5 rounded-r-[4px] bg-secondary"><div className="h-full rounded-r-[4px]" style={{ width: `${(w.onHand / max) * 100}%`, background: ROSE }} /></div>
-                  {w.reserved > 0 && <div className="mt-0.5 text-[0.7rem] text-muted-foreground">{number(w.reserved)} reserved for orders</div>}
                 </div>
               )
             })}

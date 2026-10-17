@@ -44,6 +44,8 @@ public sealed class Customer : IAuditable
     {
         var digits = new string(phone.Where(char.IsDigit).ToArray());
         if (digits.StartsWith("00961", StringComparison.Ordinal)) return digits[2..];
+        // "+961 03 123 456": the local trunk 0 typed after the country code.
+        if (digits.StartsWith("9610", StringComparison.Ordinal) && digits.Length is 11 or 12) return "961" + digits[4..];
         if (digits.StartsWith("961", StringComparison.Ordinal)) return digits;
         if (digits.StartsWith('0') && digits.Length is 8 or 9) return "961" + digits[1..];
         if (digits.Length is 7 or 8) return "961" + digits;

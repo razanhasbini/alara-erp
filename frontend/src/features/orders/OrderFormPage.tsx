@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router"
+import { useNavigate, useParams } from "react-router"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, ChevronDown, ChevronUp, Clock, Gift, Minus, Plus, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronUp, Gift, Minus, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 import { Field } from "@/components/common/controls"
 import { CustomerPicker } from "@/components/common/CustomerPicker"
 import { PageHeader, Section } from "@/components/common/page"
+import { PhoneInput } from "@/components/common/PhoneInput"
 import { ProductPicker } from "@/components/common/ProductPicker"
 import { ErrorState, FullPageSpinner, InlineSpinner } from "@/components/common/states"
 import { Pill } from "@/components/common/StatusBadge"
@@ -14,11 +15,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError, errorMessage } from "@/lib/api"
-import { dateOnly, dateTime, money } from "@/lib/format"
+import { dateOnly, money } from "@/lib/format"
 import { qk, useAvailability, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
-import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType, ReservedStock } from "@/types/api"
-import { ReserveTimeDialog } from "./ReserveTimeDialog"
+import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType } from "@/types/api"
 import { SOURCES } from "@/lib/rules"
 
 interface Line {
@@ -40,8 +40,8 @@ export function OrderFormPage() {
   const { data: existing, isLoading, error } = useQuery({ queryKey: qk.order(id ?? ""), queryFn: () => api<OrderDetail>(`/api/orders/${id}`), enabled: !!id })
   if (id && isLoading) return <FullPageSpinner />
   if (error) return <ErrorState error={error} />
-  if (existing && existing.status !== "Reserved" && existing.status !== "Draft")
-    return <ErrorState error={new Error("Only reserved orders can be edited. Move a sold order back to reserved first.")} />
+  if (existing && (existing.status === "Cancelled" || existing.status === "Returned"))
+    return <ErrorState error={new Error("Cancelled and returned orders can't be edited.")} />
   return <OrderEditor key={existing?.id ?? "new"} existing={existing} />
 }
 
@@ -71,8 +71,8 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const [notes, setNotes] = useState(existing?.notes ?? "")
   const [submitted, setSubmitted] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [reserveOpen, setReserveOpen] = useState(false)
-  const isReservedEdit = existing?.status === "Reserved"
+  // Orders are sold when saved. Older reserved (or draft) orders are sold when they're next saved.
+  const sellsOnSave = !existing || existing.status === "Reserved" || existing.status === "Draft"
 
   const { data: loadedCustomer } = useQuery({
     queryKey: ["sales", "customer", customerId],
@@ -86,13 +86,13 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const effectiveWarehouse = warehouseId || warehouses?.[0]?.id || ""
   const productIds = [...new Set(lines.map((line) => line.productId))]
   const { data: freeStock } = useAvailability(productIds, effectiveWarehouse || undefined, !!effectiveWarehouse)
-  // While a reserved order is edited, the units it already holds are available to it again.
+  // While an order is edited, the units it already took (or holds) count as in stock for it again.
   const available = useMemo(() => {
-    if (!freeStock || !isReservedEdit || existing.warehouseId !== effectiveWarehouse) return freeStock
+    if (!freeStock || !existing || existing.warehouseId !== effectiveWarehouse) return freeStock
     const own = { ...freeStock }
     for (const item of existing.items) if (item.productId in own) own[item.productId] += item.quantity
     return own
-  }, [freeStock, isReservedEdit, existing, effectiveWarehouse])
+  }, [freeStock, existing, effectiveWarehouse])
 
   const totals = useMemo(() => {
     const subtotal = paidLines.reduce((sum, line) => sum + Math.max(0, line.unitPrice * line.quantity - (Number(line.discount) || 0)), 0)
@@ -104,12 +104,6 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const shortages = Object.entries(required).filter(([productId, quantity]) => available && quantity > (available[productId] ?? 0))
     .map(([productId, quantity]) => ({ line: lines.find((line) => line.productId === productId)!, needed: quantity, available: available?.[productId] ?? 0 }))
     .filter((shortage) => shortage.line)
-  const shortIds = shortages.map((shortage) => shortage.line.productId)
-  const { data: reservedElsewhere } = useQuery({
-    queryKey: ["sales", "reserved-stock", shortIds, id ?? null],
-    queryFn: () => api<ReservedStock[]>("/api/orders/reserved-stock", { query: { productIds: shortIds, excludeOrderId: id } }),
-    enabled: shortIds.length > 0,
-  })
   const errors = {
     name: !name.trim() ? "Required." : undefined,
     phone: !/^\+?[0-9 ()\-/]{6,40}$/.test(phone.trim()) ? "Enter a valid phone number." : undefined,
@@ -120,7 +114,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const invalid = Object.values(errors).some(Boolean)
 
   const save = useMutation({
-    mutationFn: ({ sell, reserveUntil, reserveNotes }: { sell: boolean; reserveUntil?: string; reserveNotes?: string | null }) => {
+    mutationFn: () => {
       const body = {
         source, warehouseId: effectiveWarehouse, paymentMethod, customerId,
         recipient: { name: name.trim(), phone: phone.trim(), city: city.trim() || null, address: address.trim() || null },
@@ -128,14 +122,9 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
         notes: notes.trim() || null,
         items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity, lineDiscount: line.isGift ? 0 : Number(line.discount) || 0, isGift: line.isGift })),
       }
-      if (!isEdit)
-        return api<OrderDetail>("/api/orders", { method: "POST", body: { ...body, confirm: sell, reserveUntil: sell ? null : reserveUntil } })
-      return api<OrderDetail>(`/api/orders/${id}`, { method: "PUT", body }).then((order) => {
-        if (sell) return api<OrderDetail>(`/api/orders/${order.id}/confirm`, { method: "POST", body: { notes: null } })
-        if (order.status !== "Reserved" && reserveUntil)
-          return api<OrderDetail>(`/api/orders/${order.id}/reserve`, { method: "POST", body: { reservedUntil: reserveUntil, notes: reserveNotes ?? null } })
-        return order
-      })
+      if (!isEdit) return api<OrderDetail>("/api/orders", { method: "POST", body: { ...body, confirm: true } })
+      return api<OrderDetail>(`/api/orders/${id}`, { method: "PUT", body }).then((order) =>
+        order.status === "Confirmed" ? order : api<OrderDetail>(`/api/orders/${order.id}/confirm`, { method: "POST", body: { notes: null } }))
     },
     onSuccess: async (order) => {
       await Promise.all([
@@ -143,9 +132,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
         queryClient.invalidateQueries({ queryKey: ["inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ])
-      toast.success(order.status === "Confirmed"
-        ? `${order.orderNumber} sold — products and gifts deducted from stock`
-        : `${order.orderNumber} reserved${order.reservedUntil ? ` until ${dateTime(order.reservedUntil)}` : ""} — stock is held, nothing is sold yet`)
+      toast.success(isEdit && !sellsOnSave ? `${order.orderNumber} updated — stock adjusted to the new items` : `${order.orderNumber} saved — products and gifts deducted from stock`)
       navigate(`/orders/${order.id}`)
     },
     onError: (error) => toast.error(error instanceof ApiError && error.code === "inventory.insufficient_stock" ? error.message : errorMessage(error)),
@@ -156,9 +143,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
     if (!effectiveWarehouse) { toast.error("There is no active warehouse to ship from. Create one under Warehouses first."); return false }
     return !invalid
   }
-  const sell = () => { if (ready()) save.mutate({ sell: true }) }
-  // Editing a reservation keeps its time; a new order (or a legacy draft) asks until when to hold the stock.
-  const reserve = () => { if (ready()) { if (isReservedEdit) save.mutate({ sell: false }); else setReserveOpen(true) } }
+  const submit = () => { if (ready()) save.mutate() }
   const updateLine = (key: string, patch: Partial<Line>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line))
   const show = (key: keyof typeof errors) => submitted ? errors[key] as string | undefined : undefined
   const revealGiftPicker = () => {
@@ -170,7 +155,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
     <>
       <PageHeader back={isEdit ? { to: `/orders/${id}`, label: existing?.orderNumber ?? "Order" } : { to: "/orders", label: "Orders" }}
         title={isEdit ? `Edit ${existing?.orderNumber}` : "New order"} />
-      <form noValidate onSubmit={(event) => { event.preventDefault(); sell() }} className="grid gap-6 lg:grid-cols-[1fr_21rem]">
+      <form noValidate onSubmit={(event) => { event.preventDefault(); submit() }} className="grid gap-6 lg:grid-cols-[1fr_21rem]">
         <div className="grid content-start gap-6">
           <Section title="Customer" bodyClassName="grid gap-4 p-4 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
@@ -196,7 +181,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
               )}
             </div>
             <Field label="Name" htmlFor="o-name" error={show("name")} required><Input id="o-name" autoFocus={!isEdit} value={name} onChange={(event) => setName(event.target.value)} /></Field>
-            <Field label="Phone" htmlFor="o-phone" error={show("phone")} required><Input id="o-phone" type="tel" placeholder="+961 70 123 456" value={phone} onChange={(event) => { setPhone(event.target.value); setCustomerId(null); setSelectedCustomer(null); setHistoryOpen(false) }} /></Field>
+            <Field label="Phone" htmlFor="o-phone" error={show("phone")} required><PhoneInput id="o-phone" value={phone} invalid={!!show("phone")} onChange={(next) => { setPhone(next); setCustomerId(null); setSelectedCustomer(null); setHistoryOpen(false) }} /></Field>
             <Field label="City / area" htmlFor="o-city"><Input id="o-city" value={city} onChange={(event) => setCity(event.target.value)} /></Field>
             <Field label="Channel" htmlFor="o-source">
               <Select value={source} onValueChange={(value) => setSource(value as OrderSource)}>
@@ -217,12 +202,12 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
                 onSelect={(product) => setLines((current) => [...current, toLine(product, false)])} />
             </div>
             {show("lines") && <p role="alert" className="text-sm font-medium text-destructive">{show("lines")}</p>}
-            {shortages.length > 0 && <ShortagePanel shortages={shortages} reserved={reservedElsewhere} />}
+            {shortages.length > 0 && <ShortagePanel shortages={shortages} />}
           </Section>
 
           <div ref={giftSection}>
             <Section title="Gift with this order" bodyClassName="grid gap-3 p-4">
-              <p className="text-sm text-muted-foreground">Optional. Gift items cost the customer nothing. They are held with a reservation and deducted from stock when the order is sold.</p>
+              <p className="text-sm text-muted-foreground">Optional. Gift items cost the customer nothing; they are taken from stock with the order and counted as a gift cost.</p>
               <OrderLines lines={giftLines} available={available} submitted={submitted} updateLine={updateLine}
                 removeLine={(key) => setLines((current) => current.filter((line) => line.key !== key))} />
               <div className="grid gap-2 sm:grid-cols-2">
@@ -258,22 +243,14 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
             <div className="mt-2 flex items-baseline justify-between border-t border-hairline pt-3"><span className="font-medium">Total</span><span className="font-display text-2xl tabular">{money(totals.total)}</span></div>
             <p className="mt-1 text-right text-xs text-muted-foreground">Final prices are set by the server when saved.</p>
             <div className="mt-4 grid gap-2">
-              <Button type="submit" disabled={save.isPending || shortages.length > 0}>{save.isPending && save.variables?.sell && <InlineSpinner />} {isReservedEdit ? "Save & mark as sold" : "Sell now"}</Button>
-              <Button type="button" variant="outline" disabled={save.isPending || shortages.length > 0} onClick={reserve}>
-                {save.isPending && !save.variables?.sell ? <InlineSpinner /> : <Clock />} {isReservedEdit ? "Save reservation" : "Reserve…"}
-              </Button>
+              <Button type="submit" disabled={save.isPending || shortages.length > 0}>{save.isPending && <InlineSpinner />} {!isEdit ? "Save order" : sellsOnSave ? "Save & mark as sold" : "Save changes"}</Button>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-              <strong className="font-medium text-foreground">Sell now</strong> deducts stock and counts the sale.{" "}
-              <strong className="font-medium text-foreground">Reserve</strong> holds the stock for this customer until a time you choose, without counting a sale or cost. Mark it as sold later from Orders → Reserved.
+              {isEdit && !sellsOnSave ? "The stock is adjusted to the new items; the sale keeps its original date." : "Saving deducts the products and gifts from stock and counts the sale."}
             </p>
           </div>
         </div>
       </form>
-      <ReserveTimeDialog open={reserveOpen} onOpenChange={setReserveOpen} title="Reserve stock for this order"
-        description="The products and gifts are held for this customer and can't be sold to anyone else. When the time is up you get an alert. Nothing is released automatically."
-        confirmLabel="Reserve" pending={save.isPending}
-        onConfirm={(until, reserveNotes) => save.mutate({ sell: false, reserveUntil: until, reserveNotes: reserveNotes.trim() || null }, { onSettled: () => setReserveOpen(false) })} />
     </>
   )
 }
@@ -299,7 +276,7 @@ function OrderLines({ lines, available, submitted, updateLine, removeLine }: {
           const lineTotal = Math.max(0, line.unitPrice * line.quantity - (Number(line.discount) || 0))
           return <tr key={line.key} className="border-b border-hairline last:border-0">
             <td className="px-3 py-2"><div className="flex items-center gap-2"><span>{line.name}</span>{line.isGift && <Pill tone="green" dot={false}>Gift</Pill>}</div>
-              <div className={cn("text-xs", short ? "font-medium text-tone-red" : "text-muted-foreground")}>{line.type === "Bundle" && "Bundle · "}{stock === undefined ? "Checking stock…" : `${stock} available`}</div></td>
+              <div className={cn("text-xs", short ? "font-medium text-tone-red" : "text-muted-foreground")}>{line.type === "Bundle" && "Bundle · "}{stock === undefined ? "Checking stock…" : `${stock} in stock`}</div></td>
             <td className="px-3 py-2"><div className="flex items-center justify-center gap-1">
               <Button type="button" size="icon-xs" variant="ghost" aria-label={`Decrease ${line.name}`} disabled={line.quantity <= 1} onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })}><Minus /></Button>
               <Input aria-label={`Quantity of ${line.name}`} inputMode="numeric" className="h-7 w-12 text-center tabular" value={line.quantity} onChange={(event) => { const quantity = parseInt(event.target.value, 10); if (quantity > 0 && quantity <= 10000) updateLine(line.key, { quantity }) }} />
@@ -316,29 +293,18 @@ function OrderLines({ lines, available, submitted, updateLine, removeLine }: {
   )
 }
 
-function ShortagePanel({ shortages, reserved }: {
-  shortages: { line: Line; needed: number; available: number }[]
-  reserved?: ReservedStock[]
-}) {
-  const anyReserved = shortages.some((shortage) => (reserved?.find((row) => row.productId === shortage.line.productId)?.reservedQuantity ?? 0) > 0)
+function ShortagePanel({ shortages }: { shortages: { line: Line; needed: number; available: number }[] }) {
   return (
     <div role="alert" className="flex items-start gap-3 rounded-md border border-tone-amber/30 bg-tone-amber-bg px-4 py-3 text-sm text-tone-amber">
       <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
       <div className="grid gap-2">
-        <p className="font-semibold">{anyReserved ? "Not enough free stock — some is reserved for other orders" : "Not enough stock for this order"}</p>
+        <p className="font-semibold">Not enough stock for this order</p>
         <ul className="grid gap-1.5 leading-5">
-          {shortages.map(({ line, needed, available }) => {
-            const held = reserved?.find((row) => row.productId === line.productId)
-            return <li key={line.productId}>
-              <span className="font-medium">{line.name}</span>: needs {needed}, {available} free.
-              {held && held.reservedQuantity > 0 && <> {held.reservedQuantity} more {held.reservedQuantity === 1 ? "is" : "are"} reserved in{" "}
-                {held.orders.map((order, index) => <span key={order.orderId}>{index > 0 && ", "}
-                  <Link to={`/orders/${order.orderId}`} className="font-medium underline underline-offset-2">{order.orderNumber}</Link>
-                  {" "}({order.quantity} for {order.recipientName}{order.reservedUntil && `, until ${dateTime(order.reservedUntil)}`})</span>)}.</>}
-            </li>
-          })}
+          {shortages.map(({ line, needed, available }) => (
+            <li key={line.productId}><span className="font-medium">{line.name}</span>: needs {needed}, {available} in stock.</li>
+          ))}
         </ul>
-        <p className="text-xs">{anyReserved ? "Free stock by selling, cancelling or editing one of those reservations, or receive more stock." : "Receive more stock, or lower the quantity."}</p>
+        <p className="text-xs">Receive more stock, or lower the quantity.</p>
       </div>
     </div>
   )

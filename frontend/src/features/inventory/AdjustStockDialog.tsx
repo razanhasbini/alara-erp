@@ -66,7 +66,7 @@ export function AdjustStockDialog({ target, onClose }: { target: AdjustTarget; o
         <DialogHeader>
           <DialogTitle>{decrease ? "Remove stock" : "Add stock"} · {target.productName}</DialogTitle>
           <DialogDescription>
-            {decrease ? `From ${target.batch?.label}. Reserved units cannot be removed.` : "For corrections found during a count. Use “Receive stock” for supplier deliveries."}
+            {decrease ? `From ${target.batch?.label}.` : "For corrections found during a count. Use “Receive stock” for supplier deliveries."}
           </DialogDescription>
         </DialogHeader>
         <form noValidate className="grid gap-4" onSubmit={(e) => { e.preventDefault(); if (!qtyError && !notesError && !expiryError) save.mutate() }}>

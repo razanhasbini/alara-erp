@@ -201,19 +201,41 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
+    public async Task A_sold_order_can_be_edited_and_its_stock_and_profit_follow_the_new_items()
+    {
+        var shop = await OpenShopAsync();
+        var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 4));
+
+        var edited = await (await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1), (shop.Shampoo.Id, 2))))
+            .OkJsonAsync<OrderDetailDto>();
+        var mask = await shop.S.StockAsync(shop.Mask.Id);
+        var shampoo = await shop.S.StockAsync(shop.Shampoo.Id);
+        using var admin = await SignedInAsAsync(SystemRoles.SuperAdmin); // costs are admin-only
+        var analytics = await admin.GetJsonAsync<AlaraERP.Application.Analytics.AnalyticsSummaryDto>("/api/analytics/summary");
+        (await shop.Client.PostAsync($"/api/orders/{order.Id}/cancel", new TransitionRequest(null))).EnsureSuccessStatusCode();
+
+        Assert.Equal((OrderStatus.Confirmed, PaymentStatus.Paid, 54m), (edited.Status, edited.PaymentStatus, edited.GrandTotal)); // 24 + 2 × 15
+        Assert.Equal(order.ConfirmedAt, edited.ConfirmedAt);                 // still sold on the original day
+        Assert.Equal((9, 0), (mask.OnHand, mask.Reserved));                  // 3 masks back on the shelf
+        Assert.Equal((18, 0), (shampoo.OnHand, shampoo.Reserved));
+        Assert.Equal((1, 3, 54m), (analytics.Totals.Orders, analytics.Totals.UnitsSold, analytics.Totals.NetSales));
+        Assert.Equal(4m * 1 + 4m * 2, analytics.Totals.CostOfGoods);        // the new items' cost ($4 each), not the old ones
+        Assert.Equal(10, (await shop.S.StockAsync(shop.Mask.Id)).OnHand);    // cancelling afterwards returns exactly once
+        Assert.Equal(20, (await shop.S.StockAsync(shop.Shampoo.Id)).OnHand);
+    }
+
+    [Fact]
     public async Task A_sold_order_moved_back_to_reserved_returns_its_stock_to_a_hold_and_can_be_edited()
     {
         var shop = await OpenShopAsync();
         var order = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 4));
 
-        var editWhileSold = await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1)));
         var reserved = await (await shop.Client.PostAsync($"/api/orders/{order.Id}/reserve", new ReserveOrderRequest(Scenario.Tomorrow, "Customer will pay Friday")))
             .OkJsonAsync<OrderDetailDto>();
         var mask = await shop.S.StockAsync(shop.Mask.Id);
         var edited = await (await shop.Client.PutAsync($"/api/orders/{order.Id}", Update(shop, (shop.Mask.Id, 1)))).OkJsonAsync<OrderDetailDto>();
         var afterEdit = await shop.S.StockAsync(shop.Mask.Id);
 
-        Assert.Equal("orders.not_editable", await editWhileSold.ProblemCodeAsync());
         Assert.Equal(OrderStatus.Reserved, reserved.Status);
         Assert.Null(reserved.ConfirmedAt);                                  // no longer a sale
         Assert.Equal((PaymentStatus.Paid, PaymentStatus.Unpaid), (order.PaymentStatus, reserved.PaymentStatus)); // the money is taken back out

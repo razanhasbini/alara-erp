@@ -103,12 +103,12 @@ public sealed class Order : IAuditable
 
     public void SetNotes(string? notes) => Notes = Clean(notes);
 
-    /// <summary>Lines and discount can only change while the order is reserved (or a legacy draft).</summary>
+    /// <summary>Lines and discount can change until an order is cancelled or returned.</summary>
     public void ReplaceLines(IReadOnlyList<OrderItem> items, decimal discountTotal,
         Guid warehouseId, OrderSource source, PaymentMethod paymentMethod)
     {
-        if (Status is not (OrderStatus.Draft or OrderStatus.Reserved))
-            throw new DomainException("orders.not_editable", "Only reserved orders can be edited. Move a sold order back to reserved first.");
+        if (Status is not (OrderStatus.Draft or OrderStatus.Reserved or OrderStatus.Confirmed))
+            throw new DomainException("orders.not_editable", "Cancelled and returned orders can't be edited.");
         if (items.Count == 0)
             throw new DomainException("orders.no_items", "An order needs at least one item.");
 

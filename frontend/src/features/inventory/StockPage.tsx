@@ -59,9 +59,7 @@ export function StockPage() {
 
   const columns: Column<StockRow>[] = [
     { key: "product", header: "Product", cell: (r) => <div className="flex items-center gap-3"><ProductThumb product={{ id: r.productId, primaryImageId: r.primaryImageId, name: r.name }} /><span className="font-medium">{r.name}</span></div> },
-    { key: "onHand", header: "In stock", align: "right", cell: (r) => <span className="tabular">{r.onHand}</span> },
-    { key: "reserved", header: "Reserved", align: "right", hideOnMobile: true, cell: (r) => <span className="tabular text-muted-foreground">{r.reserved || "—"}</span> },
-    { key: "available", header: "Available", align: "right", cell: (r) => <span className={cn("tabular font-semibold", r.available <= 0 && "text-tone-red")}>{r.available}</span> },
+    { key: "stock", header: "In stock", align: "right", cell: (r) => <span className={cn("tabular font-semibold", r.available <= 0 && "text-tone-red")}>{r.available}</span> },
     { key: "threshold", header: "Alert at", align: "right", hideOnMobile: true, cell: (r) => <span className="tabular text-muted-foreground">{r.lowStockThreshold || "—"}</span> },
     { key: "status", header: "Status", cell: (r) => <StockStatusPill status={r.status} /> },
     ...(expiryEnabled ? [{
@@ -80,9 +78,7 @@ export function StockPage() {
   return (
     <>
       <PageHeader title="Inventory" description={<>
-        <strong className="font-medium text-foreground">In stock</strong> is what's physically on the shelf.{" "}
-        <strong className="font-medium text-foreground">Reserved</strong> is held for reserved orders.{" "}
-        <strong className="font-medium text-foreground">Available</strong> is what you can still sell: in stock minus reserved. Bundles draw from these products.
+        How many units of each product you have. Bundles draw from these products.
       </>}
         actions={<>
           {can(P.inventory.transfer) && (warehouses?.length ?? 0) > 1 && <Button asChild variant="outline"><Link to="/inventory/transfers/new"><ArrowLeftRight /> Transfer</Link></Button>}
@@ -138,16 +134,14 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
               </div>
             </SheetHeader>
             <div className="grid gap-6 px-4 pb-6">
-              <div className="grid grid-cols-3 border-y border-hairline py-3 text-center">
-                {[["In stock", data.onHand], ["Reserved", data.reserved], ["Available", data.available]].map(([l, v]) => (
-                  <div key={l as string}><div className="font-display text-2xl tabular">{v}</div><div className="eyebrow">{l}</div></div>
-                ))}
+              <div className="border-y border-hairline py-3 text-center">
+                <div className="font-display text-3xl tabular">{data.available}</div><div className="eyebrow">In stock</div>
               </div>
 
               {data.warehouses.length > 1 && (
                 <div>
                   <p className="eyebrow mb-2">By warehouse</p>
-                  <Facts items={data.warehouses.map((w) => [w.code, <span key="f127-70" className="tabular">{w.onHand} in stock · {w.available} available</span>])} />
+                  <Facts items={data.warehouses.map((w) => [w.code, <span key="f127-70" className="tabular">{w.available} in stock</span>])} />
                 </div>
               )}
 
@@ -226,7 +220,7 @@ function SettingsEditor({ stock }: { stock: ProductStock }) {
   return (
     <form className="grid gap-3 rounded-md border border-hairline p-3" onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate() }}>
       <p className="eyebrow">Stock alert</p>
-      <Field label="Warn when available is at or below" htmlFor="threshold" error={!valid ? "Whole number." : undefined}
+      <Field label="Warn when stock is at or below" htmlFor="threshold" error={!valid ? "Whole number." : undefined}
         hint={editable ? undefined : "Only managers can change this."}>
         <Input id="threshold" inputMode="numeric" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!editable} className="w-28 tabular" />
       </Field>
