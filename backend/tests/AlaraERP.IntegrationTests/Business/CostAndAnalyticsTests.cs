@@ -104,7 +104,7 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
-    public async Task Staff_who_cannot_see_costs_can_still_type_one_when_receiving_an_uncosted_product()
+    public async Task Staff_receive_units_without_ever_seeing_or_entering_a_cost()
     {
         var (admin, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
@@ -112,19 +112,22 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var mask = await s.ProductAsync("ALR-MASK", 24m, standardCost: 6m);
         using var stockKeeper = await SignedInAsAsync(SystemRoles.InventoryManager);
 
-        var scrubSeen = await stockKeeper.GetJsonAsync<ProductDetailDto>($"/api/products/{scrub.Id}");
-        var maskSeen = await stockKeeper.GetJsonAsync<ProductDetailDto>($"/api/products/{mask.Id}");
         var receipt = await (await stockKeeper.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
-            [new ReceiveLineInput(scrub.Id, 3, 7.25m, null, Scenario.InAYear), new ReceiveLineInput(mask.Id, 2, null, null, Scenario.InAYear)])))
+            [new ReceiveLineInput(scrub.Id, 3, null, null, Scenario.InAYear), new ReceiveLineInput(mask.Id, 2, null, null, Scenario.InAYear)])))
             .OkJsonAsync<ReceiptDto>();
-        var asAdmin = await admin.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}");
+        var typedCost = await stockKeeper.PostAsync("/api/inventory/receipts", new ReceiveStockRequest(warehouse.Id, null, null, null, null,
+            [new ReceiveLineInput(mask.Id, 1, 9m, null, Scenario.InAYear)]));
+        var before = await admin.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}");
+        await s.ExecuteAsync("UPDATE catalog.products SET standard_cost = 5 WHERE id = @id", ("id", scrub.Id)); // the admin sets the cost later
+        var after = await admin.GetJsonAsync<ReceiptDto>($"/api/inventory/receipts/{receipt.Id}");
 
-        Assert.False(scrubSeen.HasStandardCost);
-        Assert.True(maskSeen.HasStandardCost);
-        Assert.Null(maskSeen.StandardCost);                       // knows a cost is saved, not what it is
-        Assert.All(receipt.Lines, l => Assert.Null(l.UnitCost));  // and doesn't see costs on the receipt
-        Assert.Equal(7.25m, asAdmin.Lines.Single(l => l.ProductId == scrub.Id).UnitCost);
-        Assert.Equal(6m, asAdmin.Lines.Single(l => l.ProductId == mask.Id).UnitCost);
+        Assert.All(receipt.Lines, l => Assert.Null(l.UnitCost));           // staff see no costs
+        Assert.Equal(HttpStatusCode.Forbidden, typedCost.StatusCode);       // and can't enter one
+        Assert.Equal("inventory.cost_admin_only", await typedCost.ProblemCodeAsync());
+        Assert.Equal(6m, before.Lines.Single(l => l.ProductId == mask.Id).UnitCost);   // saved cost applied
+        Assert.Null(before.Lines.Single(l => l.ProductId == scrub.Id).UnitCost);       // no cost yet: not blocked
+        Assert.Equal(5m, after.Lines.Single(l => l.ProductId == scrub.Id).UnitCost);   // picks up the cost once set
+        Assert.Equal(5m, (await admin.GetJsonAsync<ProductStockDto>($"/api/inventory/products/{scrub.Id}")).Cost!.AverageCost);
     }
 
     [Fact]

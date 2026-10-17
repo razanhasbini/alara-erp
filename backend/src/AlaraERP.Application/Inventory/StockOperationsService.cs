@@ -1,4 +1,5 @@
 using AlaraERP.Application.Common;
+using AlaraERP.Application.Common.Security;
 using AlaraERP.Domain.Common;
 using AlaraERP.Domain.Inventory;
 using Microsoft.EntityFrameworkCore;
@@ -31,13 +32,21 @@ public sealed class StockOperationsService(
             throw new DomainException("inventory.duplicate_receipt_line",
                 $"{products[duplicate.Key.ProductId].Label} is listed twice for the same batch. Combine the lines or enter distinct batch numbers.");
 
-        // Every unit received must have a cost, or profit can't be worked out: the cost typed for this delivery,
-        // otherwise the product's saved cost.
-        var uncosted = request.Lines.Where(l => l.UnitCost is null && products[l.ProductId].StandardCost is null)
-            .Select(l => products[l.ProductId].Label).Distinct().ToList();
-        if (uncosted.Count > 0)
-            throw new DomainException("inventory.cost_required",
-                $"{string.Join(", ", uncosted)} {(uncosted.Count == 1 ? "has" : "have")} no saved cost. Enter the unit cost for this delivery.");
+        // Costs are admin-only: other staff record units, never costs. Their deliveries use the product's saved cost;
+        // if there is none yet, the stock waits uncosted and is valued at the saved cost once the admin sets it.
+        if (currentUser.HasPermission(Permissions.Costs.View))
+        {
+            // The admin must give every unit a cost: the cost typed for this delivery, otherwise the saved cost.
+            var uncosted = request.Lines.Where(l => l.UnitCost is null && products[l.ProductId].StandardCost is null)
+                .Select(l => products[l.ProductId].Label).Distinct().ToList();
+            if (uncosted.Count > 0)
+                throw new DomainException("inventory.cost_required",
+                    $"{string.Join(", ", uncosted)} {(uncosted.Count == 1 ? "has" : "have")} no saved cost. Enter the unit cost for this delivery.");
+        }
+        else if (request.Lines.Any(l => l.UnitCost is not null))
+        {
+            throw new ForbiddenOperationException("inventory.cost_admin_only", "Only the admin can enter costs.");
+        }
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var number = await _numbers.NextReceiptNumberAsync(ct);
