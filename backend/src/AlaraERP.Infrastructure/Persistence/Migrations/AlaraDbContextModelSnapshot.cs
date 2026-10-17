@@ -465,6 +465,30 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.LowStockAlert", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<DateTimeOffset>("AlertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("alerted_at");
+
+                    b.Property<int>("Available")
+                        .HasColumnType("integer")
+                        .HasColumnName("available");
+
+                    b.Property<int>("Threshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("threshold");
+
+                    b.HasKey("ProductId")
+                        .HasName("pk_low_stock_alerts");
+
+                    b.ToTable("low_stock_alerts", "inventory");
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Inventory.ProductInventorySettings", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -1892,6 +1916,16 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UpdatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_feature_settings_users_updated_by_user_id");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.LowStockAlert", b =>
+                {
+                    b.HasOne("AlaraERP.Domain.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_low_stock_alerts_products_product_id");
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Inventory.ProductInventorySettings", b =>

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlarmClock, Bell, CheckCheck, MessageCircle, RefreshCw } from "lucide-react"
+import { AlarmClock, Bell, CheckCheck, MessageCircle, PackageMinus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Pager } from "@/components/common/DataTable"
 import { Segmented } from "@/components/common/controls"
@@ -89,7 +89,7 @@ export function AlertsPage() {
           </ul>
         ) : (
           <EmptyState title={unreadOnly ? "You're all caught up" : "No alerts yet"}>
-            {unreadOnly ? "No unread alerts." : "When a reservation's time is up you'll see it here (and on WhatsApp once it's connected)."}
+            {unreadOnly ? "No unread alerts." : "When a product runs low on stock you'll see it here (and on WhatsApp once it's connected)."}
           </EmptyState>
         )}
         {data && data.totalCount > data.pageSize && <Pager page={data.page} pageSize={data.pageSize} total={data.totalCount} onPage={setPage} />}
@@ -101,7 +101,7 @@ export function AlertsPage() {
 function AlertRow({ alert, canResend, resending, onRead, onResend }: {
   alert: AlertItem; canResend: boolean; resending: boolean; onRead: () => void; onResend: () => void
 }) {
-  const Icon = alert.type === "reservation.expired" ? AlarmClock : Bell
+  const Icon = alert.type === "stock.low" ? PackageMinus : alert.type === "reservation.expired" ? AlarmClock : Bell
   const undelivered = alert.whatsApp.some((m) => m.status === "Failed" || m.status === "NotConfigured")
   const statuses = [...new Set(alert.whatsApp.map((m) => m.status))]
   return (

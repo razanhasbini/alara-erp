@@ -16,7 +16,7 @@ public sealed record NotificationQuery(bool UnreadOnly = false, int Page = 1, in
 
 public sealed record NotificationChannelsDto(bool WhatsAppConfigured, int WhatsAppRecipients, bool UsesTemplate, int WhatsAppPending, int WhatsAppNotSent);
 
-internal sealed class NotificationPublisher(IAlaraDbContext db, BusinessClock clock, IOptions<WhatsAppOptions> whatsApp) : INotificationPublisher
+internal sealed class NotificationPublisher(IAlaraDbContext db, BusinessClock clock, IOptions<WhatsAppOptions> whatsApp, IOptions<AppLinks> links) : INotificationPublisher
 {
     public void Publish(NotificationRequest r)
     {
@@ -24,7 +24,8 @@ internal sealed class NotificationPublisher(IAlaraDbContext db, BusinessClock cl
         db.Notifications.Add(notification);
 
         var options = whatsApp.Value;
-        var text = $"{r.Title}\n{r.Body}";
+        // The app has its own "Open" button; a WhatsApp message carries the link instead.
+        var text = $"{r.Title}\n{r.Body}" + (r.Link is null ? "" : links.Value.Suffix(r.Link));
         if (!options.IsConfigured)
         {
             // Kept so the Alerts page shows the message was not sent, and it can be sent once WhatsApp is connected.

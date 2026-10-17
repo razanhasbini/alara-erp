@@ -42,4 +42,14 @@ public interface IWhatsAppSender
 public static class NotificationTypes
 {
     public const string ReservationExpired = "reservation.expired";
+    public const string LowStock = "stock.low";
+}
+
+/// <summary>Section "App": where the ERP is opened, used to put links in WhatsApp messages.</summary>
+public sealed class AppLinks
+{
+    public string? FrontendUrl { get; set; }
+
+    /// <summary>" https://…/path" when the address is configured, otherwise empty (for the end of a message).</summary>
+    public string Suffix(string path) => string.IsNullOrWhiteSpace(FrontendUrl) ? "" : $" {FrontendUrl.TrimEnd('/')}{path}";
 }

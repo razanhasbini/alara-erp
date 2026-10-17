@@ -53,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<NotificationService>();
         services.AddScoped<WhatsAppDispatcher>();
         services.AddScoped<ReservationExpiryJob>();
+        services.AddScoped<LowStockAlertJob>();
         return services;
     }
 }

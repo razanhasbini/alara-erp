@@ -196,3 +196,14 @@ internal sealed class StockTransferLineConfiguration : IEntityTypeConfiguration<
         b.HasOne<Batch>().WithMany().HasForeignKey(x => x.BatchId).OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+internal sealed class LowStockAlertConfiguration : IEntityTypeConfiguration<LowStockAlert>
+{
+    public void Configure(EntityTypeBuilder<LowStockAlert> b)
+    {
+        b.ToTable("low_stock_alerts", Schemas.Inventory);
+        b.HasKey(a => a.ProductId);
+        b.Property(a => a.ProductId).ValueGeneratedNever();
+        b.HasOne<Product>().WithMany().HasForeignKey(a => a.ProductId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

@@ -221,7 +221,7 @@ function SettingsEditor({ stock }: { stock: ProductStock }) {
     <form className="grid gap-3 rounded-md border border-hairline p-3" onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate() }}>
       <p className="eyebrow">Stock alert</p>
       <Field label="Warn when stock is at or below" htmlFor="threshold" error={!valid ? "Whole number." : undefined}
-        hint={editable ? undefined : "Only managers can change this."}>
+        hint={editable ? "An alert is sent (and a WhatsApp message, once connected) when stock reaches this. 0 = only when it runs out." : "Only managers can change this."}>
         <Input id="threshold" inputMode="numeric" value={threshold} onChange={(e) => setThreshold(e.target.value)} disabled={!editable} className="w-28 tabular" />
       </Field>
       {settings?.expiryDatesEnabled && <label className="flex items-center gap-2 text-sm">

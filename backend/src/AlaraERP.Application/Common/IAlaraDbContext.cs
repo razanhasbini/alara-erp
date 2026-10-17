@@ -28,6 +28,7 @@ public interface IAlaraDbContext
     DbSet<BatchBalance> BatchBalances { get; }
     DbSet<StockReservation> StockReservations { get; }
     DbSet<StockMovement> StockMovements { get; }
+    DbSet<LowStockAlert> LowStockAlerts { get; }
     DbSet<StockReceipt> StockReceipts { get; }
     DbSet<StockTransfer> StockTransfers { get; }
 
