@@ -41,7 +41,7 @@ export function LoginPage() {
       <div className="relative hidden overflow-hidden bg-blush lg:block">
         <img src={wordmark} alt="" className="absolute top-1/2 left-1/2 w-[70%] max-w-[560px] -translate-x-1/2 -translate-y-1/2 mix-blend-multiply" />
         <p className="absolute bottom-8 left-10 max-w-xs text-sm text-rose-ink/80">
-          Orders, stock and deliveries for ÀLara Line — in one place.
+          Orders, stock and profit for ÀLara Line — in one place.
         </p>
       </div>
 

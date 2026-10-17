@@ -9,7 +9,7 @@ import type { Role } from "@/types/api"
 
 const groupLabel: Record<string, string> = {
   products: "Catalogue", inventory: "Inventory", warehouses: "Warehouses", orders: "Orders",
-  delivery_companies: "Delivery companies", reports: "Reports", costs: "Costs & profit", users: "Employees",
+  expenses: "Bills & expenses", reports: "Reports", costs: "Costs & profit", users: "Employees",
 }
 const actionLabel = (p: string) => {
   const a = p.split(".")[1]

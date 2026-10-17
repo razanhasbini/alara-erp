@@ -12,7 +12,7 @@ public sealed class OrderTests
     {
         var order = new Order("AL-000001", OrderSource.WhatsApp, Guid.NewGuid(),
             new OrderRecipient("Rima", "+961 70 123 456", "Beirut", null), method, "USD", null, Now);
-        order.ReplaceLines([Line(order, 15m, 2), Line(order, 24m, 1, 4m)], 5m, 4m, order.WarehouseId, order.Source, method);
+        order.ReplaceLines([Line(order, 15m, 2), Line(order, 24m, 1, 4m)], 5m, order.WarehouseId, order.Source, method);
         return order;
     }
 
@@ -20,10 +20,10 @@ public sealed class OrderTests
         new(order.Id, Guid.NewGuid(), "Item", ProductType.Individual, qty, price, discount, []);
 
     [Fact]
-    public void Totals_are_computed_from_lines_discount_and_delivery()
+    public void Totals_are_computed_from_lines_and_discount()
     {
         var order = NewOrder();
-        Assert.Equal((50m, 5m, 4m, 49m), (order.Subtotal, order.DiscountTotal, order.ShippingTotal, order.GrandTotal));
+        Assert.Equal((50m, 5m, 45m), (order.Subtotal, order.DiscountTotal, order.GrandTotal));
         Assert.Equal("+96170123456", order.RecipientPhone);
     }
 
@@ -34,7 +34,7 @@ public sealed class OrderTests
             new OrderRecipient("Diana", "70123456", null, null), PaymentMethod.CashOnDelivery,
             "USD", null, Now);
         var gift = new OrderItem(order.Id, Guid.NewGuid(), "Gift mask", ProductType.Individual, 2, 24m, 3m, [], isGift: true);
-        order.ReplaceLines([Line(order, 10m, 1), gift], 0, 0, order.WarehouseId, order.Source, order.PaymentMethod);
+        order.ReplaceLines([Line(order, 10m, 1), gift], 0, order.WarehouseId, order.Source, order.PaymentMethod);
 
         Assert.True(gift.IsGift);
         Assert.Equal((0m, 0m, 0m), (gift.UnitPrice, gift.LineDiscount, gift.LineTotal));
@@ -42,14 +42,23 @@ public sealed class OrderTests
     }
 
     [Theory]
-    [InlineData(OrderStatus.Draft, OrderStatus.Shipped)]
-    [InlineData(OrderStatus.Draft, OrderStatus.Delivered)]
-    [InlineData(OrderStatus.Confirmed, OrderStatus.Delivered)]
-    [InlineData(OrderStatus.Confirmed, OrderStatus.Returned)]
+    [InlineData(OrderStatus.Draft, OrderStatus.Returned)]
+    [InlineData(OrderStatus.Reserved, OrderStatus.Returned)]
+    [InlineData(OrderStatus.Cancelled, OrderStatus.Confirmed)]
+    [InlineData(OrderStatus.Returned, OrderStatus.Confirmed)]
     public void Skipping_steps_is_not_allowed(OrderStatus from, OrderStatus to)
     {
         var order = NewOrder();
-        if (from == OrderStatus.Confirmed) order.TransitionTo(OrderStatus.Confirmed, null, Now);
+        switch (from)
+        {
+            case OrderStatus.Reserved: order.Reserve(Now.AddDays(1), null, Now); break;
+            case OrderStatus.Confirmed: order.TransitionTo(OrderStatus.Confirmed, null, Now); break;
+            case OrderStatus.Cancelled: order.TransitionTo(OrderStatus.Cancelled, null, Now); break;
+            case OrderStatus.Returned:
+                order.TransitionTo(OrderStatus.Confirmed, null, Now);
+                order.TransitionTo(OrderStatus.Returned, null, Now);
+                break;
+        }
 
         var ex = Assert.Throws<DomainException>(() => order.TransitionTo(to, null, Now));
         Assert.Equal("orders.invalid_transition", ex.Code);
@@ -58,18 +67,20 @@ public sealed class OrderTests
     [Fact]
     public void Final_states_allow_nothing_further()
     {
-        foreach (var final in new[] { OrderStatus.Delivered, OrderStatus.Cancelled, OrderStatus.Returned })
+        foreach (var final in new[] { OrderStatus.Cancelled, OrderStatus.Returned })
             Assert.All(Enum.GetValues<OrderStatus>(), s => Assert.False(Order.CanTransition(final, s)));
     }
 
     [Fact]
     public void Selling_pays_the_order_at_once_and_undoing_or_cancelling_the_sale_takes_the_money_back()
     {
-        var delivered = NewOrder();
-        delivered.TransitionTo(OrderStatus.Confirmed, null, Now);
-        var paidWhenSold = (delivered.PaymentStatus, delivered.PaidAt);
-        delivered.TransitionTo(OrderStatus.Shipped, null, Now.AddDays(1));
-        delivered.TransitionTo(OrderStatus.Delivered, null, Now.AddDays(2));
+        var sold = NewOrder();
+        sold.TransitionTo(OrderStatus.Confirmed, null, Now);
+        var paidWhenSold = (sold.PaymentStatus, sold.PaidAt);
+
+        var returned = NewOrder();
+        returned.TransitionTo(OrderStatus.Confirmed, null, Now);
+        returned.TransitionTo(OrderStatus.Returned, null, Now.AddDays(2));
 
         var backToReserved = NewOrder();
         backToReserved.TransitionTo(OrderStatus.Confirmed, null, Now);
@@ -80,7 +91,7 @@ public sealed class OrderTests
         cancelledSale.TransitionTo(OrderStatus.Cancelled, null, Now);
 
         Assert.Equal((PaymentStatus.Paid, (DateTimeOffset?)Now), paidWhenSold);
-        Assert.Equal((PaymentStatus.Paid, (DateTimeOffset?)Now), (delivered.PaymentStatus, delivered.PaidAt)); // delivery changes nothing
+        Assert.Equal((PaymentStatus.Void, (DateTimeOffset?)null), (returned.PaymentStatus, returned.PaidAt));
         Assert.Equal((PaymentStatus.Unpaid, (DateTimeOffset?)null), (backToReserved.PaymentStatus, backToReserved.PaidAt));
         Assert.Equal((PaymentStatus.Void, (DateTimeOffset?)null), (cancelledSale.PaymentStatus, cancelledSale.PaidAt));
     }
@@ -90,11 +101,11 @@ public sealed class OrderTests
     {
         var order = NewOrder();
         Assert.Equal("orders.discount_exceeds_subtotal", Assert.Throws<DomainException>(() =>
-            order.ReplaceLines([Line(order, 10m, 1)], 11m, 0m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
+            order.ReplaceLines([Line(order, 10m, 1)], 11m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
 
         order.TransitionTo(OrderStatus.Confirmed, null, Now);
         Assert.Equal("orders.not_editable", Assert.Throws<DomainException>(() =>
-            order.ReplaceLines([Line(order, 10m, 1)], 0m, 0m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
+            order.ReplaceLines([Line(order, 10m, 1)], 0m, order.WarehouseId, order.Source, order.PaymentMethod)).Code);
     }
 
     [Fact]
@@ -109,7 +120,7 @@ public sealed class OrderTests
             new OrderItem(order.Id, shampoo, "Shampoo", ProductType.Individual, 2, 15m, 0, []),
             new OrderItem(order.Id, Guid.NewGuid(), "Duo", ProductType.Bundle, 3, 33m, 0,
                 [(shampoo, "Shampoo", 1, 15m), (mask, "Mask", 2, 24m)]),
-        ], 0, 0, order.WarehouseId, order.Source, order.PaymentMethod);
+        ], 0, order.WarehouseId, order.Source, order.PaymentMethod);
 
         var needs = order.StockRequirements();
 

@@ -23,7 +23,7 @@ export function Pill({ tone = "neutral", children, className, dot = true }: { to
 }
 
 const orderTone: Record<OrderStatus, Tone> = {
-  Draft: "neutral", Reserved: "rose", Confirmed: "blue", Shipped: "amber", Delivered: "green", Cancelled: "neutral", Returned: "red",
+  Draft: "neutral", Reserved: "rose", Confirmed: "green", Cancelled: "neutral", Returned: "red",
 }
 const orderLabel: Partial<Record<OrderStatus, string>> = { Confirmed: "Sold" }
 export const OrderStatusPill = ({ status }: { status: OrderStatus }) => (

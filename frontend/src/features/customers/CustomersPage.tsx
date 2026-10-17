@@ -104,7 +104,7 @@ function CustomerDialog({ customer, onClose }: { customer: Customer | null; onCl
             <Field label="Email" htmlFor="cu-email" error={submitted ? emailError : undefined}><Input id="cu-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
             <Field label="City / area" htmlFor="cu-city"><Input id="cu-city" value={city} onChange={(event) => setCity(event.target.value)} /></Field>
           </div>
-          <Field label="Default delivery address" htmlFor="cu-address"><Textarea id="cu-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} /></Field>
+          <Field label="Address" htmlFor="cu-address"><Textarea id="cu-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} /></Field>
           <Field label="Customer notes" htmlFor="cu-notes"><Textarea id="cu-notes" rows={2} placeholder="Preferences, sizing, special instructions…" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
           <label className="flex items-center gap-2 text-sm"><Switch checked={isActive} onCheckedChange={setIsActive} /> Active customer</label>
           <DialogFooter>

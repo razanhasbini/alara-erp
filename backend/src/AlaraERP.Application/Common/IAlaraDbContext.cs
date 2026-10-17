@@ -1,4 +1,5 @@
 using AlaraERP.Domain.Catalog;
+using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Inventory;
 using AlaraERP.Domain.Sales;
 using Microsoft.EntityFrameworkCore;
@@ -35,8 +36,7 @@ public interface IAlaraDbContext
     DbSet<Order> Orders { get; }
     DbSet<OrderItem> OrderItems { get; }
     DbSet<OrderHistoryEntry> OrderHistory { get; }
-    DbSet<DeliveryCompany> DeliveryCompanies { get; }
-    DbSet<DeliveryExpense> DeliveryExpenses { get; }
+    DbSet<Expense> Expenses { get; }
 
     // notifications
     DbSet<AlaraERP.Domain.Notifications.Notification> Notifications { get; }

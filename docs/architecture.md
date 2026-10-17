@@ -95,7 +95,7 @@ Standard ASP.NET Identity tables renamed to snake_case: `users, roles, user_role
 | orders.create / update | ✓ | ✓ | | ✓ | |
 | orders.cancel | ✓ | ✓ | | ✓ | |
 | orders.manage_payments | ✓ | ✓ | | | |
-| delivery_companies.manage | ✓ | ✓ | | | |
+| expenses.manage | ✓ | | | | |
 | reports.view | ✓ | ✓ | | | ✓ |
 | costs.view | ✓ | | | | |
 | users.view | ✓ | ✓ | | | |
@@ -137,12 +137,11 @@ Adjustment reasons: `Damaged, Expired, CountCorrection, Lost, Sample/Gift, Other
 
 ### 4.4 Sales — schema `sales`
 - **customers** — durable identity and contact defaults (`name, phone, email, city, address, notes, is_active`). `normalized_phone` is unique and treats common Lebanese local/international formats as the same number. Existing orders are backfilled by phone.
-- **orders** — status, payment status, source, warehouse, `customer_id`, totals (snapshots), recipient snapshot (name, phone, city, address), delivery fee charged, and timestamps per milestone. The snapshot preserves the recipient details after a customer profile changes.
+- **orders** — status, payment status, source, warehouse, `customer_id`, totals (snapshots), recipient snapshot (name, phone, city, address), and timestamps per milestone. The snapshot preserves the recipient details after a customer profile changes.
 - **order_items** — product/bundle snapshot (name, type, unit price, discount, line total, gift flag).
 - **order_item_components** — bundle composition snapshot at order time (component id, name, qty per bundle, total qty, allocated revenue). Reservations and shipment use this snapshot, so later bundle edits never affect existing orders. Allocated revenue lets product reports split a bundle sale across its components.
 - **order_history** — status and payment changes (old → new, who, when, notes). Generalises the proposed `order_status_history` so payment changes are audited in the same place.
-- **delivery_companies** — name, phone, active.
-- **delivery_expenses** — standalone delivery-company costs (date, amount, number of deliveries covered, notes, who recorded it). They are deliberately not linked to orders.
+- **finance.expenses** — bills and running costs: category (`Electricity, Internet, Models, Wages, Other`), date it applies to, amount, description, notes, who recorded it. Managed by `expenses.manage` (Super Admin only).
 
 **Order lifecycle**
 
@@ -153,11 +152,8 @@ stateDiagram-v2
     Reserved --> Confirmed: mark as sold (deduct held stock)
     Reserved --> Cancelled: cancel (release hold)
     Confirmed --> Reserved: back to reserved (return stock, hold it again)
-    Confirmed --> Shipped: mark shipped
     Confirmed --> Cancelled: cancel (return stock)
-    Shipped --> Delivered: delivered
-    Shipped --> Returned: refused / failed (stock back to same batches)
-    Delivered --> [*]
+    Confirmed --> Returned: customer sent it back (stock back to same batches)
     Cancelled --> [*]
     Returned --> [*]
 ```
@@ -165,29 +161,28 @@ stateDiagram-v2
 - Orders are created internally as Draft and moved in the same transaction to **Reserved** or **Confirmed** ("Sold" in the UI); legacy drafts can still be reserved or sold.
 - **Reserved** holds stock (`quantity_reserved`) without deducting it; revenue, cost and profit ignore it. `reserved_until` (future, ≤ 90 days) is required. Items are editable only while Reserved (the hold is released and re-taken in one transaction).
 - When `reserved_until` passes, `ReservationExpiryJob` (hosted `BackgroundJobs`, every `Jobs:IntervalSeconds`, default 60) raises one alert per deadline. Nothing is released automatically.
-- Stock is deducted exactly once, at **Confirmed**, using FEFO batches. Shipping records logistics only. Moving a sold order back to Reserved, cancelling it, or recording a return restores the units from the movement records.
+- Stock is deducted exactly once, at **Confirmed**, using FEFO batches. Moving a sold order back to Reserved, cancelling it, or recording a return restores the units from the movement records.
+- Delivery is not tracked: the delivery company handles it end to end (no fee on orders, no shipped/delivered steps, no delivery costs).
 - A shortage error lists the Reserved orders holding the product (`GET /api/orders/reserved-stock` gives the same to the order form).
-- Delivered → Returned is **not** allowed in the MVP (no returns policy yet).
 
 **Payment**
-- `payment_method`: `CashOnDelivery` (default) — enum is ready for `Whish, OMT, BankTransfer, Cash` once confirmed.
+- `payment_method`: always `CashOnDelivery` (customers pay the delivery company); it is no longer chosen per order.
 - `payment_status`: Reserved orders are `Unpaid`; selling changes them to `Paid` immediately in the same transaction as the stock deduction. Cancelled/Returned orders are `Void`; moving a sold order back to Reserved makes it `Unpaid` again.
-- Delivery fee default: config `Erp:DefaultDeliveryFee` = 4.00 USD, editable per order (e.g. free delivery).
 
 Order numbers: PostgreSQL sequence → `AL-000001`.
 
 ### 4.5 Dashboard and analytics
 Read-only aggregation endpoints. Metric definitions:
 - **Collected revenue** = Σ grand_total of orders with `payment_status = Paid`.
-- **Open order value** = Confirmed + Shipped.
+- **Reserved value** = Σ grand_total of Reserved orders. **Bills this month** (costs.view only) = Σ expenses dated this month.
 - Cancelled/Returned/Draft/Reserved are never counted as revenue.
 - Inventory: total units on hand, by warehouse, low-stock products (available ≤ threshold), expired / expiring batches.
 
 Analytics uses the inclusive Beirut business-date range supplied by the UI:
 - A sale is recognised on `confirmed_at`; cancelled and returned orders are excluded. Confirmation records the exact FEFO batch costs immediately.
-- **Gross sales** = unit price × quantity before line/order discounts. **Net sales** excludes delivery fees.
-- **Cost of goods** comes from the unit-cost snapshots on the actual FEFO shipment movements.
-- **Gross profit** = net sales − cost of goods. **Profit after delivery** also adds delivery fees charged and subtracts standalone delivery expenses.
+- **Gross sales** = unit price × quantity before line/order discounts. **Net sales** = items − discounts.
+- **Cost of goods** comes from the unit-cost snapshots on the actual FEFO stock-out movements.
+- **Gross profit** = net sales − cost of goods. **Expenses** = bills (`finance.expenses`) dated in the range. **Net profit** = gross profit − expenses.
 - **Cash received** is grouped by `paid_at`; an order becomes paid when it is sold.
 - Day, ISO-week and month grouping are supported. Cost and profit values require `costs.view`; `reports.view` alone exposes sales totals only.
 - Customer loyalty uses the same selected date range and exposes order count, repeat orders, total ordered, total paid, average order value, and average days between confirmed orders. The UI lets the user choose the ranking measure instead of hiding it in an opaque score.
@@ -429,7 +424,6 @@ erDiagram
         text recipient_address
         numeric subtotal "12,2"
         numeric discount_total "12,2"
-        numeric shipping_total "12,2 charged to customer"
         numeric grand_total "12,2"
         char currency_code
         text notes
@@ -437,8 +431,6 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
         timestamptz confirmed_at
-        timestamptz shipped_at
-        timestamptz delivered_at
         timestamptz cancelled_at
         timestamptz returned_at
         timestamptz paid_at
@@ -474,20 +466,12 @@ erDiagram
         uuid changed_by_user_id FK
         timestamptz changed_at
     }
-    delivery_companies {
+    expenses {
         uuid id PK
-        varchar name UK
-        varchar phone
-        boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
-    }
-    delivery_expenses {
-        uuid id PK
-        uuid delivery_company_id FK
+        varchar category "Electricity | Internet | Models | Wages | Other"
         date incurred_on
         numeric amount "12,2"
-        int delivery_count
+        varchar description
         text notes
         uuid recorded_by_user_id FK
         timestamptz created_at
@@ -500,7 +484,7 @@ erDiagram
     orders ||--o{ stock_reservations : reserves
     products ||--o{ order_items : "sold as"
     warehouses ||--o{ orders : fulfils
-    delivery_companies ||--o{ delivery_expenses : incurs
+    users ||--o{ expenses : records
     users ||--o{ orders : created
 ```
 
@@ -528,14 +512,13 @@ POST         /api/inventory/bundle-withdrawals
 GET          /api/inventory/movements
 
 GET/POST/PUT /api/orders  ·  GET /api/orders/{id}
-POST         /api/orders/{id}/confirm | reserve | ship | deliver | return | cancel
+POST         /api/orders/{id}/confirm | reserve | return | cancel
 PUT          /api/orders/{id}/reservation          (change the reservation time)
 GET          /api/orders/reserved-stock?productIds=&excludeOrderId=
 GET          /api/notifications (?unreadOnly) · /unread-count · /channels
 POST         /api/notifications/{id}/read · /read-all · /{id}/resend-whatsapp
 GET          /api/orders/{id}/history
-GET/POST/PUT /api/delivery-companies
-GET/POST/PUT/DELETE /api/delivery-expenses
+GET/POST/PUT/DELETE /api/expenses   (?from&to&category; totals by category)
 
 GET          /api/dashboard/summary | /recent-orders | /recent-movements | /inventory-by-warehouse
 GET          /api/analytics/summary | /products
@@ -549,7 +532,7 @@ From alaraline.co (catalogue as of 2026-10-15), with user approval:
 - Categories: **Hair Care** › *Curls On Collection* (subcategory) · **Hair Accessories** · **Body Care** · **Sets & Bundles**.
 - 28 individual products with current site prices, descriptions and weights (where listed).
 - 8 bundles: Full Treatment Set (Oh Honey / Tropical Vanilla), Hydrate & Repair Trio (Oh Honey / Tropical Vanilla), Curls On Collection, Curls On Care Kit, Deep Repair Duo, 4 Hair Mists — with site sale price as `selling_price` and component-sum as `compare_at_price`.
-- One warehouse `MAIN`. **Stock = 0, no costs, no batches, no orders, no delivery company** — those are real business facts to be entered by the team.
+- One warehouse `MAIN`. **Stock = 0, no costs, no batches, no orders, no bills** — those are real business facts to be entered by the team.
 - `tracks_expiry = true` for liquids/creams, `false` for accessories; thresholds default 0 until a manager sets them.
 
 Not seeded: sizes (ml) — not published on the site.
@@ -576,10 +559,10 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 |---|---|---|
 | 1 | Payment methods | COD only in UI; enum already supports Whish / OMT / bank transfer / cash. |
 | 2 | Order edits | Items editable only while Reserved; move a sold order back to Reserved to edit. |
-| 3 | Returns after delivery | Not supported (no returns policy yet). A refused or failed shipment → Returned is supported. |
+| 3 | Returns | A sold order can be marked Returned (customer sent it back or refused it); its stock goes back to the same batches. |
 | 4 | Expiry warning window | 60 days, configurable. Expired stock blocks shipment, must be written off. |
 | 5 | Discounts | Line discounts and order discount allowed for `orders.create`; no approval limits. |
-| 6 | Delivery fee | Flat 4.00 USD default per order, editable. |
+| 6 | Delivery | Not tracked: no fee on orders and no delivery cost; the delivery company handles it end to end. |
 | 7 | Warehouses | One (`MAIN`) seeded; transfers fully supported for when a second location appears. |
 | 8 | Transfers | Instant (no in-transit state). |
 | 9 | Currency | USD only; LBP cash/exchange rate recording deferred until confirmed. |
@@ -604,7 +587,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 **Phase C — Business modules**
 - [x] Catalog: categories, products, bundles, images, availability + tests
 - [x] Inventory: warehouses, settings/thresholds, batches, receipts, adjustments, transfers, movements, reservations + tests (incl. concurrency)
-- [x] Sales: orders, state machine, reservation/shipment/return integration, delivery companies, standalone costs + tests
+- [x] Sales: orders, state machine, reservation/sale/return integration, bills & expenses + tests
 - [x] Dashboard endpoints + tests
 - [x] Dev seed (real catalogue)
 - [x] Architecture tests (layer/module rules)
@@ -612,7 +595,7 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 **Phase D — Frontend**
 - [x] Vite + React + TS + Tailwind + shadcn/ui + TanStack Query + RHF + Zod, Vite proxy
 - [x] Layout, auth flow, protected routes, permission-aware navigation
-- [x] Products/Categories/Bundles/Images · Inventory/Warehouses/Movements · Orders/Deliveries · Dashboard/Analytics · Employees & Roles · Profile
+- [x] Products/Categories/Bundles/Images · Inventory/Warehouses/Movements · Orders · Bills & expenses · Dashboard/Analytics · Employees & Roles · Profile
 
 **Phase E — Verification**
 - [x] Migrations, builds, backend tests, frontend typecheck/lint/build
@@ -623,14 +606,14 @@ Connection strings: `ConnectionStrings:Default` (alara_app) and `ConnectionStrin
 
 - **`stock_movements.reference_number`.** The ledger stores the human-readable document number, so Inventory never has to query Sales just to display "AL-000123".
 - **Paid on sale.** Every sold order becomes `Paid` immediately; fulfilment stages never alter payment.
-- **Standalone delivery costs.** Managers record delivery invoices or period costs separately. Analytics subtracts them by incurred date without coupling them to orders.
-- **Order list** accepts `statuses=` (repeatable) for the "open" view (Confirmed, Shipped); `sort=reservedUntil` orders the Reserved view by deadline.
+- **Bills & expenses.** The Super Admin records running costs (electricity, Wi-Fi, models, wages, other) by date. Analytics subtracts them for net profit.
+- **Order list** accepts `statuses=` (repeatable) for the "Active" view (Draft, Reserved, Confirmed); `sort=reservedUntil` orders the Reserved view by deadline.
 - **Recipient phones** are stored normalised (`+96170123456`), so searches match however the number was typed.
 - **Paid orders cannot be cancelled or returned** until refunds are supported. This only affects non-COD prepaid orders.
 - **Entity keys** are UUIDv7, generated in the domain (EF `ValueGenerated.Never`).
 - **Product images** carry `created_at`/`updated_at`. At most one primary image per product, enforced by a partial unique index.
 - **Seed data is real, not a demo.** `import-catalog` loads the alaraline.co catalogue into the real database. It never creates stock, costs or orders.
-- **Cost and profit reporting.** Products may have a standard landed cost; batches carry weighted actual cost and stock movements snapshot it. Analytics reports sales, COGS, margins, delivery result and cash timing while `costs.view` keeps cost fields separate from ordinary report access.
+- **Cost and profit reporting.** Products may have a standard landed cost; batches carry weighted actual cost and stock movements snapshot it. Analytics reports sales, COGS, margins, bills, net profit and cash timing while `costs.view` keeps cost fields separate from ordinary report access.
 - **Bundle stock withdrawal.** Gifts, PR sets, losses and damage deduct the bundle's real components FEFO and leave one linked adjustment reference in the immutable ledger.
 - **Customers and loyalty.** Customer profiles are linked to every new order, existing orders are backfilled by normalised phone, and analytics ranks loyalty by transparent order/payment/frequency measures.
 

@@ -20,13 +20,13 @@ public sealed class CustomerTests(AlaraApiFactory factory) : ApiTestBase(factory
         var second = await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "70123456", "Beirut", "Another address"),
-            0, 0, null, [new OrderLineInput(product.Id, 2)], Confirm: true))).OkJsonAsync<OrderDetailDto>();
+            0, null, [new OrderLineInput(product.Id, 2)], Confirm: true))).OkJsonAsync<OrderDetailDto>();
 
         var customers = await client.GetJsonAsync<PagedResult<CustomerDto>>("/api/customers?search=70%20123%20456");
         Assert.NotNull(first.CustomerId);
         Assert.Equal(first.CustomerId, second.CustomerId);
         var customer = Assert.Single(customers.Items);
-        Assert.Equal((2, 64m, 64m), (customer.OrderCount, customer.TotalSpent, customer.TotalPaid)); // paid when sold
+        Assert.Equal((2, 60m, 60m), (customer.OrderCount, customer.TotalSpent, customer.TotalPaid)); // 20 + 2×20, paid when sold
     }
 
     [Fact]
@@ -42,12 +42,10 @@ public sealed class CustomerTests(AlaraApiFactory factory) : ApiTestBase(factory
         async Task<OrderDetailDto> Order(int quantity) => await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.WhatsApp, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput(customer.Name, customer.Phone, customer.City, null),
-            0, 0, null, [new OrderLineInput(product.Id, quantity)], Confirm: true, CustomerId: customer.Id)))
+            0, null, [new OrderLineInput(product.Id, quantity)], Confirm: true, CustomerId: customer.Id)))
             .OkJsonAsync<OrderDetailDto>();
 
-        var paid = await Order(1);
-        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
-        (await client.PostAsync($"/api/orders/{paid.Id}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
+        await Order(1);
         await Order(2);
 
         var analytics = await client.GetJsonAsync<CustomerAnalyticsDto>("/api/analytics/customers");

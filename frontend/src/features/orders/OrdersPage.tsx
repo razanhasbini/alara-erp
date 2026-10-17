@@ -46,12 +46,12 @@ export function OrdersPage() {
     return next
   }, { replace: true }), [setParams])
 
-  // "Open" = sold and still moving: to pack and out for delivery. Reservations have their own section.
+  // "Active" = everything that isn't cancelled or returned: sold and reserved orders.
   const reservedView = status === "Reserved"
   const query = {
     search, page, pageSize: 25, customerId: customerId || undefined, paymentStatus: paymentStatus || undefined, source: source || undefined,
     status: status === "open" || status === "all" ? undefined : status,
-    statuses: status === "open" ? ["Draft", "Confirmed", "Shipped"] : undefined,
+    statuses: status === "open" ? ["Draft", "Reserved", "Confirmed"] : undefined,
     sort: reservedView ? "reservedUntil" : undefined,
   }
   const { data, isLoading, error, refetch } = useQuery({
@@ -81,16 +81,8 @@ export function OrdersPage() {
       {customerId && <div className="mb-3 flex items-center gap-2 rounded-md border border-hairline bg-card px-3 py-2 text-sm">Showing one customer's orders. <Link to="/customers" className="font-medium text-primary hover:underline">Back to customers</Link></div>}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <SearchInput value={search} onChange={(v) => set({ search: v })} placeholder="Order no., customer name or phone" />
-        <Segmented label="Status" value={["open", "all", "Reserved", "Delivered", "Cancelled", "Returned"].includes(status) ? status : "all"} onChange={(v) => set({ status: v === "open" ? "" : v })}
-          options={[{ value: "open", label: "Open" }, { value: "Reserved", label: "Reserved" }, { value: "Delivered", label: "Delivered" }, { value: "Cancelled", label: "Cancelled" }, { value: "Returned", label: "Returned" }, { value: "all", label: "All" }]} />
-        {!reservedView && <Select value={["Draft", "Confirmed", "Shipped"].includes(status) ? status : "any"} onValueChange={(v) => set({ status: v === "any" ? "" : v })}>
-          <SelectTrigger className="h-8 w-40 bg-card" aria-label="Open status"><SelectValue placeholder="Stage" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="any">Any stage</SelectItem>
-            <SelectItem value="Confirmed">Sold · to pack</SelectItem>
-            <SelectItem value="Shipped">Out for delivery</SelectItem>
-          </SelectContent>
-        </Select>}
+        <Segmented label="Status" value={["open", "all", "Confirmed", "Reserved", "Cancelled", "Returned"].includes(status) ? status : "all"} onChange={(v) => set({ status: v === "open" ? "" : v })}
+          options={[{ value: "open", label: "Active" }, { value: "Confirmed", label: "Sold" }, { value: "Reserved", label: "Reserved" }, { value: "Cancelled", label: "Cancelled" }, { value: "Returned", label: "Returned" }, { value: "all", label: "All" }]} />
         <Select value={paymentView} onValueChange={(v) => set(
           v === "reserved" ? { status: "Reserved", payment: "" }
             : { payment: v === "paid" ? "Paid" : "", ...(status === "Reserved" ? { status: "all" } : {}) })}>
@@ -112,7 +104,7 @@ export function OrdersPage() {
       <DataTable columns={columns} rows={data?.items} rowKey={(o) => o.id} loading={isLoading} error={error} onRetry={refetch}
         onRowClick={(o) => navigate(`/orders/${o.id}`)}
         rowClassName={(o) => (o.status === "Cancelled" ? "opacity-60" : undefined)}
-        empty={<EmptyState title={status === "open" ? "No open orders" : reservedView ? "No reservations" : "No orders found"}
+        empty={<EmptyState title={status === "open" ? "No orders yet" : reservedView ? "No reservations" : "No orders found"}
           action={can(P.orders.create) && status === "open" && <Button asChild size="sm"><Link to="/orders/new"><Plus /> New order</Link></Button>}>
           {status === "open" ? "New orders from WhatsApp, Instagram or the website will show here."
             : reservedView ? "Choose “Reserve…” when creating an order to hold stock for a customer without selling it yet." : "Try a different filter."}

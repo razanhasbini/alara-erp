@@ -7,8 +7,9 @@ public static class Schemas
     public const string Inventory = "inventory";
     public const string Sales = "sales";
     public const string Notifications = "notifications";
+    public const string Finance = "finance";
 
-    public static readonly string[] All = [Identity, Catalog, Inventory, Sales, Notifications];
+    public static readonly string[] All = [Identity, Catalog, Inventory, Sales, Notifications, Finance];
 
     public const string MigrationsHistoryTable = "__ef_migrations_history";
     public const string MigrationsHistorySchema = "public";

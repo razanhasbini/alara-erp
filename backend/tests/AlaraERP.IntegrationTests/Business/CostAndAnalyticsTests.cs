@@ -15,26 +15,19 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
 {
     private static readonly DateOnly Soon = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(2);
 
-    private static async Task ShipAndDeliverAsync(ErpClient client, Guid orderId)
-    {
-        (await client.PostAsync($"/api/orders/{orderId}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
-        (await client.PostAsync($"/api/orders/{orderId}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
-    }
-
     [Fact]
-    public async Task Cost_of_goods_uses_the_cost_of_the_actual_batches_shipped()
+    public async Task Cost_of_goods_uses_the_actual_batches_sold_and_bills_reduce_net_profit()
     {
         var (client, s) = await AdminAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 2, Soon, "OLD", unitCost: 5m);          // ships first (expires first)
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, Scenario.InAYear, "NEW", unitCost: 8m);
-        var courier = await (await client.PostAsync("/api/delivery-companies", new DeliveryCompanyRequest("Wakilni", null))).OkJsonAsync<DeliveryCompanyDto>();
-        var order = await (await s.CreateOrderAsync(warehouse.Id, confirm: true, lines: (mask.Id, 3))).OkJsonAsync<OrderDetailDto>();
-        (await client.PostAsync("/api/delivery-expenses",
-            new DeliveryExpenseRequest(courier.Id, DateOnly.FromDateTime(DateTime.UtcNow), 1m, 1, null))).EnsureSuccessStatusCode();
+        await (await s.CreateOrderAsync(warehouse.Id, confirm: true, lines: (mask.Id, 3))).OkJsonAsync<OrderDetailDto>();
+        (await client.PostAsync("/api/expenses", new AlaraERP.Application.Finance.ExpenseRequest(
+            AlaraERP.Domain.Finance.ExpenseCategory.Electricity, DateOnly.FromDateTime(DateTime.UtcNow), 20m, "Generator", null)))
+            .EnsureSuccessStatusCode();
 
-        await ShipAndDeliverAsync(client, order.Id);
         var summary = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
 
         var t = summary.Totals;
@@ -44,9 +37,11 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         Assert.Equal(18m, t.CostOfGoods);        // 2 × 5 (OLD) + 1 × 8 (NEW)
         Assert.Equal(54m, t.GrossProfit);
         Assert.Equal(75.0m, t.GrossMarginPercent);
-        Assert.Equal(3m, t.DeliveryResult);      // $4 fee charged − $1 courier fee
-        Assert.Equal(57m, t.Profit);
-        Assert.Equal(76m, t.CashReceived);       // paid when sold: $72 goods + $4 delivery fee
+        Assert.Equal(20m, t.Expenses);           // the electricity bill
+        Assert.Equal(34m, t.Profit);             // 54 gross − 20 bills
+        Assert.Equal(47.2m, t.NetMarginPercent);
+        Assert.Equal(72m, t.CashReceived);       // paid when sold, no delivery fee
+        Assert.Equal(20m, summary.ExpensesByCategory!.Single(c => c.Category == AlaraERP.Domain.Finance.ExpenseCategory.Electricity).Amount);
         Assert.Equal(0, t.UncostedUnits);
         Assert.Equal(72m, summary.Series.Single(p => p.Orders > 0).NetSales);
     }
@@ -61,10 +56,9 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var order = await (await client.PostAsync("/api/orders", new CreateOrderRequest(
             OrderSource.Instagram, warehouse.Id, PaymentMethod.CashOnDelivery,
             new RecipientInput("Rima Saad", "+961 70 123 456", "Beirut", "Hamra"),
-            DiscountTotal: 3m, ShippingTotal: 0m, Notes: null,
+            DiscountTotal: 3m, Notes: null,
             Items: [new OrderLineInput(mask.Id, Quantity: 2, LineDiscount: 5m)], Confirm: true)))
             .OkJsonAsync<OrderDetailDto>();
-        await ShipAndDeliverAsync(client, order.Id);
 
         var totals = (await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary")).Totals;
 
@@ -83,7 +77,6 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var stock = await s.StockAsync(mist.Id);
 
         var order = await s.OrderAsync(warehouse.Id, confirm: true, (mist.Id, 2));
-        await ShipAndDeliverAsync(client, order.Id);
         var summary = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
 
         Assert.Equal(6.5m, stock.Cost!.AverageCost);
@@ -211,7 +204,6 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
         var duo = await s.BundleAsync("ALR-DUO", 33m, (shampoo.Id, 1), (mask.Id, 1));
         var order = await s.OrderAsync(warehouse.Id, confirm: true, (duo.Id, 2), (shampoo.Id, 1));
-        await ShipAndDeliverAsync(client, order.Id);
 
         var report = await client.GetJsonAsync<ProductAnalyticsDto>("/api/analytics/products");
 
@@ -235,7 +227,6 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
         var returned = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
-        (await client.PostAsync($"/api/orders/{returned.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
         (await client.PostAsync($"/api/orders/{returned.Id}/return", new TransitionRequest(null))).EnsureSuccessStatusCode();
         await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2)); // confirmed: cost is estimated from reserved stock
 
@@ -298,7 +289,6 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
         var unknownCost = await s.ProductAsync("ALR-NO-COST", 10m);
         await s.ReceiveAsync(warehouse.Id, unknownCost.Id, 1);
         var soldWithoutCost = await s.OrderAsync(warehouse.Id, confirm: true, (unknownCost.Id, 1));
-        await ShipAndDeliverAsync(client, soldWithoutCost.Id);
         using var viewer = await SignedInAsAsync(SystemRoles.Viewer);           // has reports.view, not costs.view
         using var stockKeeper = await SignedInAsAsync(SystemRoles.InventoryManager);
         using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);

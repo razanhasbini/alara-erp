@@ -19,7 +19,7 @@ public sealed record OrderLineInput(Guid ProductId, int Quantity, decimal LineDi
 
 public sealed record CreateOrderRequest(
     OrderSource Source, Guid WarehouseId, PaymentMethod PaymentMethod, RecipientInput Recipient,
-    decimal DiscountTotal, decimal? ShippingTotal, string? Notes,
+    decimal DiscountTotal, string? Notes,
     IReadOnlyList<OrderLineInput> Items,
     /// <summary>Sell now: deducts stock and counts as a sale.</summary>
     bool Confirm = false,
@@ -36,7 +36,7 @@ public sealed record ReservedStockDto(Guid ProductId, int ReservedQuantity, IRea
 
 public sealed record UpdateOrderRequest(
     OrderSource Source, Guid WarehouseId, PaymentMethod PaymentMethod, RecipientInput Recipient,
-    decimal DiscountTotal, decimal ShippingTotal, string? Notes,
+    decimal DiscountTotal, string? Notes,
     IReadOnlyList<OrderLineInput> Items,
     Guid? CustomerId = null);
 
@@ -47,7 +47,7 @@ public sealed record TransitionRequest(string? Notes);
 public sealed record OrderListQuery(
     string? Search, OrderStatus? Status, PaymentStatus? PaymentStatus, OrderSource? Source, Guid? CustomerId,
     DateOnly? From, DateOnly? To, string? Sort, int Page = 1, int PageSize = 25,
-    /// <summary>Any of these statuses (e.g. the "open" view: Draft, Confirmed, Shipped). Combined with <c>Status</c> if both set.</summary>
+    /// <summary>Any of these statuses (e.g. Reserved and Confirmed). Combined with <c>Status</c> if both set.</summary>
     OrderStatus[]? Statuses = null);
 
 public sealed record OrderListItemDto(
@@ -68,31 +68,12 @@ public sealed record OrderDetailDto(
     Guid Id, string OrderNumber, OrderStatus Status, PaymentStatus PaymentStatus, PaymentMethod PaymentMethod, OrderSource Source,
     Guid WarehouseId, string WarehouseName, Guid? CustomerId,
     string RecipientName, string RecipientPhone, string? RecipientCity, string? RecipientAddress,
-    decimal Subtotal, decimal DiscountTotal, decimal ShippingTotal, decimal GrandTotal, string CurrencyCode,
+    decimal Subtotal, decimal DiscountTotal, decimal GrandTotal, string CurrencyCode,
     string? Notes,
     Guid? CreatedByUserId, string? CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    DateTimeOffset? ConfirmedAt, DateTimeOffset? ShippedAt, DateTimeOffset? DeliveredAt, DateTimeOffset? CancelledAt,
+    DateTimeOffset? ConfirmedAt, DateTimeOffset? CancelledAt,
     DateTimeOffset? ReturnedAt, DateTimeOffset? PaidAt,
     IReadOnlyList<OrderStatus> AllowedTransitions,
     IReadOnlyList<OrderItemDto> Items, IReadOnlyList<OrderHistoryDto> History,
     DateTimeOffset? ReservedAt = null, DateTimeOffset? ReservedUntil = null);
 
-public sealed record DeliveryCompanyDto(
-    Guid Id, string Name, string? Phone, bool IsActive,
-    /// <summary>Deliveries covered by the independently recorded expense entries.</summary>
-    int DeliveryCount,
-    /// <summary>Total independently recorded delivery cost.</summary>
-    decimal DeliveryCost);
-
-public sealed record DeliveryCompanyRequest(string Name, string? Phone, bool IsActive = true);
-
-public sealed record DeliveryExpenseRequest(
-    Guid DeliveryCompanyId, DateOnly IncurredOn, decimal Amount, int DeliveryCount, string? Notes);
-
-public sealed record DeliveryExpenseListQuery(
-    Guid? DeliveryCompanyId, DateOnly? From, DateOnly? To, int Page = 1, int PageSize = 50);
-
-public sealed record DeliveryExpenseDto(
-    Guid Id, Guid DeliveryCompanyId, string DeliveryCompanyName, DateOnly IncurredOn,
-    decimal Amount, int DeliveryCount, string? Notes, string? RecordedBy,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);

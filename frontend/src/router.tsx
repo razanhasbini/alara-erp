@@ -22,7 +22,7 @@ import { NewTransferPage, TransferDetailPage, TransfersPage } from "@/features/i
 import { WarehousesPage } from "@/features/inventory/WarehousesPage"
 import { AlertsPage } from "@/features/alerts/AlertsPage"
 import { WebsiteInsightsPage } from "@/features/analytics/WebsiteInsightsPage"
-import { DeliveriesPage } from "@/features/orders/DeliveriesPage"
+import { BillsPage } from "@/features/finance/BillsPage"
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage"
 import { OrderFormPage } from "@/features/orders/OrderFormPage"
 import { OrdersPage } from "@/features/orders/OrdersPage"
@@ -66,7 +66,7 @@ export const router = createBrowserRouter([
           { path: "orders/new", element: <OrderFormPage /> },
         ]),
         gate(P.orders.update, [{ path: "orders/:id/edit", element: <OrderFormPage /> }]),
-        gate(P.delivery.manage, [{ path: "deliveries", element: <DeliveriesPage /> }]),
+        gate(P.expenses.manage, [{ path: "bills", element: <BillsPage /> }]),
 
         gate(P.inventory.view, [
           { path: "inventory", element: <StockPage /> },

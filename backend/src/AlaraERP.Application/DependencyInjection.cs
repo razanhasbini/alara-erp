@@ -40,7 +40,7 @@ public static class DependencyInjection
         // Sales
         services.AddScoped<CustomerService>();
         services.AddScoped<OrderService>();
-        services.AddScoped<DeliveryService>();
+        services.AddScoped<Finance.ExpenseService>();
 
         // Dashboard
         services.AddScoped<DashboardService>();

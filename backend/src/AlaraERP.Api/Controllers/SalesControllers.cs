@@ -93,14 +93,6 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
         return Ok(await orders.ReservedStockAsync(productIds, excludeOrderId, ct));
     }
 
-    [HttpPost("{id:guid}/ship")]
-    [HasPermission(Orders.Update)]
-    public Task<OrderDetailDto> Ship(Guid id, TransitionRequest request, CancellationToken ct) => orders.ShipAsync(id, request, ct);
-
-    [HttpPost("{id:guid}/deliver")]
-    [HasPermission(Orders.Update)]
-    public Task<OrderDetailDto> Deliver(Guid id, TransitionRequest request, CancellationToken ct) => orders.DeliverAsync(id, request, ct);
-
     [HttpPost("{id:guid}/return")]
     [HasPermission(Orders.Update)]
     public Task<OrderDetailDto> Return(Guid id, TransitionRequest request, CancellationToken ct) => orders.ReturnAsync(id, request, ct);
@@ -120,69 +112,6 @@ public sealed class OrdersController(OrderService orders) : ApiControllerBase
     }
 }
 
-[Route("api/delivery-companies")]
-public sealed class DeliveryCompaniesController(DeliveryService delivery) : ApiControllerBase
-{
-    [HttpGet]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<IReadOnlyList<DeliveryCompanyDto>> List([FromQuery] bool includeInactive, CancellationToken ct) =>
-        delivery.ListCompaniesAsync(includeInactive, ct);
-
-    [HttpGet("{id:guid}")]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<DeliveryCompanyDto> Get(Guid id, CancellationToken ct) => delivery.GetCompanyAsync(id, ct);
-
-    [HttpPost]
-    [HasPermission(DeliveryCompanies.Manage)]
-    [ProducesResponseType<DeliveryCompanyDto>(201)]
-    public async Task<IActionResult> Create(DeliveryCompanyRequest request, CancellationToken ct)
-    {
-        var company = await delivery.CreateCompanyAsync(request, ct);
-        return CreatedAtAction(nameof(Get), new { id = company.Id }, company);
-    }
-
-    [HttpPut("{id:guid}")]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<DeliveryCompanyDto> Update(Guid id, DeliveryCompanyRequest request, CancellationToken ct) =>
-        delivery.UpdateCompanyAsync(id, request, ct);
-}
-
-[Route("api/delivery-expenses")]
-public sealed class DeliveryExpensesController(DeliveryService delivery) : ApiControllerBase
-{
-    [HttpGet]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<PagedResult<DeliveryExpenseDto>> List([FromQuery] DeliveryExpenseListQuery query, CancellationToken ct) =>
-        delivery.ListExpensesAsync(query, ct);
-
-    [HttpGet("{id:guid}")]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<DeliveryExpenseDto> Get(Guid id, CancellationToken ct) => delivery.GetExpenseAsync(id, ct);
-
-    [HttpPost]
-    [HasPermission(DeliveryCompanies.Manage)]
-    [ProducesResponseType<DeliveryExpenseDto>(201)]
-    public async Task<IActionResult> Create(DeliveryExpenseRequest request, CancellationToken ct)
-    {
-        var expense = await delivery.CreateExpenseAsync(request, ct);
-        return CreatedAtAction(nameof(Get), new { id = expense.Id }, expense);
-    }
-
-    [HttpPut("{id:guid}")]
-    [HasPermission(DeliveryCompanies.Manage)]
-    public Task<DeliveryExpenseDto> Update(Guid id, DeliveryExpenseRequest request, CancellationToken ct) =>
-        delivery.UpdateExpenseAsync(id, request, ct);
-
-    [HttpDelete("{id:guid}")]
-    [HasPermission(DeliveryCompanies.Manage)]
-    [ProducesResponseType(204)]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
-    {
-        await delivery.DeleteExpenseAsync(id, ct);
-        return NoContent();
-    }
-}
-
 [Route("api/dashboard")]
 public sealed class DashboardController(DashboardService dashboard) : ApiControllerBase
 {
@@ -194,16 +123,13 @@ public sealed class DashboardController(DashboardService dashboard) : ApiControl
 [Route("api/settings")]
 public sealed class SettingsController(IOptions<ErpOptions> options, InventoryFeatureService features) : ApiControllerBase
 {
-    public sealed record ErpSettingsDto(string BaseCurrency, string TimeZone, decimal DefaultDeliveryFee, int ExpiryWarningDays,
-        bool ExpiryDatesEnabled, IReadOnlyList<string> EnabledPaymentMethods);
+    public sealed record ErpSettingsDto(string BaseCurrency, string TimeZone, int ExpiryWarningDays, bool ExpiryDatesEnabled);
 
     [HttpGet]
     public async Task<ErpSettingsDto> Get(CancellationToken ct)
     {
         var o = options.Value;
-        // Only cash on delivery is offered until the business confirms other methods.
-        return new ErpSettingsDto(o.BaseCurrency, o.TimeZone, o.DefaultDeliveryFee, o.ExpiryWarningDays,
-            await features.ExpiryDatesEnabledAsync(ct), ["CashOnDelivery"]);
+        return new ErpSettingsDto(o.BaseCurrency, o.TimeZone, o.ExpiryWarningDays, await features.ExpiryDatesEnabledAsync(ct));
     }
 
     [HttpGet("features")]

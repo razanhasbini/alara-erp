@@ -2,6 +2,7 @@ using AlaraERP.Application.Common;
 using AlaraERP.Application.Common.Security;
 using AlaraERP.Domain.Catalog;
 using AlaraERP.Domain.Common;
+using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Inventory;
 using AlaraERP.Domain.Sales;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,7 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         var orders = await SalesOrders(start, end)
             .Select(o => new
             {
-                o.Id, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal, o.ShippingTotal,
+                o.Id, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal,
                 GrossSales = o.Items.Sum(i => i.UnitPrice * i.Quantity),
                 LineDiscounts = o.Items.Sum(i => i.LineDiscount),
             })
@@ -42,10 +43,10 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
             .Select(o => new { o.PaidAt, Net = o.GrandTotal })
             .ToListAsync(ct);
 
-        var deliveryExpenses = costs
-            ? await db.DeliveryExpenses.AsNoTracking()
+        var bills = costs
+            ? await db.Expenses.AsNoTracking()
                 .Where(e => e.IncurredOn >= from && e.IncurredOn <= to)
-                .Select(e => new { e.IncurredOn, e.Amount })
+                .Select(e => new { e.IncurredOn, e.Category, e.Amount })
                 .ToListAsync(ct)
             : [];
 
@@ -57,7 +58,6 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
             {
                 Period = PeriodOf(clock.ToBusinessDate(o.ConfirmedAt!.Value), query.GroupBy),
                 o.Source, o.GrossSales, Discounts = o.LineDiscounts + o.DiscountTotal, Net = net,
-                o.ShippingTotal,
                 c.Units, c.Cost, c.Uncosted, Gross = net - c.Cost,
             };
         }).ToList();
@@ -66,29 +66,29 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         {
             var inPeriod = rows.Where(r => r.Period == p.Key).ToList();
             var gross = inPeriod.Sum(r => r.Gross);
-            var deliveryCost = deliveryExpenses.Where(e => PeriodOf(e.IncurredOn, query.GroupBy) == p.Key).Sum(e => e.Amount);
+            var expenses = bills.Where(e => PeriodOf(e.IncurredOn, query.GroupBy) == p.Key).Sum(e => e.Amount);
             return new PeriodPoint(p.Start, p.End, inPeriod.Count, inPeriod.Sum(r => r.Units), Guard.Money(inPeriod.Sum(r => r.Net)),
                 costs ? Guard.Money(inPeriod.Sum(r => r.Cost)) : null,
                 costs ? Guard.Money(gross) : null,
-                costs ? Guard.Money(gross + inPeriod.Sum(r => r.ShippingTotal) - deliveryCost) : null,
+                costs ? Guard.Money(expenses) : null,
+                costs ? Guard.Money(gross - expenses) : null,
                 Guard.Money(paid.Where(x => PeriodOf(clock.ToBusinessDate(x.PaidAt!.Value), query.GroupBy) == p.Key).Sum(x => x.Net)));
         }).ToList();
 
         var netSales = rows.Sum(r => r.Net);
         var cogs = rows.Sum(r => r.Cost);
         var grossProfit = netSales - cogs;
-        var deliveryCosts = deliveryExpenses.Sum(e => e.Amount);
-        var deliveryResult = rows.Sum(r => r.ShippingTotal) - deliveryCosts;
+        var totalExpenses = bills.Sum(e => e.Amount);
+        var netProfit = grossProfit - totalExpenses;
         var totals = new ProfitTotals(
             rows.Count, rows.Sum(r => r.Units), Guard.Money(rows.Sum(r => r.GrossSales)), Guard.Money(rows.Sum(r => r.Discounts)),
             Guard.Money(netSales), rows.Count == 0 ? 0 : Guard.Money(netSales / rows.Count),
-            Guard.Money(rows.Sum(r => r.ShippingTotal)),
-            costs ? Guard.Money(deliveryCosts) : null,
-            costs ? Guard.Money(deliveryResult) : null,
             costs ? Guard.Money(cogs) : null,
             costs ? Guard.Money(grossProfit) : null,
             costs && netSales > 0 ? Math.Round(grossProfit / netSales * 100, 1) : null,
-            costs ? Guard.Money(grossProfit + deliveryResult) : null,
+            costs ? Guard.Money(totalExpenses) : null,
+            costs ? Guard.Money(netProfit) : null,
+            costs && netSales > 0 ? Math.Round(netProfit / netSales * 100, 1) : null,
             Guard.Money(paid.Sum(x => x.Net)),
             costs ? rows.Sum(r => r.Uncosted) : 0);
 
@@ -98,7 +98,14 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
             return new ChannelPoint(s, r.Count, Guard.Money(r.Sum(x => x.Net)), costs ? Guard.Money(r.Sum(x => x.Gross)) : null);
         }).ToList();
 
-        return new AnalyticsSummaryDto(from, to, query.GroupBy, options.Value.BaseCurrency, costs, totals, series, byChannel);
+        var expensesByCategory = costs
+            ? Enum.GetValues<ExpenseCategory>()
+                .Select(c => new ExpenseCategoryPoint(c, Guard.Money(bills.Where(e => e.Category == c).Sum(e => e.Amount))))
+                .ToList()
+            : null;
+
+        return new AnalyticsSummaryDto(from, to, query.GroupBy, options.Value.BaseCurrency, costs, totals, series, byChannel,
+            expensesByCategory);
     }
 
     public async Task<ProductAnalyticsDto> ProductsAsync(AnalyticsQuery query, CancellationToken ct)
@@ -238,10 +245,10 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
     /// <summary>A confirmed order is a committed sale. Cancelled and returned orders are excluded.</summary>
     private IQueryable<Order> SalesOrders(DateTimeOffset start, DateTimeOffset end) =>
         db.Orders.AsNoTracking().Where(o => o.ConfirmedAt >= start && o.ConfirmedAt < end
-                                            && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered));
+                                            && o.Status == OrderStatus.Confirmed);
 
     /// <summary>
-    /// Confirmation records immutable shipment movements immediately; the movement rows hold the exact batch costs.
+    /// Selling records immutable stock-out movements immediately; the movement rows hold the exact batch costs.
     /// </summary>
     private async Task<List<SaleCostLine>> SaleCostsAsync(IReadOnlyCollection<Guid> orderIds, CancellationToken ct)
     {

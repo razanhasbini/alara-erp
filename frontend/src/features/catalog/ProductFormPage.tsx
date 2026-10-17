@@ -257,7 +257,7 @@ export function ProductFormPage() {
             </Section>
           )}
           {type === "Individual" && (
-            <Section title="Size & shipping" bodyClassName="grid grid-cols-2 gap-4 p-4">
+            <Section title="Size" bodyClassName="grid grid-cols-2 gap-4 p-4">
               <Field label="Size" htmlFor="sizeValue" error={errors.sizeValue?.message}>
                 <Input id="sizeValue" inputMode="decimal" {...register("sizeValue")} />
               </Field>
@@ -273,9 +273,6 @@ export function ProductFormPage() {
                     </SelectContent>
                   </Select>
                 )} />
-              </Field>
-              <Field label="Shipping weight (g)" htmlFor="weightGrams" error={errors.weightGrams?.message} className="col-span-2">
-                <Input id="weightGrams" inputMode="numeric" {...register("weightGrams")} />
               </Field>
             </Section>
           )}

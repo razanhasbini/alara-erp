@@ -16,9 +16,7 @@ public sealed class Order : IAuditable
     {
         [OrderStatus.Draft] = [OrderStatus.Reserved, OrderStatus.Confirmed, OrderStatus.Cancelled],
         [OrderStatus.Reserved] = [OrderStatus.Confirmed, OrderStatus.Cancelled],
-        [OrderStatus.Confirmed] = [OrderStatus.Reserved, OrderStatus.Shipped, OrderStatus.Cancelled],
-        [OrderStatus.Shipped] = [OrderStatus.Delivered, OrderStatus.Returned],
-        [OrderStatus.Delivered] = [],
+        [OrderStatus.Confirmed] = [OrderStatus.Reserved, OrderStatus.Cancelled, OrderStatus.Returned],
         [OrderStatus.Cancelled] = [],
         [OrderStatus.Returned] = [],
     };
@@ -61,8 +59,6 @@ public sealed class Order : IAuditable
 
     public decimal Subtotal { get; private set; }
     public decimal DiscountTotal { get; private set; }
-    /// <summary>Delivery fee charged to the customer.</summary>
-    public decimal ShippingTotal { get; private set; }
     public decimal GrandTotal { get; private set; }
     public string CurrencyCode { get; private set; } = "";
 
@@ -71,8 +67,6 @@ public sealed class Order : IAuditable
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? ConfirmedAt { get; private set; }
-    public DateTimeOffset? ShippedAt { get; private set; }
-    public DateTimeOffset? DeliveredAt { get; private set; }
     public DateTimeOffset? CancelledAt { get; private set; }
     public DateTimeOffset? ReturnedAt { get; private set; }
     public DateTimeOffset? PaidAt { get; private set; }
@@ -88,7 +82,7 @@ public sealed class Order : IAuditable
     public IReadOnlyList<OrderItem> Items => _items;
     public IReadOnlyList<OrderHistoryEntry> History => _history;
 
-    public bool IsFinal => Status is OrderStatus.Delivered or OrderStatus.Cancelled or OrderStatus.Returned;
+    public bool IsFinal => Status is OrderStatus.Cancelled or OrderStatus.Returned;
 
     // ---- editing -------------------------------------------------------------------------
 
@@ -109,8 +103,8 @@ public sealed class Order : IAuditable
 
     public void SetNotes(string? notes) => Notes = Clean(notes);
 
-    /// <summary>Lines, discount and delivery fee can only change while the order is a draft (no stock reserved).</summary>
-    public void ReplaceLines(IReadOnlyList<OrderItem> items, decimal discountTotal, decimal shippingTotal,
+    /// <summary>Lines and discount can only change while the order is reserved (or a legacy draft).</summary>
+    public void ReplaceLines(IReadOnlyList<OrderItem> items, decimal discountTotal,
         Guid warehouseId, OrderSource source, PaymentMethod paymentMethod)
     {
         if (Status is not (OrderStatus.Draft or OrderStatus.Reserved))
@@ -126,10 +120,9 @@ public sealed class Order : IAuditable
 
         Subtotal = Guard.Money(_items.Sum(i => i.LineTotal));
         DiscountTotal = Guard.Money(Guard.NotNegative(discountTotal, "Order discount"));
-        ShippingTotal = Guard.Money(Guard.NotNegative(shippingTotal, "Delivery fee"));
         if (DiscountTotal > Subtotal)
             throw new DomainException("orders.discount_exceeds_subtotal", "The order discount cannot exceed the items subtotal.");
-        GrandTotal = Guard.Money(Subtotal - DiscountTotal + ShippingTotal);
+        GrandTotal = Guard.Money(Subtotal - DiscountTotal);
     }
 
     /// <summary>Units of each individual product this order needs (bundles expanded via their component snapshots).</summary>
@@ -204,8 +197,6 @@ public sealed class Order : IAuditable
         {
             case OrderStatus.Confirmed: ConfirmedAt = at; break;
             case OrderStatus.Reserved: ConfirmedAt = null; break;
-            case OrderStatus.Shipped: ShippedAt = at; break;
-            case OrderStatus.Delivered: DeliveredAt = at; break;
             case OrderStatus.Cancelled: CancelledAt = at; break;
             case OrderStatus.Returned: ReturnedAt = at; break;
         }

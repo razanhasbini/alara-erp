@@ -261,7 +261,7 @@ export interface Transfer {
 }
 
 // ---- sales --------------------------------------------------------------------------------
-export type OrderStatus = "Draft" | "Reserved" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled" | "Returned"
+export type OrderStatus = "Draft" | "Reserved" | "Confirmed" | "Cancelled" | "Returned"
 export type OrderSource = "WhatsApp" | "Instagram" | "Website" | "Other"
 export type PaymentMethod = "CashOnDelivery" | "Whish" | "Omt" | "BankTransfer" | "Cash"
 /** Reserved orders are Unpaid; an order is Paid the moment it is sold; cancelled or returned sales are Void. */
@@ -342,7 +342,6 @@ export interface OrderDetail {
   recipientAddress: string | null
   subtotal: number
   discountTotal: number
-  shippingTotal: number
   grandTotal: number
   currencyCode: string
   notes: string | null
@@ -351,8 +350,6 @@ export interface OrderDetail {
   createdAt: string
   updatedAt: string
   confirmedAt: string | null
-  shippedAt: string | null
-  deliveredAt: string | null
   cancelledAt: string | null
   returnedAt: string | null
   paidAt: string | null
@@ -363,27 +360,31 @@ export interface OrderDetail {
   reservedUntil: string | null
 }
 
-export interface DeliveryCompany {
-  id: string
-  name: string
-  phone: string | null
-  isActive: boolean
-  /** Deliveries covered by recorded cost entries. */
-  deliveryCount: number
-  deliveryCost: number
-}
+// ---- bills (finance) ------------------------------------------------------------------------
+export type ExpenseCategory = "Electricity" | "Internet" | "Models" | "Wages" | "Other"
 
-export interface DeliveryExpense {
+export interface Expense {
   id: string
-  deliveryCompanyId: string
-  deliveryCompanyName: string
+  category: ExpenseCategory
+  /** yyyy-MM-dd: the date the cost applies to. */
   incurredOn: string
   amount: number
-  deliveryCount: number
+  description: string | null
   notes: string | null
   recordedBy: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ExpenseList {
+  from: string | null
+  to: string | null
+  total: number
+  byCategory: { category: ExpenseCategory; count: number; amount: number }[]
+  items: Expense[]
+  page: number
+  pageSize: number
+  totalCount: number
 }
 
 // ---- dashboard / settings -----------------------------------------------------------------
@@ -391,12 +392,15 @@ export interface Dashboard {
   generatedAt: string
   catalog: { activeProducts: number; activeBundles: number; inactiveProducts: number } | null
   orders: {
-    total: number; drafts: number; reserved: number; awaitingShipment: number; outForDelivery: number
-    delivered: number; cancelled: number; returned: number; createdToday: number
+    total: number; drafts: number; sold: number; reserved: number; cancelled: number; returned: number
+    createdToday: number; soldToday: number
   } | null
   finance: {
     currency: string; collectedRevenue: number; collectedThisMonth: number
-    openOrderValue: number; deliveryCosts: number
+    /** Order totals of reserved orders: sales waiting for the customer. */
+    reservedValue: number
+    /** Bills dated this month; null unless the user can see costs. */
+    billsThisMonth: number | null
   } | null
   dailyOrders: { date: string; orders: number; value: number }[] | null
   bySource: { source: OrderSource; orders: number; value: number }[] | null
@@ -414,10 +418,8 @@ export interface Dashboard {
 export interface ErpSettings {
   baseCurrency: string
   timeZone: string
-  defaultDeliveryFee: number
   expiryWarningDays: number
   expiryDatesEnabled: boolean
-  enabledPaymentMethods: PaymentMethod[]
 }
 
 export interface FeatureSettings {
@@ -436,12 +438,14 @@ export interface AnalyticsSummary {
   includesCosts: boolean
   totals: {
     orders: number; unitsSold: number; grossSales: number; discounts: number; netSales: number; averageOrderValue: number
-    deliveryFees: number; deliveryCosts: number | null; deliveryResult: number | null
-    costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null; profit: number | null
+    costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null
+    /** Bills in the range; profit = gross profit − expenses (net profit). */
+    expenses: number | null; profit: number | null; netMarginPercent: number | null
     cashReceived: number; uncostedUnits: number
   }
-  series: { periodStart: string; periodEnd: string; orders: number; unitsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; profit: number | null; cashReceived: number }[]
+  series: { periodStart: string; periodEnd: string; orders: number; unitsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; expenses: number | null; profit: number | null; cashReceived: number }[]
   byChannel: { source: OrderSource; orders: number; netSales: number; grossProfit: number | null }[]
+  expensesByCategory: { category: ExpenseCategory; amount: number }[] | null
 }
 
 export interface ProductProfit {

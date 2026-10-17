@@ -60,21 +60,21 @@ public sealed class CustomerService(IAlaraDbContext db)
     private IQueryable<CustomerDto> Project(IQueryable<Customer> customers) => customers.Select(c => new CustomerDto(
         c.Id, c.Name, c.Phone, c.Email, c.City, c.Address, c.Notes, c.IsActive,
         db.Orders.Count(o => o.CustomerId == c.Id &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered)),
+            o.Status == OrderStatus.Confirmed),
         db.Orders.Where(o => o.CustomerId == c.Id &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
+            o.Status == OrderStatus.Confirmed)
             .Sum(o => (decimal?)o.GrandTotal) ?? 0,
         db.Orders.Where(o => o.CustomerId == c.Id && o.PaymentStatus == PaymentStatus.Paid &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
+            o.Status == OrderStatus.Confirmed)
             .Sum(o => (decimal?)o.GrandTotal) ?? 0,
         db.Orders.Where(o => o.CustomerId == c.Id &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
+            o.Status == OrderStatus.Confirmed)
             .Average(o => (decimal?)o.GrandTotal) ?? 0,
         db.Orders.Where(o => o.CustomerId == c.Id &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
+            o.Status == OrderStatus.Confirmed)
             .Min(o => o.ConfirmedAt),
         db.Orders.Where(o => o.CustomerId == c.Id &&
-            (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
+            o.Status == OrderStatus.Confirmed)
             .Max(o => o.ConfirmedAt),
         c.CreatedAt, c.UpdatedAt));
 }

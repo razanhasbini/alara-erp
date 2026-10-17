@@ -44,9 +44,10 @@ public static class Permissions
         public const string ManagePayments = "orders.manage_payments";
     }
 
-    public static class DeliveryCompanies
+    /// <summary>Bills and running costs (electricity, internet, models, wages). Granted only to Super Admin.</summary>
+    public static class Expenses
     {
-        public const string Manage = "delivery_companies.manage";
+        public const string Manage = "expenses.manage";
     }
 
     public static class Reports

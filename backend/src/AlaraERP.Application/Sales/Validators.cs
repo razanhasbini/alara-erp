@@ -64,7 +64,6 @@ public sealed class CreateOrderRequestValidator : AbstractValidator<CreateOrderR
         RuleFor(x => x.WarehouseId).NotEmpty();
         RuleFor(x => x.Source).IsInEnum();
         RuleFor(x => x.PaymentMethod).IsInEnum();
-        RuleFor(x => x.ShippingTotal).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).When(x => x.ShippingTotal.HasValue);
         RuleFor(x => x).Must(x => x.Confirm != x.ReserveUntil.HasValue).OverridePropertyName("reserveUntil")
             .WithMessage("Choose either “Sell now” or “Reserve until” a date and time.");
         OrderRules.Apply(this, x => x.Recipient, x => x.Items, x => x.DiscountTotal, x => x.Notes);
@@ -83,7 +82,6 @@ public sealed class UpdateOrderRequestValidator : AbstractValidator<UpdateOrderR
         RuleFor(x => x.WarehouseId).NotEmpty();
         RuleFor(x => x.Source).IsInEnum();
         RuleFor(x => x.PaymentMethod).IsInEnum();
-        RuleFor(x => x.ShippingTotal).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true);
         OrderRules.Apply(this, x => x.Recipient, x => x.Items, x => x.DiscountTotal, x => x.Notes);
     }
 }
@@ -94,26 +92,5 @@ public sealed class UpdateRecipientRequestValidator : AbstractValidator<UpdateRe
     {
         RuleFor(x => x.Recipient).NotNull().SetValidator(new RecipientInputValidator());
         RuleFor(x => x.Notes).MaximumLength(2000);
-    }
-}
-
-public sealed class DeliveryExpenseRequestValidator : AbstractValidator<DeliveryExpenseRequest>
-{
-    public DeliveryExpenseRequestValidator()
-    {
-        RuleFor(x => x.DeliveryCompanyId).NotEmpty();
-        RuleFor(x => x.IncurredOn).NotEmpty();
-        RuleFor(x => x.Amount).GreaterThan(0).PrecisionScale(12, 2, true);
-        RuleFor(x => x.DeliveryCount).InclusiveBetween(1, 100_000);
-        RuleFor(x => x.Notes).MaximumLength(2000);
-    }
-}
-
-public sealed class DeliveryCompanyRequestValidator : AbstractValidator<DeliveryCompanyRequest>
-{
-    public DeliveryCompanyRequestValidator()
-    {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
-        RuleFor(x => x.Phone).MaximumLength(40);
     }
 }

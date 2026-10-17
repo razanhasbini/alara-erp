@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { Availability, Category, DeliveryCompany, ErpSettings, Warehouse } from "@/types/api"
+import type { Availability, Category, ErpSettings, Warehouse } from "@/types/api"
 
 /** Query keys grouped by module so mutations can invalidate whole areas. */
 export const qk = {
@@ -23,8 +23,7 @@ export const qk = {
   order: (id: string) => ["sales", "order", id] as const,
   customers: (params: object) => ["sales", "customers", params] as const,
   customer: (id: string) => ["sales", "customer", id] as const,
-  deliveryCompanies: (includeInactive = false) => ["sales", "delivery-companies", includeInactive] as const,
-  deliveryExpenses: (params: object) => ["sales", "delivery-expenses", params] as const,
+  expenses: (params: object) => ["finance", "expenses", params] as const,
   users: (params: object) => ["identity", "users", params] as const,
   roles: ["identity", "roles"] as const,
   analytics: (kind: string, params: object) => ["analytics", kind, params] as const,
@@ -39,8 +38,6 @@ export const useCategories = (includeInactive = false) =>
 export const useWarehouses = (includeInactive = false) =>
   useQuery({ queryKey: qk.warehouses(includeInactive), queryFn: () => api<Warehouse[]>("/api/warehouses", { query: { includeInactive } }), staleTime: 60_000 })
 
-export const useDeliveryCompanies = (includeInactive = false) =>
-  useQuery({ queryKey: qk.deliveryCompanies(includeInactive), queryFn: () => api<DeliveryCompany[]>("/api/delivery-companies", { query: { includeInactive } }) })
 
 /** Sellable quantities (bundles computed from components). Disabled when there is nothing to ask about. */
 export function useAvailability(productIds: string[], warehouseId?: string, enabled = true) {

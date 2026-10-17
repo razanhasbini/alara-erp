@@ -29,7 +29,6 @@ public static class SystemRoles
                 P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer, P.Inventory.ManageThresholds,
                 P.Warehouses.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
-                P.DeliveryCompanies.Manage,
                 P.Reports.View,
                 P.Users.View,
             }),

@@ -20,7 +20,6 @@ public sealed class ReadEndpointSmokeTests(AlaraApiFactory factory) : ApiTestBas
         await s.WarehouseAsync("SHOP");
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         var receipt = await s.ReceiveAsync(warehouse.Id, mask.Id, 10);
-        var courier = await (await admin.PostAsync("/api/delivery-companies", new DeliveryCompanyRequest("Wakilni", null))).OkJsonAsync<DeliveryCompanyDto>();
         var order = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
 
         string[] urls =
@@ -33,8 +32,7 @@ public sealed class ReadEndpointSmokeTests(AlaraApiFactory factory) : ApiTestBas
             "/api/inventory/receipts", $"/api/inventory/receipts/{receipt.Id}", "/api/inventory/transfers", "/api/inventory/movements",
             "/api/orders", "/api/orders?statuses=Reserved&statuses=Confirmed", $"/api/orders/reserved-stock?productIds={mask.Id}",
             "/api/notifications", "/api/notifications/unread-count", "/api/notifications/channels", $"/api/orders/{order.Id}",
-            "/api/delivery-companies", "/api/delivery-companies?includeInactive=true", $"/api/delivery-companies/{courier.Id}",
-            "/api/delivery-expenses",
+            "/api/expenses", "/api/expenses?from=2026-01-01&to=2026-12-31&category=Wages",
             "/api/users", "/api/roles", "/api/roles/permissions",
             "/api/analytics/summary", "/api/analytics/summary?groupBy=Week", "/api/analytics/summary?from=2026-01-01&to=2026-12-31&groupBy=Month",
             "/api/analytics/products",

@@ -1,3 +1,4 @@
+using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Sales;
 
 namespace AlaraERP.Application.Analytics;
@@ -9,27 +10,31 @@ public sealed record AnalyticsQuery(DateOnly? From, DateOnly? To, Grouping Group
 
 /// <summary>
 /// Definitions (also shown in the UI):
-/// a sale counts on the day the order is confirmed (Confirmed/Shipped/Delivered; cancelled and returned orders are excluded).
-/// NetSales = items − discounts (excl. delivery fee). CostOfGoods = recorded cost of the units shipped.
-/// GrossProfit = NetSales − CostOfGoods. DeliveryResult = delivery fees charged − independently recorded delivery costs.
-/// Profit = GrossProfit + DeliveryResult. CashReceived = paid orders by payment date (an order is paid when it is sold).
-/// Cost and profit figures are null unless the caller has costs.view.
+/// a sale counts on the day the order is sold (cancelled and returned orders are excluded).
+/// NetSales = items − discounts. CostOfGoods = recorded cost of the units sold.
+/// GrossProfit = NetSales − CostOfGoods. Expenses = bills dated in the range (electricity, internet, models, wages…).
+/// Profit (net profit) = GrossProfit − Expenses. CashReceived = paid orders by payment date (an order is paid when sold).
+/// Cost, expense and profit figures are null unless the caller has costs.view.
 /// </summary>
 public sealed record ProfitTotals(
     int Orders, int UnitsSold, decimal GrossSales, decimal Discounts, decimal NetSales, decimal AverageOrderValue,
-    decimal DeliveryFees, decimal? DeliveryCosts, decimal? DeliveryResult,
-    decimal? CostOfGoods, decimal? GrossProfit, decimal? GrossMarginPercent, decimal? Profit,
+    decimal? CostOfGoods, decimal? GrossProfit, decimal? GrossMarginPercent,
+    decimal? Expenses, decimal? Profit, decimal? NetMarginPercent,
     decimal CashReceived, int UncostedUnits);
 
 public sealed record PeriodPoint(
     DateOnly PeriodStart, DateOnly PeriodEnd, int Orders, int UnitsSold, decimal NetSales,
-    decimal? CostOfGoods, decimal? GrossProfit, decimal? Profit, decimal CashReceived);
+    decimal? CostOfGoods, decimal? GrossProfit, decimal? Expenses, decimal? Profit, decimal CashReceived);
 
 public sealed record ChannelPoint(OrderSource Source, int Orders, decimal NetSales, decimal? GrossProfit);
 
+public sealed record ExpenseCategoryPoint(ExpenseCategory Category, decimal Amount);
+
 public sealed record AnalyticsSummaryDto(
     DateOnly From, DateOnly To, Grouping GroupBy, string Currency, bool IncludesCosts,
-    ProfitTotals Totals, IReadOnlyList<PeriodPoint> Series, IReadOnlyList<ChannelPoint> ByChannel);
+    ProfitTotals Totals, IReadOnlyList<PeriodPoint> Series, IReadOnlyList<ChannelPoint> ByChannel,
+    /// <summary>Bills in the range by category; null without costs.view.</summary>
+    IReadOnlyList<ExpenseCategoryPoint>? ExpensesByCategory = null);
 
 /// <summary>
 /// Per individual product. Units and sales include units sold inside bundles (bundle revenue is split across

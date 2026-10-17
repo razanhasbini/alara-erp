@@ -19,21 +19,22 @@ public sealed class DashboardAndImportTests(AlaraApiFactory factory) : ApiTestBa
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 10);
-        var paid = await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
-        (await client.PostAsync($"/api/orders/{paid.Id}/ship", new TransitionRequest(null))).EnsureSuccessStatusCode();
-        (await client.PostAsync($"/api/orders/{paid.Id}/deliver", new TransitionRequest(null))).EnsureSuccessStatusCode();
-        await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2)); // open
+        await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 1));
+        await s.OrderAsync(warehouse.Id, confirm: true, (mask.Id, 2));
+        await s.OrderAsync(warehouse.Id, confirm: false, (mask.Id, 1)); // reserved: not a sale yet
         var cancelled = await s.OrderAsync(warehouse.Id, confirm: false, (mask.Id, 1));
         (await client.PostAsync($"/api/orders/{cancelled.Id}/cancel", new TransitionRequest(null))).EnsureSuccessStatusCode();
 
         var dashboard = await client.GetJsonAsync<DashboardDto>("/api/dashboard");
 
         Assert.Equal(1, dashboard.Catalog!.ActiveProducts);
-        Assert.Equal((3, 1, 1, 1), (dashboard.Orders!.Total, dashboard.Orders.AwaitingShipment, dashboard.Orders.Delivered, dashboard.Orders.Cancelled));
-        Assert.Equal(80.00m, dashboard.Finance!.CollectedRevenue); // both sold orders are paid: (24 + 4) + (2×24 + 4)
-        Assert.Equal(52.00m, dashboard.Finance.OpenOrderValue);   // 2×24 + 4
-        Assert.Equal((7, 0), (dashboard.Inventory!.UnitsOnHand, dashboard.Inventory.UnitsReserved));
-        Assert.Equal(80.00m, dashboard.DailyOrders!.Sum(d => d.Value)); // delivered 28 + open 52; the cancelled order is excluded
+        Assert.Equal((4, 2, 1, 1, 2), (dashboard.Orders!.Total, dashboard.Orders.Sold, dashboard.Orders.Reserved,
+            dashboard.Orders.Cancelled, dashboard.Orders.SoldToday));
+        Assert.Equal(72.00m, dashboard.Finance!.CollectedRevenue); // both sold orders are paid: 24 + 2×24
+        Assert.Equal(24.00m, dashboard.Finance.ReservedValue);
+        Assert.Null(dashboard.Finance.BillsThisMonth);             // bills are admin-only
+        Assert.Equal((7, 1), (dashboard.Inventory!.UnitsOnHand, dashboard.Inventory.UnitsReserved));
+        Assert.Equal(72.00m, dashboard.DailyOrders!.Sum(d => d.Value)); // reserved and cancelled orders are excluded
         Assert.NotEmpty(dashboard.RecentMovements!);
     }
 

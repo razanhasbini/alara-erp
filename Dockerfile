@@ -13,6 +13,8 @@ RUN dotnet publish src/AlaraERP.Api/AlaraERP.Api.csproj -c Release --no-restore 
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+# Npgsql probes for Kerberos (GSSAPI) on connect; without the library it logs a harmless error on every start.
+RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 COPY --from=backend /out ./
 COPY --from=frontend /src/frontend/dist ./wwwroot
 COPY data/catalog ./data/catalog

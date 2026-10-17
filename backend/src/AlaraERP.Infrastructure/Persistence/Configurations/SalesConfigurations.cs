@@ -33,9 +33,9 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.ToTable("orders", Schemas.Sales, t =>
         {
             t.HasCheckConstraint("ck_orders_amounts_not_negative",
-                "subtotal >= 0 AND discount_total >= 0 AND shipping_total >= 0 AND grand_total >= 0");
+                "subtotal >= 0 AND discount_total >= 0 AND grand_total >= 0");
             t.HasCheckConstraint("ck_orders_discount_within_subtotal", "discount_total <= subtotal");
-            t.HasCheckConstraint("ck_orders_grand_total", "grand_total = subtotal - discount_total + shipping_total");
+            t.HasCheckConstraint("ck_orders_grand_total", "grand_total = subtotal - discount_total");
             t.HasCheckConstraint("ck_orders_paid_at", "(payment_status = 'Paid') = (paid_at IS NOT NULL)");
         });
         b.HasKey(o => o.Id);
@@ -48,7 +48,7 @@ internal sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.Property(o => o.RecipientPhone).HasMaxLength(40).IsRequired();
         b.Property(o => o.RecipientCity).HasMaxLength(100);
         b.Property(o => o.CurrencyCode).HasMaxLength(3).IsFixedLength().IsRequired();
-        foreach (var money in new[] { nameof(Order.Subtotal), nameof(Order.DiscountTotal), nameof(Order.ShippingTotal), nameof(Order.GrandTotal) })
+        foreach (var money in new[] { nameof(Order.Subtotal), nameof(Order.DiscountTotal), nameof(Order.GrandTotal) })
             b.Property(money).HasPrecision(12, 2);
         b.Property(o => o.Version).IsRowVersion();
         b.Ignore(o => o.IsFinal);
@@ -123,36 +123,5 @@ internal sealed class OrderHistoryEntryConfiguration : IEntityTypeConfiguration<
         b.Property(h => h.NewValue).HasMaxLength(30).IsRequired();
         b.HasIndex(h => new { h.OrderId, h.ChangedAt });
         b.HasOne<AppUser>().WithMany().HasForeignKey(h => h.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
-    }
-}
-
-internal sealed class DeliveryCompanyConfiguration : IEntityTypeConfiguration<DeliveryCompany>
-{
-    public void Configure(EntityTypeBuilder<DeliveryCompany> b)
-    {
-        b.ToTable("delivery_companies", Schemas.Sales);
-        b.HasKey(d => d.Id);
-        b.Property(d => d.Name).HasMaxLength(150).IsRequired();
-        b.Property(d => d.Phone).HasMaxLength(40);
-        b.HasIndex(d => d.Name).IsUnique();
-    }
-}
-
-internal sealed class DeliveryExpenseConfiguration : IEntityTypeConfiguration<DeliveryExpense>
-{
-    public void Configure(EntityTypeBuilder<DeliveryExpense> b)
-    {
-        b.ToTable("delivery_expenses", Schemas.Sales, t =>
-        {
-            t.HasCheckConstraint("ck_delivery_expenses_amount", "amount > 0");
-            t.HasCheckConstraint("ck_delivery_expenses_count", "delivery_count > 0");
-        });
-        b.HasKey(e => e.Id);
-        b.Property(e => e.Amount).HasPrecision(12, 2);
-        b.Property(e => e.Notes).HasMaxLength(2000);
-        b.HasIndex(e => e.IncurredOn);
-        b.HasIndex(e => new { e.DeliveryCompanyId, e.IncurredOn });
-        b.HasOne<DeliveryCompany>().WithMany().HasForeignKey(e => e.DeliveryCompanyId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<AppUser>().WithMany().HasForeignKey(e => e.RecordedByUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

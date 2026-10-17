@@ -1,7 +1,7 @@
 # ÀLara Line ERP
 
 Internal operations system for **ÀLara Line**, a Lebanese haircare brand: catalogue, stock with optional expiry
-tracking, customer profiles and loyalty analytics, orders from WhatsApp / Instagram / the website, and standalone delivery-cost tracking.
+tracking, customer profiles and loyalty analytics, orders from WhatsApp / Instagram / the website, and bills & expenses that feed net profit.
 It is an internal tool for employees, separate from the public website [alaraline.co](https://alaraline.co).
 The future React storefront will read the same catalogue.
 
@@ -194,7 +194,7 @@ The integration tests rebuild the **test** database schema on each run and trunc
 to run against a database whose name doesn't end in `_test`.
 
 The browser smoke test (`frontend/e2e/smoke.mjs`) drives the whole flow: sign in → receive stock → order a bundle
-→ confirm → ship → deliver → inspect profit → withdraw a bundle → check the operational views, plus a phone-width check. **It creates data**, so point it at an
+→ reserve → sell → add a bill → inspect profit → withdraw a bundle → check the operational views, plus a phone-width check. **It creates data**, so point it at an
 API that uses the test database:
 
 ```bash
@@ -243,7 +243,7 @@ migrations and never resets the database.
 | Role | Can |
 |---|---|
 | Super Admin | everything, including employees and roles |
-| Manager | catalogue and prices; stock, thresholds, warehouses, orders, delivery costs, sales reports; view employees |
+| Manager | catalogue and prices; stock, thresholds, warehouses, orders, sales reports; view employees (no costs or bills) |
 | Inventory Manager | view products; receive, adjust and transfer stock |
 | Sales Employee | manage products, bundles and categories; manage customers and orders; receive and view stock, receipts, warehouses and movements |
 | Viewer | read-only catalogue, stock, orders and reports |
@@ -275,9 +275,9 @@ Roles are defined in code and synced to the database by `migrate`.
 - **Reserved:** stock is held for the customer (it can't be sold to anyone else) until a chosen time, but nothing is deducted and no revenue or cost is counted. The order can still be edited. When the time is up an alert is raised (in **Alerts**, and on WhatsApp once connected); nothing is released automatically.
 - **Sold** (`Confirmed` in the API): stock is deducted immediately from FEFO batches and the sale counts. "Back to reserved" undoes the sale and holds the stock again.
 - Creating an order with too little free stock is refused, and the message names the reserved orders (number, quantity, customer, deadline) holding the rest.
-- **Shipped:** marks that the sold order has left the business; stock and payment are not changed again.
-- **Delivered**, or **Returned** (stock goes back into the same batches it left from).
-- **Cancelled** is possible only before shipping; it releases a reservation or returns stock deducted when the order was sold.
+- **Returned:** the customer sent a sold order back or refused it; the stock goes back into the batches it left from.
+- **Cancelled** releases a reservation, or returns the stock of a sold order.
+- Delivery is not tracked: the delivery company handles it end to end, with no fee on the order and no cost to the business.
 - Prices, names and bundle contents are frozen when the order is placed.
 
 **Customers**
@@ -285,17 +285,19 @@ Roles are defined in code and synced to the database by `migrate`.
 - Orders keep their own recipient and address snapshot, so editing a customer later never rewrites old orders.
 - The Customers page shows lifetime orders, total ordered, total paid, average order value, and last activity.
 
-**Payment and delivery**
+**Payment**
 - A sold order is immediately *Paid*. Creating a sold order or changing a reservation to sold deducts stock and
   updates sales, cost of goods, cash received and profit in the same database transaction.
 - A reserved order is *Unpaid* and holds stock. Moving a sold order back to reserved reverses the sale and stock
   deduction. Cancelling or returning a sold order makes its payment *Void*.
-- Delivery companies and costs are managed on **Deliveries**. A cost may cover one day, week, month or invoice and
-  is not linked to an order. Profit analytics subtract costs by their recorded date.
+
+**Bills & expenses** (Super Admin only)
+- Electricity, Internet / Wi-Fi, Models, Wages and Other, each with an amount, a date, a description and notes.
+- Analytics subtracts the bills dated in the selected period: **Net profit = gross profit − bills**.
 
 **Money**
 - Amounts are in USD, using `decimal` / `NUMERIC(12,2)`.
 - "Cash received" on the dashboard counts **paid** orders only; sold orders become paid immediately.
-- Analytics reports sales on the confirmation date and excludes cancelled and returned orders. Cost of goods uses the exact batches deducted at confirmation.
+- Analytics reports sales on the day an order is sold and excludes cancelled and returned orders. Cost of goods uses the exact batches deducted at that moment.
 - Loyalty analytics can rank customers by order count, total ordered, total paid, average order value, reorder frequency, or most recent order for the selected period.
-- Bundle revenue is allocated across its component products by their full prices. Profit reports flag shipped units with no recorded cost.
+- Bundle revenue is allocated across its component products by their full prices. Profit reports flag sold units with no recorded cost.

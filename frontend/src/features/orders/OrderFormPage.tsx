@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { api, ApiError, errorMessage } from "@/lib/api"
-import { dateOnly, dateTime, humanize, money } from "@/lib/format"
-import { qk, useAvailability, useSettings, useWarehouses } from "@/lib/queries"
+import { dateOnly, dateTime, money } from "@/lib/format"
+import { qk, useAvailability, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType, ReservedStock } from "@/types/api"
 import { ReserveTimeDialog } from "./ReserveTimeDialog"
@@ -51,7 +51,6 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const giftSection = useRef<HTMLDivElement>(null)
-  const { data: settings } = useSettings()
   const { data: warehouses } = useWarehouses()
 
   const [source, setSource] = useState<OrderSource>(existing?.source ?? "WhatsApp")
@@ -62,13 +61,13 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const [city, setCity] = useState(existing?.recipientCity ?? "")
   const [address, setAddress] = useState(existing?.recipientAddress ?? "")
   const [warehouseId, setWarehouseId] = useState(existing?.warehouseId ?? "")
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(existing?.paymentMethod ?? "CashOnDelivery")
+  // Customers pay the delivery company; the method isn't chosen per order any more.
+  const paymentMethod: PaymentMethod = existing?.paymentMethod ?? "CashOnDelivery"
   const [lines, setLines] = useState<Line[]>(() => existing?.items.map((item) => ({
     key: crypto.randomUUID(), productId: item.productId, name: item.productName, type: item.productType,
     unitPrice: item.unitPrice, quantity: item.quantity, discount: item.lineDiscount ? item.lineDiscount.toFixed(2) : "", isGift: item.isGift,
   })) ?? [])
   const [discount, setDiscount] = useState(existing?.discountTotal ? existing.discountTotal.toFixed(2) : "")
-  const [shipping, setShipping] = useState<string | null>(existing ? existing.shippingTotal.toFixed(2) : null)
   const [notes, setNotes] = useState(existing?.notes ?? "")
   const [submitted, setSubmitted] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -85,7 +84,6 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const paidLines = lines.filter((line) => !line.isGift)
   const giftLines = lines.filter((line) => line.isGift)
   const effectiveWarehouse = warehouseId || warehouses?.[0]?.id || ""
-  const shippingValue = shipping ?? (settings ? settings.defaultDeliveryFee.toFixed(2) : "")
   const productIds = [...new Set(lines.map((line) => line.productId))]
   const { data: freeStock } = useAvailability(productIds, effectiveWarehouse || undefined, !!effectiveWarehouse)
   // While a reserved order is edited, the units it already holds are available to it again.
@@ -99,9 +97,8 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
   const totals = useMemo(() => {
     const subtotal = paidLines.reduce((sum, line) => sum + Math.max(0, line.unitPrice * line.quantity - (Number(line.discount) || 0)), 0)
     const orderDiscount = Number(discount) || 0
-    const delivery = Number(shippingValue) || 0
-    return { subtotal, discount: orderDiscount, shipping: delivery, total: Math.max(0, subtotal - orderDiscount + delivery) }
-  }, [paidLines, discount, shippingValue])
+    return { subtotal, discount: orderDiscount, total: Math.max(0, subtotal - orderDiscount) }
+  }, [paidLines, discount])
 
   const required = lines.reduce<Record<string, number>>((all, line) => ({ ...all, [line.productId]: (all[line.productId] ?? 0) + line.quantity }), {})
   const shortages = Object.entries(required).filter(([productId, quantity]) => available && quantity > (available[productId] ?? 0))
@@ -118,7 +115,6 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
     phone: !/^\+?[0-9 ()\-/]{6,40}$/.test(phone.trim()) ? "Enter a valid phone number." : undefined,
     lines: paidLines.length === 0 ? "Add at least one product to sell. Gifts are added to an order." : undefined,
     discount: !moneyRe.test(discount) ? "Invalid amount." : totals.discount > totals.subtotal ? "More than the items total." : undefined,
-    shipping: !moneyRe.test(shippingValue) ? "Invalid amount." : undefined,
     lineDiscounts: paidLines.some((line) => !moneyRe.test(line.discount) || (Number(line.discount) || 0) > line.unitPrice * line.quantity),
   }
   const invalid = Object.values(errors).some(Boolean)
@@ -128,7 +124,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
       const body = {
         source, warehouseId: effectiveWarehouse, paymentMethod, customerId,
         recipient: { name: name.trim(), phone: phone.trim(), city: city.trim() || null, address: address.trim() || null },
-        discountTotal: Number(discount) || 0, shippingTotal: Number(shippingValue) || 0,
+        discountTotal: Number(discount) || 0,
         notes: notes.trim() || null,
         items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity, lineDiscount: line.isGift ? 0 : Number(line.discount) || 0, isGift: line.isGift })),
       }
@@ -208,7 +204,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
                 <SelectContent>{SOURCES.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
-            <Field label="Delivery address" htmlFor="o-address" className="sm:col-span-2"><Textarea id="o-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} /></Field>
+            <Field label="Address" htmlFor="o-address" className="sm:col-span-2"><Textarea id="o-address" rows={2} value={address} onChange={(event) => setAddress(event.target.value)} /></Field>
           </Section>
 
           <Section title="Products" bodyClassName="grid gap-3 p-4">
@@ -239,23 +235,19 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
           </div>
 
           <Section title="Notes" bodyClassName="p-4">
-            <Textarea aria-label="Order notes" rows={2} placeholder="Gift wrap, preferred delivery time…" value={notes} onChange={(event) => setNotes(event.target.value)} />
+            <Textarea aria-label="Order notes" rows={2} placeholder="Gift wrap, anything to remember…" value={notes} onChange={(event) => setNotes(event.target.value)} />
           </Section>
         </div>
 
         <div className="grid content-start gap-6 lg:sticky lg:top-16">
-          <Section title="Payment" bodyClassName="grid gap-4 p-4">
-            {(warehouses?.length ?? 0) > 1 && (
-              <Field label="Ship from" htmlFor="o-wh"><Select value={effectiveWarehouse} onValueChange={setWarehouseId}>
+          {(warehouses?.length ?? 0) > 1 && (
+            <Section title="Stock" bodyClassName="grid gap-4 p-4">
+              <Field label="Take stock from" htmlFor="o-wh"><Select value={effectiveWarehouse} onValueChange={setWarehouseId}>
                 <SelectTrigger id="o-wh" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>{warehouses?.map((warehouse) => <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</SelectItem>)}</SelectContent>
               </Select></Field>
-            )}
-            <Field label="Payment" htmlFor="o-pay"><Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}>
-              <SelectTrigger id="o-pay" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>{(settings?.enabledPaymentMethods ?? ["CashOnDelivery"]).map((method) => <SelectItem key={method} value={method}>{humanize(method)}</SelectItem>)}</SelectContent>
-            </Select></Field>
-          </Section>
+            </Section>
+          )}
 
           <div className="rounded-lg border border-hairline bg-card p-4 text-sm">
             <div className="flex justify-between py-1"><span className="text-muted-foreground">Items</span><span className="tabular">{money(totals.subtotal)}</span></div>
@@ -263,8 +255,6 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
             <div className="flex items-center justify-between gap-3 py-1"><label htmlFor="o-discount" className="text-muted-foreground">Order discount</label>
               <Input id="o-discount" inputMode="decimal" placeholder="0.00" value={discount} onChange={(event) => setDiscount(event.target.value)} aria-invalid={!!show("discount")} className="h-7 w-24 text-right tabular" /></div>
             {show("discount") && <p className="text-right text-sm font-medium text-destructive">{show("discount")}</p>}
-            <div className="flex items-center justify-between gap-3 py-1"><label htmlFor="o-shipping" className="text-muted-foreground">Delivery fee</label>
-              <Input id="o-shipping" inputMode="decimal" value={shippingValue} onChange={(event) => setShipping(event.target.value)} aria-invalid={!!show("shipping")} className="h-7 w-24 text-right tabular" /></div>
             <div className="mt-2 flex items-baseline justify-between border-t border-hairline pt-3"><span className="font-medium">Total</span><span className="font-display text-2xl tabular">{money(totals.total)}</span></div>
             <p className="mt-1 text-right text-xs text-muted-foreground">Final prices are set by the server when saved.</p>
             <div className="mt-4 grid gap-2">

@@ -11,9 +11,6 @@ public sealed class ErpOptions
     /// <summary>Used to decide what "today" is for expiry dates and daily reports.</summary>
     public string TimeZone { get; set; } = "Asia/Beirut";
 
-    /// <summary>Delivery fee pre-filled on new orders; editable per order.</summary>
-    public decimal DefaultDeliveryFee { get; set; } = 4.00m;
-
     /// <summary>Batches expiring within this many days are flagged.</summary>
     public int ExpiryWarningDays { get; set; } = 60;
 }

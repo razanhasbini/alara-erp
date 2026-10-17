@@ -45,7 +45,7 @@ export function AnalyticsPage() {
   const s = summary.data
   return (
     <>
-      <PageHeader title="Analytics" description="Sales, cost and profit for any period. A sale counts when an order is confirmed. Cancelled and returned orders are excluded."
+      <PageHeader title="Analytics" description="Sales, cost and profit for any period. A sale counts when an order is sold. Cancelled and returned orders are excluded."
         meta={summary.isFetching && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><InlineSpinner className="size-3" /> Updating</span>} />
 
       <div className="mb-6 flex flex-wrap items-end gap-2">
@@ -89,11 +89,13 @@ export function AnalyticsPage() {
             <ProductTables data={products.data} loading={products.isLoading} error={products.error} />
             <div className="grid content-start gap-6">
               <ChannelTable s={s} />
+              {s.expensesByCategory && <BillsByCategory s={s} />}
               <Section title="How these numbers work" bodyClassName="grid gap-2 p-4 text-xs text-muted-foreground">
-                <p><b className="text-foreground">Net sales</b>: items minus discounts, without delivery fees.</p>
+                <p><b className="text-foreground">Net sales</b>: items minus discounts.</p>
                 {s.includesCosts && <>
                   <p><b className="text-foreground">Cost of goods</b>: what the units that left actually cost, from the inventory batch they were taken from.</p>
-                  <p><b className="text-foreground">Gross profit</b>: net sales − cost of goods. <b className="text-foreground">Profit</b> also adds delivery fees charged and subtracts the delivery costs recorded by a manager.</p>
+                  <p><b className="text-foreground">Gross profit</b>: net sales − cost of goods.</p>
+                  <p><b className="text-foreground">Net profit</b>: gross profit − the bills dated in the period (electricity, Wi-Fi, models, wages…) from <Link to="/bills" className="text-primary hover:underline">Bills &amp; expenses</Link>.</p>
                 </>}
                 <p><b className="text-foreground">Cash received</b>: the full order total, counted on the day the order is sold.</p>
                 <p>Returned orders are not sales. Bundle revenue is shared across the products inside it by their full prices.</p>
@@ -112,9 +114,9 @@ function Totals({ s }: { s: AnalyticsSummary }) {
   if (!s.includesCosts) {
     return (
       <FigureRow>
-        <Figure label="Net sales" value={money(t.netSales)} sub={range} hint="Items minus discounts (without delivery fees) from orders confirmed in this period. Cancelled and returned orders are excluded." />
-        <Figure label="Orders" value={number(t.orders)} sub={`avg ${money(t.averageOrderValue)}`} hint="Orders confirmed in this period that remain confirmed, shipped or delivered." />
-        <Figure label="Units sold" value={number(t.unitsSold)} sub="incl. units inside bundles" hint="Product units committed to confirmed orders, including the products inside bundles." />
+        <Figure label="Net sales" value={money(t.netSales)} sub={range} hint="Items minus discounts from orders sold in this period. Cancelled and returned orders are excluded." />
+        <Figure label="Orders" value={number(t.orders)} sub={`avg ${money(t.averageOrderValue)}`} hint="Orders sold in this period (not cancelled or returned)." />
+        <Figure label="Units sold" value={number(t.unitsSold)} sub="incl. units inside bundles" hint="Product units in sold orders, including the products inside bundles." />
         <Figure label="Cash received" value={money(t.cashReceived)} hint="The full total of orders sold in this period. Reserved orders are excluded." />
       </FigureRow>
     )
@@ -122,16 +124,16 @@ function Totals({ s }: { s: AnalyticsSummary }) {
   return (
     <FigureRow columns={5}>
       <Figure label="Net sales" value={money(t.netSales)} sub={`${number(t.orders)} order${t.orders === 1 ? "" : "s"} · avg ${money(t.averageOrderValue)}`}
-        hint="Items minus discounts (without delivery fees) from orders confirmed in this period. Cancelled and returned orders are excluded." />
+        hint="Items minus discounts from orders sold in this period. Cancelled and returned orders are excluded." />
       <Figure label="Cost of goods" value={money(t.costOfGoods)} sub={`${number(t.unitsSold)} units sold`}
-        hint="What the sold units cost ÀLara Line, from the exact batches deducted when each order was confirmed." />
+        hint="What the sold units cost ÀLara Line, from the exact deliveries the stock was taken from when each order was sold." />
       <Figure label="Gross profit" value={money(t.grossProfit)} tone={(t.grossProfit ?? 0) < 0 ? "bad" : undefined} sub={`${percent(t.grossMarginPercent)} margin`}
         hint="Net sales − cost of goods. Margin = gross profit ÷ net sales." />
-      <Figure label="Profit after delivery" value={money(t.profit)} tone={(t.profit ?? 0) < 0 ? "bad" : undefined}
-        sub={`delivery ${(t.deliveryResult ?? 0) >= 0 ? "+" : ""}${money(t.deliveryResult)}`}
-        hint="Gross profit + delivery fees charged to customers − delivery costs recorded on the Deliveries page. Other expenses (rent, salaries, ads) are not included." />
-      <Figure label="Cash received" value={money(t.cashReceived)} sub={range}
-        hint="The full total of orders sold in this period. An order is paid when it is sold." />
+      <Figure label="Bills" value={money(t.expenses)} sub={<Link to="/bills" className="hover:underline">Bills &amp; expenses →</Link>}
+        hint="Electricity, Wi-Fi, models, wages and other bills dated in this period." />
+      <Figure label="Net profit" value={money(t.profit)} tone={(t.profit ?? 0) < 0 ? "bad" : (t.profit ?? 0) > 0 ? "good" : undefined}
+        sub={`${percent(t.netMarginPercent)} of sales`}
+        hint="Gross profit − bills. What the business actually earned in this period." />
     </FigureRow>
   )
 }
@@ -169,7 +171,7 @@ function PeriodChart({ s }: { s: AnalyticsSummary }) {
           <table className="w-full text-sm">
             <thead><tr className="border-b border-hairline">
               <th className="eyebrow py-1.5 text-left">Period</th><th className="eyebrow py-1.5 text-right">Orders</th><th className="eyebrow py-1.5 text-right">Net sales</th>
-              {s.includesCosts && <><th className="eyebrow py-1.5 text-right">Cost</th><th className="eyebrow py-1.5 text-right">Gross profit</th><th className="eyebrow py-1.5 text-right">Profit</th></>}
+              {s.includesCosts && <><th className="eyebrow py-1.5 text-right">Cost</th><th className="eyebrow py-1.5 text-right">Gross profit</th><th className="eyebrow py-1.5 text-right">Bills</th><th className="eyebrow py-1.5 text-right">Net profit</th></>}
               <th className="eyebrow py-1.5 text-right">Cash in</th>
             </tr></thead>
             <tbody>{[...s.series].reverse().map((p) => (
@@ -178,6 +180,7 @@ function PeriodChart({ s }: { s: AnalyticsSummary }) {
                 <td className="py-1.5 text-right tabular">{p.orders}</td><td className="py-1.5 text-right tabular">{money(p.netSales)}</td>
                 {s.includesCosts && <><td className="py-1.5 text-right tabular">{money(p.costOfGoods)}</td>
                   <td className={cn("py-1.5 text-right tabular", (p.grossProfit ?? 0) < 0 && "text-tone-red")}>{money(p.grossProfit)}</td>
+                  <td className="py-1.5 text-right tabular text-muted-foreground">{p.expenses ? money(p.expenses) : "—"}</td>
                   <td className={cn("py-1.5 text-right tabular", (p.profit ?? 0) < 0 && "text-tone-red")}>{money(p.profit)}</td></>}
                 <td className="py-1.5 text-right tabular">{money(p.cashReceived)}</td>
               </tr>
@@ -209,6 +212,28 @@ function PeriodChart({ s }: { s: AnalyticsSummary }) {
           </div>
         </>
       )}
+    </Section>
+  )
+}
+
+const BILL_LABELS: Record<string, string> = { Electricity: "Electricity", Internet: "Internet / Wi-Fi", Models: "Models", Wages: "Wages", Other: "Other" }
+
+function BillsByCategory({ s }: { s: AnalyticsSummary }) {
+  const rows = s.expensesByCategory ?? []
+  const total = rows.reduce((sum, r) => sum + r.amount, 0)
+  return (
+    <Section title="Bills by category" actions={<Link to="/bills" className="text-xs font-medium text-primary hover:underline">Manage →</Link>}>
+      <table className="w-full text-sm">
+        <tbody>{rows.map((r) => (
+          <tr key={r.category} className="border-b border-hairline last:border-0">
+            <td className="px-4 py-2">{BILL_LABELS[r.category] ?? r.category}</td>
+            <td className={cn("px-4 py-2 text-right tabular", !r.amount && "text-muted-foreground")}>{r.amount ? money(r.amount) : "—"}</td>
+          </tr>
+        ))}</tbody>
+        <tfoot><tr className="border-t border-hairline bg-secondary/40 font-medium">
+          <td className="px-4 py-2">Total</td><td className="px-4 py-2 text-right tabular">{money(total)}</td>
+        </tr></tfoot>
+      </table>
     </Section>
   )
 }

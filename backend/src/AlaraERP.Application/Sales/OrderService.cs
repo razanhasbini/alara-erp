@@ -94,16 +94,19 @@ public sealed class OrderService(
         return new OrderDetailDto(
             o.Id, o.OrderNumber, o.Status, o.PaymentStatus, o.PaymentMethod, o.Source, o.WarehouseId, warehouse?.Name ?? "?", o.CustomerId,
             o.RecipientName, o.RecipientPhone, o.RecipientCity, o.RecipientAddress,
-            o.Subtotal, o.DiscountTotal, o.ShippingTotal, o.GrandTotal, o.CurrencyCode,
+            o.Subtotal, o.DiscountTotal, o.GrandTotal, o.CurrencyCode,
             o.Notes, o.CreatedByUserId, Name(o.CreatedByUserId), o.CreatedAt, o.UpdatedAt,
-            o.ConfirmedAt, o.ShippedAt, o.DeliveredAt, o.CancelledAt, o.ReturnedAt, o.PaidAt,
+            o.ConfirmedAt, o.CancelledAt, o.ReturnedAt, o.PaidAt,
             allowed,
             o.Items.OrderBy(i => i.ProductName).Select(i => new OrderItemDto(
                 i.Id, i.ProductId, i.ProductName, i.ProductType, i.IsGift, i.Quantity, i.UnitPrice, i.LineDiscount, i.LineTotal,
                 i.Components.OrderBy(c => c.ComponentName)
                     .Select(c => new OrderItemComponentDto(c.ComponentProductId, c.ComponentName, c.QuantityPerBundle, c.TotalQuantity))
                     .ToList())).ToList(),
-            o.History.OrderBy(h => h.ChangedAt).ThenBy(h => h.Id)
+            // Entries written in the same moment read best as: created, status change, reservation time, payment.
+            o.History.OrderBy(h => h.ChangedAt)
+                .ThenBy(h => h.EventType == OrderEventType.Status ? (h.OldValue == null ? 0 : 1) : h.EventType == OrderEventType.Reservation ? 2 : 3)
+                .ThenBy(h => h.Id)
                 .Select(h => new OrderHistoryDto(h.EventType, h.OldValue, h.NewValue, h.Notes, h.ChangedAt, Name(h.ChangedByUserId)))
                 .ToList(),
             o.ReservedAt, o.ReservedUntil);
@@ -123,7 +126,6 @@ public sealed class OrderService(
         order.SetCustomer(customerId);
         order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
             request.DiscountTotal,
-            request.ShippingTotal ?? options.Value.DefaultDeliveryFee,
             request.WarehouseId, request.Source, request.PaymentMethod);
         order.SetNotes(request.Notes);
         db.Orders.Add(order);
@@ -162,7 +164,7 @@ public sealed class OrderService(
                 await db.SaveChangesAsync(ct);
             }
             order.ReplaceLines(await BuildItemsAsync(order.Id, request.Items, ct),
-                request.DiscountTotal, request.ShippingTotal,
+                request.DiscountTotal,
                 request.WarehouseId, request.Source, request.PaymentMethod);
             order.SetRecipient(ToRecipient(request.Recipient));
             order.SetCustomer(customerId);
@@ -225,26 +227,12 @@ public sealed class OrderService(
         }).ToList();
     }
 
-    public Task<OrderDetailDto> ShipAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
-        ChangeAsync(id, async order =>
-        {
-            order.TransitionTo(OrderStatus.Shipped, UserId, clock.UtcNow, request.Notes);
-            // Current orders were deducted at confirmation. This only fulfils a reservation left
-            // by an order confirmed before that workflow changed.
-            await stock.ShipAsync(order.Id, order.OrderNumber, ct);
-        }, ct);
-
-    public Task<OrderDetailDto> DeliverAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
-        ChangeAsync(id, order =>
-        {
-            order.TransitionTo(OrderStatus.Delivered, UserId, clock.UtcNow, request.Notes);
-            return Task.CompletedTask;
-        }, ct);
-
+    /// <summary>The customer sent a sold order back: the units go back on the shelf and the sale is taken out.</summary>
     public Task<OrderDetailDto> ReturnAsync(Guid id, TransitionRequest request, CancellationToken ct) =>
         ChangeAsync(id, async order =>
         {
             order.TransitionTo(OrderStatus.Returned, UserId, clock.UtcNow, request.Notes);
+            await stock.ReleaseAsync(order.Id, ct); // a hold left by an order sold before sales deducted at once
             await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
         }, ct);
 

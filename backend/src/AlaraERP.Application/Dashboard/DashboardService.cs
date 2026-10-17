@@ -12,8 +12,7 @@ namespace AlaraERP.Application.Dashboard;
 public sealed record CatalogSummary(int ActiveProducts, int ActiveBundles, int InactiveProducts);
 
 public sealed record OrderSummary(
-    int Total, int Drafts, int AwaitingShipment, int OutForDelivery, int Delivered, int Cancelled, int Returned,
-    int CreatedToday, int Reserved);
+    int Total, int Drafts, int Sold, int Reserved, int Cancelled, int Returned, int CreatedToday, int SoldToday);
 
 /// <summary>Money figures, each with a precise definition (shown in the UI as the metric's tooltip).</summary>
 public sealed record FinanceSummary(
@@ -22,10 +21,10 @@ public sealed record FinanceSummary(
     decimal CollectedRevenue,
     /// <summary>Same as above, restricted to orders paid this calendar month (business time zone).</summary>
     decimal CollectedThisMonth,
-    /// <summary>Σ grand total of Confirmed + Shipped orders (not yet delivered).</summary>
-    decimal OpenOrderValue,
-    /// <summary>Σ independently recorded delivery expenses.</summary>
-    decimal DeliveryCosts);
+    /// <summary>Σ grand total of reserved orders: sales waiting for the customer.</summary>
+    decimal ReservedValue,
+    /// <summary>Σ bills dated this calendar month. Null unless the caller has costs.view.</summary>
+    decimal? BillsThisMonth);
 
 public sealed record DailyPoint(DateOnly Date, int Orders, decimal Value);
 
@@ -61,7 +60,7 @@ public sealed class DashboardService(
     IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, StockQueryService stockQueries,
     IOptions<ErpOptions> options, InventoryFeatureService features)
 {
-    private static readonly OrderStatus[] CountedStatuses = [OrderStatus.Confirmed, OrderStatus.Shipped, OrderStatus.Delivered];
+    private static readonly OrderStatus[] CountedStatuses = [OrderStatus.Confirmed];
 
     public async Task<DashboardDto> GetAsync(CancellationToken ct)
     {
@@ -98,9 +97,10 @@ public sealed class DashboardService(
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var startOfToday = clock.StartOfDayUtc(clock.Today);
         int Get(OrderStatus s) => byStatus.GetValueOrDefault(s);
-        return new OrderSummary(byStatus.Values.Sum(), Get(OrderStatus.Draft), Get(OrderStatus.Confirmed), Get(OrderStatus.Shipped),
-            Get(OrderStatus.Delivered), Get(OrderStatus.Cancelled), Get(OrderStatus.Returned),
-            await db.Orders.CountAsync(o => o.CreatedAt >= startOfToday, ct), Get(OrderStatus.Reserved));
+        return new OrderSummary(byStatus.Values.Sum(), Get(OrderStatus.Draft), Get(OrderStatus.Confirmed), Get(OrderStatus.Reserved),
+            Get(OrderStatus.Cancelled), Get(OrderStatus.Returned),
+            await db.Orders.CountAsync(o => o.CreatedAt >= startOfToday, ct),
+            await db.Orders.CountAsync(o => o.Status == OrderStatus.Confirmed && o.ConfirmedAt >= startOfToday, ct));
     }
 
     private async Task<FinanceSummary> FinanceAsync(CancellationToken ct)
@@ -112,8 +112,12 @@ public sealed class DashboardService(
             options.Value.BaseCurrency,
             await paid.SumAsync(o => o.GrandTotal, ct),
             await paid.Where(o => o.PaidAt >= monthStart).SumAsync(o => o.GrandTotal, ct),
-            await db.Orders.Where(o => o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Shipped).SumAsync(o => o.GrandTotal, ct),
-            await db.DeliveryExpenses.SumAsync(e => e.Amount, ct));
+            await db.Orders.Where(o => o.Status == OrderStatus.Reserved).SumAsync(o => o.GrandTotal, ct),
+            currentUser.HasPermission(Permissions.Costs.View)
+                ? await db.Expenses.Where(e => e.IncurredOn >= new DateOnly(today.Year, today.Month, 1)
+                                               && e.IncurredOn <= new DateOnly(today.Year, today.Month, 1).AddMonths(1).AddDays(-1))
+                    .SumAsync(e => e.Amount, ct)
+                : null);
     }
 
     private async Task<IReadOnlyList<DailyPoint>> DailyAsync(CancellationToken ct)

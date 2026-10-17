@@ -49,15 +49,16 @@ export function DashboardPage() {
       {(finance || orders) && (
         <FigureRow>
           {finance && <Figure label="Sales this month" value={money(finance.collectedThisMonth)} sub={`${money(finance.collectedRevenue)} all time`}
-            hint="Order totals (incl. delivery fee) of orders sold this calendar month. An order counts as paid the moment it's sold; reserved, cancelled and returned orders are excluded." />}
-          {finance && <Figure label="Delivery costs" value={money(finance.deliveryCosts)}
-            sub={<Link to="/deliveries" className="hover:underline">Deliveries →</Link>}
-            hint="Delivery costs recorded by a manager (all time). They are tracked separately from customer orders." />}
-          {orders && <Figure label="To pack" value={number(orders.awaitingShipment)} sub={<Link to="/orders?status=Reserved" className="hover:underline">{orders.reserved} reserved →</Link>}
-            hint="Sold orders (stock deducted) that have not shipped yet. Reserved orders hold stock but aren't sold yet." />}
-          {orders && <Figure label="Out for delivery" value={number(orders.outForDelivery)} sub={`${orders.createdToday} new today`}
-            hint="Orders marked as shipped and not yet marked delivered or returned." />}
-          {!finance && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
+            hint="Order totals of orders sold this calendar month. An order counts as paid the moment it's sold; reserved, cancelled and returned orders are excluded." />}
+          {finance?.billsThisMonth != null && <Figure label="Bills this month" value={money(finance.billsThisMonth)}
+            sub={<Link to="/bills" className="hover:underline">Bills &amp; expenses →</Link>}
+            hint="Electricity, Wi-Fi, models, wages and other bills dated this month. They are subtracted from profit in Sales & profit." />}
+          {orders && <Figure label="Sold today" value={number(orders.soldToday)} sub={`${orders.createdToday} new order${orders.createdToday === 1 ? "" : "s"} today`}
+            hint="Orders marked as sold today. Selling deducts the stock and counts as paid straight away." />}
+          {orders && <Figure label="Reserved" value={number(orders.reserved)}
+            sub={<Link to="/orders?status=Reserved" className="hover:underline">{finance ? `${money(finance.reservedValue)} waiting →` : "See reservations →"}</Link>}
+            hint="Orders holding stock for a customer who hasn't bought yet. They aren't sales until marked as sold." />}
+          {(!finance || finance.billsThisMonth == null) && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
           {!finance && catalog && <Figure label="Active products" value={number(catalog.activeProducts)} sub={`${catalog.activeBundles} bundles`} hint="Individual products currently for sale." />}
         </FigureRow>
       )}

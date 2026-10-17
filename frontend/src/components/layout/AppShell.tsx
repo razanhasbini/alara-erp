@@ -2,7 +2,7 @@ import { useState, type ComponentType } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import {
   ArrowLeftRight, BarChart3, Bell, Boxes, Globe, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
-  ContactRound, Package, PackageOpen, Settings2, ShieldCheck, Truck, UserRound, Users, Warehouse,
+  ContactRound, Package, PackageOpen, ReceiptText, Settings2, ShieldCheck, UserRound, Users, Warehouse,
 } from "lucide-react"
 import logo from "@/assets/logo.png"
 import { useAuth } from "@/auth/auth"
@@ -27,7 +27,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/orders", label: "Orders", icon: ClipboardList, permission: P.orders.view },
       { to: "/customers", label: "Customers", icon: ContactRound, permission: P.orders.view },
-      { to: "/deliveries", label: "Deliveries & cash", icon: Truck, permission: P.orders.payments },
     ],
   },
   {
@@ -58,6 +57,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Administration",
     items: [
+      { to: "/bills", label: "Bills & expenses", icon: ReceiptText, permission: P.expenses.manage },
       { to: "/employees", label: "Employees", icon: Users, permission: P.users.view },
       { to: "/roles", label: "Roles & permissions", icon: ShieldCheck, permission: P.users.view },
       { to: "/features", label: "Feature controls", icon: Settings2, role: "Super Admin" },

@@ -2,9 +2,11 @@ namespace AlaraERP.Domain.Sales;
 
 /// <summary>
 /// Reserved: stock is held for the customer (not sold: no revenue, no cost) until <c>ReservedUntil</c>.
-/// Confirmed: sold — stock deducted, counted in sales. Draft exists only for orders created before reservations.
+/// Confirmed: sold — stock deducted, counted in sales and paid. Delivery is handled entirely by the delivery company
+/// and is not tracked. A sale can be cancelled, or returned when the customer sends it back; both restore the stock.
+/// Draft exists only for orders created before reservations.
 /// </summary>
-public enum OrderStatus { Draft, Confirmed, Shipped, Delivered, Cancelled, Returned, Reserved }
+public enum OrderStatus { Draft, Confirmed, Cancelled, Returned, Reserved }
 
 public enum OrderSource { WhatsApp, Instagram, Website, Other }
 

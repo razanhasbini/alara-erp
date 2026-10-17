@@ -63,7 +63,7 @@ const expInputs = await page.$$("input[id^='e-']")
 const costInputs = await page.$$("input[id^='c-']")
 for (let i = 0; i < qtyInputs.length; i++) {
   await qtyInputs[i].type(String(20 + i * 5))
-  await expInputs[i].evaluate((el, v) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })) }, `2027-0${3 + (i % 5)}-15`)
+  await expInputs[i]?.evaluate((el, v) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })) }, `2027-0${3 + (i % 5)}-15`)
   await costInputs[i]?.type("4.5")
 }
 await page.type("#rc-sup", "Beauty Labs Istanbul"); await page.type("#rc-ref", "INV-2026-0912")
@@ -71,12 +71,7 @@ await shot("06-receive-form")
 await clickText("Record receipt", "button")
 await page.waitForSelector("h1 ::-p-text(RC-0)", { timeout: 10000 }); await shot("07-receipt")
 
-// 4. a courier + an order for the bundle
-await page.goto(`${BASE}/deliveries`, { waitUntil: "networkidle0" })
-await clickText("Add delivery company", "button")
-await page.type("#dc-name", `Courier ${Date.now() % 100000}`); await page.type("#dc-phone", "+961 1 234 567")
-await clickText("Save", "button[type=submit]"); await sleep(800); await page.keyboard.press("Escape")
-
+// 4. an order for the bundle
 await page.goto(`${BASE}/orders/new`, { waitUntil: "networkidle0" })
 await page.type("#o-name", "Rima Saad"); await page.type("#o-phone", "+961 70 123 456"); await page.type("#o-city", "Beirut")
 await page.type("#o-address", "Hamra, Bliss Street, Bldg 12, 3rd floor")
@@ -97,21 +92,21 @@ await page.goto(`${BASE}/orders?status=Reserved`, { waitUntil: "networkidle0" })
 await page.goto(`${BASE}/alerts`, { waitUntil: "networkidle0" }); await page.waitForSelector("h1 ::-p-text(Alerts)"); await shot("09d-alerts")
 await page.goto(orderUrl, { waitUntil: "networkidle0" })
 
-// 5. ship + deliver
-await clickText("Shipping", "button")
-await page.click("#s-courier"); await clickText("Courier ", "[role=option]")
-await page.type("#s-track", "WK-889120"); await page.type("#s-fee", "3")
-await clickText("Ship", "button[type=submit]")
-await page.waitForSelector("header ::-p-text(Shipped)", { timeout: 10000 }); await sleep(500)
-await clickText("Delivered", "button")
-await clickText("Mark delivered", "[role=alertdialog] button")
-await page.waitForSelector("header ::-p-text(With courier)", { timeout: 10000 }); await shot("10-order-delivered")
+// 5. a bill (it lowers net profit in analytics)
+await page.goto(`${BASE}/bills`, { waitUntil: "networkidle0" })
+await clickText("Add bill", "button")
+await page.waitForSelector("#bill-amount"); await page.type("#bill-amount", "45.50"); await page.type("#bill-description", "Generator")
+await shot("10-bill-dialog")
+await clickText("Add bill", "[role=dialog] button[type=submit]")
+await page.waitForSelector("td ::-p-text(Generator)", { timeout: 10000 }); await shot("10a-bills")
 
 // 5b. analytics, bundle withdrawal, website placeholder
 await page.goto(`${BASE}/analytics?range=today`, { waitUntil: "networkidle0" })
 await page.waitForSelector("::-p-text(Gross profit)", { timeout: 10000 })
 const grossProfitShown = await page.evaluate(() => [...document.querySelectorAll(".eyebrow")].some((e) => e.textContent?.includes("Gross profit")))
 if (!grossProfitShown) problems.push("analytics: gross profit figure missing")
+const netProfitShown = await page.evaluate(() => [...document.querySelectorAll(".eyebrow")].some((e) => e.textContent?.includes("Net profit")))
+if (!netProfitShown) problems.push("analytics: net profit figure missing")
 await shot("10b-analytics")
 await clickText("Bundles", "button[role=radio]"); await sleep(400); await shot("10c-analytics-bundles")
 await page.goto(`${BASE}/products/bundles`, { waitUntil: "networkidle0" })
@@ -124,7 +119,7 @@ await page.goto(`${BASE}/website-insights`, { waitUntil: "networkidle0" }); awai
 
 // 6. views
 for (const [path, name] of [["/inventory", "11-inventory"], ["/inventory/movements", "12-movements"], ["/orders", "13-orders"],
-  ["/deliveries", "14-deliveries"], ["/", "15-dashboard"], ["/employees", "16-employees"], ["/roles", "17-roles"], ["/warehouses", "18-warehouses"]]) {
+  ["/bills", "14-bills"], ["/", "15-dashboard"], ["/employees", "16-employees"], ["/roles", "17-roles"], ["/warehouses", "18-warehouses"]]) {
   await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" }); await shot(name)
 }
 await page.goto(`${BASE}/inventory?product=` + await page.evaluate(async () => {

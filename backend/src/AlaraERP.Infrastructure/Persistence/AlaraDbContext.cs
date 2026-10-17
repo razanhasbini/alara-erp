@@ -1,5 +1,6 @@
 using AlaraERP.Application.Common;
 using AlaraERP.Domain.Catalog;
+using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Inventory;
 using AlaraERP.Domain.Sales;
 using AlaraERP.Infrastructure.Identity;
@@ -36,8 +37,7 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();
-    public DbSet<DeliveryCompany> DeliveryCompanies => Set<DeliveryCompany>();
-    public DbSet<DeliveryExpense> DeliveryExpenses => Set<DeliveryExpense>();
+    public DbSet<Expense> Expenses => Set<Expense>();
 
     public DbSet<AlaraERP.Domain.Notifications.Notification> Notifications => Set<AlaraERP.Domain.Notifications.Notification>();
     public DbSet<AlaraERP.Domain.Notifications.NotificationRead> NotificationReads => Set<AlaraERP.Domain.Notifications.NotificationRead>();

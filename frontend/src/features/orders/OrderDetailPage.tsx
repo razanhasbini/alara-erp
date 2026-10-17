@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlarmClock, Check, Clock, Pencil, Printer, RotateCcw, Trash2, Truck, Undo2, X } from "lucide-react"
+import { AlarmClock, Check, Clock, Pencil, Printer, RotateCcw, Trash2, Undo2, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog, Field, SubmitButton } from "@/components/common/controls"
@@ -20,19 +20,17 @@ import { cn } from "@/lib/utils"
 import type { OrderDetail, OrderStatus } from "@/types/api"
 import { ReserveTimeDialog } from "./ReserveTimeDialog"
 
-type Action = "confirm" | "ship" | "deliver" | "return" | "cancel"
+type Action = "confirm" | "return" | "cancel"
 type ReserveMode = "reserve" | "change"
 
 const actionDone: Record<Action, string> = {
-  confirm: "sold — paid and stock deducted", ship: "marked as shipped", deliver: "marked delivered",
+  confirm: "sold — paid and stock deducted", 
   return: "returned — stock back on the shelf", cancel: "cancelled",
 }
 
 const actionCopy: Record<Action, { title: string; description: string; label: string; destructive?: boolean; note?: boolean }> = {
   confirm: { title: "Mark as sold?", description: "The held stock for every item, including products inside bundles, is deducted and the sale is counted in revenue and profit.", label: "Mark as sold" },
-  ship: { title: "Mark as shipped?", description: "The order has left ÀLara Line. Stock and payment were already applied when it was sold.", label: "Mark shipped", note: true },
-  deliver: { title: "Mark as delivered?", description: "The customer has received the order. Payment was already recorded when it was sold.", label: "Mark delivered" },
-  return: { title: "Record a returned delivery?", description: "Use when the customer refused or delivery failed. The units go back into stock, into the batches they left from.", label: "Record return", destructive: true, note: true },
+  return: { title: "Record a return?", description: "Use when the customer sent the order back or refused it. The units go back into stock and the sale is taken out of revenue and profit.", label: "Record return", destructive: true, note: true },
   cancel: { title: "Cancel this order?", description: "Reserved stock is released and any stock deducted when it was sold is returned. This cannot be undone.", label: "Cancel order", destructive: true, note: true },
 }
 
@@ -91,8 +89,6 @@ export function OrderDetailPage() {
   if (allowed("Reserved") && can(P.orders.update)) buttons.push(<Button key="reserve" variant="outline" onClick={() => setReserveMode("reserve")}><Undo2 /> {o.status === "Draft" ? "Reserve" : "Back to reserved"}</Button>)
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
   if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Mark as sold</Button>)
-  if (allowed("Shipped") && can(P.orders.update)) buttons.push(<Button key="ship" onClick={() => setAction("ship")}><Truck /> Mark shipped</Button>)
-  if (allowed("Delivered") && can(P.orders.update)) buttons.push(<Button key="deliver" onClick={() => setAction("deliver")}><Check /> Delivered</Button>)
   if (can(P.orders.delete)) buttons.push(<Button key="delete" variant="destructive" onClick={() => setConfirmDelete(true)}><Trash2 /> Delete test order</Button>)
 
   // Every order starts as an internal draft and immediately becomes reserved or sold; "Reserved until…" already
@@ -144,7 +140,6 @@ export function OrderDetailPage() {
             <dl className="ml-auto grid max-w-xs grid-cols-2 gap-y-1 border-t border-hairline px-4 py-3 text-sm">
               <dt className="text-muted-foreground">Items</dt><dd className="text-right tabular">{money(o.subtotal)}</dd>
               {o.discountTotal > 0 && <><dt className="text-muted-foreground">Discount</dt><dd className="text-right tabular">−{money(o.discountTotal)}</dd></>}
-              <dt className="text-muted-foreground">Delivery</dt><dd className="text-right tabular">{money(o.shippingTotal)}</dd>
               <dt className="mt-1 border-t border-hairline pt-2 font-medium">Total</dt>
               <dd className="font-display mt-1 border-t border-hairline pt-1 text-right text-xl tabular">{money(o.grandTotal, o.currencyCode)}</dd>
             </dl>
@@ -177,7 +172,7 @@ export function OrderDetailPage() {
         </div>
 
         <div className="grid content-start gap-6">
-          <Section title="Customer" actions={!["Delivered", "Cancelled", "Returned"].includes(o.status) && can(P.orders.update) &&
+          <Section title="Customer" actions={!["Cancelled", "Returned"].includes(o.status) && can(P.orders.update) &&
             <Button size="xs" variant="ghost" onClick={() => setEditingRecipient(true)}>Edit</Button>} bodyClassName="p-4">
             <Facts items={[
               ["Name", o.customerId ? <Link key="customer" to={`/customers?search=${encodeURIComponent(o.recipientPhone)}`} className="font-medium text-primary hover:underline">{o.recipientName}</Link> : o.recipientName],
@@ -187,8 +182,7 @@ export function OrderDetailPage() {
           </Section>
           <Section title="Order & payment" bodyClassName="p-4">
             <Facts items={[
-              ["Ships from", o.warehouseName],
-              ["Payment", humanize(o.paymentMethod)],
+              ["Stock from", o.warehouseName],
               ["Paid", o.paidAt ? dateTime(o.paidAt) : null],
             ]} />
           </Section>
