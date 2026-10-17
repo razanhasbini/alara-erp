@@ -24,7 +24,11 @@ public sealed record FinanceSummary(
     /// <summary>Σ grand total of reserved orders: sales waiting for the customer.</summary>
     decimal ReservedValue,
     /// <summary>Σ bills dated this calendar month. Null unless the caller has costs.view.</summary>
-    decimal? BillsThisMonth);
+    decimal? BillsThisMonth,
+    /// <summary>Cost of everything given away this month (gift lines and gift/sample take-outs). Null without costs.view.</summary>
+    decimal? GiftsThisMonth = null,
+    /// <summary>This month's net profit as in analytics: gross profit − gifts − bills. Null without costs.view.</summary>
+    decimal? NetProfitThisMonth = null);
 
 public sealed record DailyPoint(DateOnly Date, int Orders, decimal Value);
 
@@ -58,7 +62,7 @@ public sealed record DashboardDto(
 /// <summary>Live aggregates. Each section is included only if the caller may see that module.</summary>
 public sealed class DashboardService(
     IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, StockQueryService stockQueries,
-    IOptions<ErpOptions> options, InventoryFeatureService features)
+    IOptions<ErpOptions> options, InventoryFeatureService features, Analytics.AnalyticsService analytics)
 {
     private static readonly OrderStatus[] CountedStatuses = [OrderStatus.Confirmed];
 
@@ -106,18 +110,19 @@ public sealed class DashboardService(
     private async Task<FinanceSummary> FinanceAsync(CancellationToken ct)
     {
         var today = clock.Today;
-        var monthStart = clock.StartOfDayUtc(new DateOnly(today.Year, today.Month, 1));
+        var firstOfMonth = new DateOnly(today.Year, today.Month, 1);
+        var monthStart = clock.StartOfDayUtc(firstOfMonth);
         var paid = db.Orders.Where(o => o.PaymentStatus == PaymentStatus.Paid);
+        // The same month-to-date figures as Analytics, so the two pages always agree.
+        var month = currentUser.HasPermission(Permissions.Costs.View)
+            ? (await analytics.SummaryAsync(new Analytics.AnalyticsQuery(firstOfMonth, firstOfMonth.AddMonths(1).AddDays(-1), Analytics.Grouping.Month), ct)).Totals
+            : null;
         return new FinanceSummary(
             options.Value.BaseCurrency,
             await paid.SumAsync(o => o.GrandTotal, ct),
             await paid.Where(o => o.PaidAt >= monthStart).SumAsync(o => o.GrandTotal, ct),
             await db.Orders.Where(o => o.Status == OrderStatus.Reserved).SumAsync(o => o.GrandTotal, ct),
-            currentUser.HasPermission(Permissions.Costs.View)
-                ? await db.Expenses.Where(e => e.IncurredOn >= new DateOnly(today.Year, today.Month, 1)
-                                               && e.IncurredOn <= new DateOnly(today.Year, today.Month, 1).AddMonths(1).AddDays(-1))
-                    .SumAsync(e => e.Amount, ct)
-                : null);
+            month?.Expenses, month?.Gifts, month?.Profit);
     }
 
     private async Task<IReadOnlyList<DailyPoint>> DailyAsync(CancellationToken ct)

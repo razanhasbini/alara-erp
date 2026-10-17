@@ -47,6 +47,49 @@ public sealed class CostAndAnalyticsTests(AlaraApiFactory factory) : ApiTestBase
     }
 
     [Fact]
+    public async Task Gifts_are_a_separate_cost_that_reduces_net_profit_and_are_listed()
+    {
+        var (client, s) = await AdminAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-MASK", 24m);
+        var shampoo = await s.ProductAsync("ALR-SHAMPOO", 15m);
+        await s.ReceiveAsync(warehouse.Id, mask.Id, 10, unitCost: 5m);
+        await s.ReceiveAsync(warehouse.Id, shampoo.Id, 10, unitCost: 3m);
+        var duo = await s.BundleAsync("DUO", 33m, (shampoo.Id, 1), (mask.Id, 1));
+
+        // 2 masks bought; a mask and a duo set given free with them.
+        var order = await (await client.PostAsync("/api/orders", new CreateOrderRequest(
+            OrderSource.Instagram, warehouse.Id, PaymentMethod.CashOnDelivery, new RecipientInput("Nour", "+961 3 111 222", null, null),
+            0m, null, [new OrderLineInput(mask.Id, 2), new OrderLineInput(mask.Id, 1, IsGift: true), new OrderLineInput(duo.Id, 1, IsGift: true)],
+            Confirm: true))).OkJsonAsync<OrderDetailDto>();
+        // A duo set taken out of stock for a PR box.
+        (await client.PostAsync("/api/inventory/bundle-withdrawals",
+            new WithdrawBundleRequest(warehouse.Id, duo.Id, 1, AdjustmentReason.SampleOrGift, "PR box"))).EnsureSuccessStatusCode();
+
+        var summary = await client.GetJsonAsync<AnalyticsSummaryDto>("/api/analytics/summary");
+        var products = await client.GetJsonAsync<ProductAnalyticsDto>("/api/analytics/products");
+        var dashboard = await client.GetJsonAsync<AlaraERP.Application.Dashboard.DashboardDto>("/api/dashboard");
+
+        var t = summary.Totals;
+        Assert.Equal(48m, t.NetSales);                 // only the 2 paid masks
+        Assert.Equal(10m, t.CostOfGoods);              // 2 × $5, gifts excluded
+        Assert.Equal(38m, t.GrossProfit);
+        Assert.Equal(21m, t.Gifts);                    // order gifts 2 × $5 + $3, PR box $5 + $3
+        Assert.Equal(17m, t.Profit);                   // 38 − 21 − no bills
+        Assert.Equal((2, 5), (t.UnitsSold, t.GiftUnits));
+        Assert.Equal(2, summary.Gifts!.Count);
+        var fromOrder = summary.Gifts.Single(g => g.Source == GiftSource.Order);
+        Assert.Equal((order.OrderNumber, "Nour", 3, 13m), (fromOrder.OrderNumber, fromOrder.Recipient, fromOrder.Units, fromOrder.Cost));
+        Assert.Contains("Bundle DUO", fromOrder.Description);
+        var prBox = summary.Gifts.Single(g => g.Source == GiftSource.TakenOut);
+        Assert.Equal((2, 8m), (prBox.Units, prBox.Cost));
+        Assert.Contains("PR box", prBox.Description);
+        var maskRow = products.Products.Single(p => p.ProductId == mask.Id);
+        Assert.Equal((2, 48m, 10m), (maskRow.UnitsSold, maskRow.NetSales, maskRow.CostOfGoods)); // gifts aren't product sales
+        Assert.Equal((21m, 17m), (dashboard.Finance!.GiftsThisMonth, dashboard.Finance.NetProfitThisMonth));
+    }
+
+    [Fact]
     public async Task Gross_sales_and_discounts_include_both_line_and_order_discounts()
     {
         var (client, s) = await AdminAsync();

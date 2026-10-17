@@ -50,15 +50,16 @@ export function DashboardPage() {
         <FigureRow>
           {finance && <Figure label="Sales this month" value={money(finance.collectedThisMonth)} sub={`${money(finance.collectedRevenue)} all time`}
             hint="Order totals of orders sold this calendar month. An order counts as paid the moment it's sold; reserved, cancelled and returned orders are excluded." />}
-          {finance?.billsThisMonth != null && <Figure label="Bills this month" value={money(finance.billsThisMonth)}
-            sub={<Link to="/bills" className="hover:underline">Bills &amp; expenses →</Link>}
-            hint="Electricity, Wi-Fi, models, wages and other bills dated this month. They are subtracted from profit in Sales & profit." />}
+          {finance?.netProfitThisMonth != null && <Figure label="Net profit this month" value={money(finance.netProfitThisMonth)}
+            tone={finance.netProfitThisMonth < 0 ? "bad" : undefined}
+            sub={<Link to="/analytics?range=this-month" className="hover:underline">bills {money(finance.billsThisMonth)} · gifts {money(finance.giftsThisMonth)} →</Link>}
+            hint="This month's sales minus what the products cost, the gifts given and the bills. The same figure as in Sales & profit." />}
           {orders && <Figure label="Sold today" value={number(orders.soldToday)} sub={`${orders.createdToday} new order${orders.createdToday === 1 ? "" : "s"} today`}
             hint="Orders marked as sold today. Selling deducts the stock and counts as paid straight away." />}
           {orders && <Figure label="Reserved" value={number(orders.reserved)}
             sub={<Link to="/orders?status=Reserved" className="hover:underline">{finance ? `${money(finance.reservedValue)} waiting →` : "See reservations →"}</Link>}
             hint="Orders holding stock for a customer who hasn't bought yet. They aren't sales until marked as sold." />}
-          {(!finance || finance.billsThisMonth == null) && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
+          {(!finance || finance.netProfitThisMonth == null) && inventory && <Figure label="Units in stock" value={number(inventory.unitsOnHand)} sub={`${number(inventory.unitsReserved)} reserved`} hint="Physical units on hand across warehouses." />}
           {!finance && catalog && <Figure label="Active products" value={number(catalog.activeProducts)} sub={`${catalog.activeBundles} bundles`} hint="Individual products currently for sale." />}
         </FigureRow>
       )}

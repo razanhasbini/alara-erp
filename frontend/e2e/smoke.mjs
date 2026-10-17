@@ -103,11 +103,12 @@ await page.waitForSelector("td ::-p-text(Generator)", { timeout: 10000 }); await
 // 5b. analytics, bundle withdrawal, website placeholder
 await page.goto(`${BASE}/analytics?range=today`, { waitUntil: "networkidle0" })
 await page.waitForSelector("::-p-text(Gross profit)", { timeout: 10000 })
-const grossProfitShown = await page.evaluate(() => [...document.querySelectorAll(".eyebrow")].some((e) => e.textContent?.includes("Gross profit")))
+const grossProfitShown = await page.evaluate(() => document.body.innerText.includes("Gross profit"))
 if (!grossProfitShown) problems.push("analytics: gross profit figure missing")
-const netProfitShown = await page.evaluate(() => [...document.querySelectorAll(".eyebrow")].some((e) => e.textContent?.includes("Net profit")))
+const netProfitShown = await page.evaluate(() => document.body.innerText.includes("Net profit"))
 if (!netProfitShown) problems.push("analytics: net profit figure missing")
 await shot("10b-analytics")
+await page.goto(`${BASE}/analytics?range=today&tab=products`, { waitUntil: "networkidle0" })
 await clickText("Bundles", "button[role=radio]"); await sleep(400); await shot("10c-analytics-bundles")
 await page.goto(`${BASE}/products/bundles`, { waitUntil: "networkidle0" })
 await clickText("Full Treatment Set – Oh Honey", "tr *")
@@ -115,6 +116,8 @@ await clickText("Take out of stock", "button")
 await page.waitForSelector("#wb-qty"); await shot("10d-withdraw-dialog")
 await clickText("Take out 1 set", "button[type=submit]")
 await page.waitForSelector("::-p-text(taken out)", { timeout: 10000 }); await shot("10e-bundle-after-withdraw")
+await page.goto(`${BASE}/analytics?range=today&tab=gifts`, { waitUntil: "networkidle0" }); await shot("10g-analytics-gifts")
+await page.goto(`${BASE}/analytics?range=today&tab=customers`, { waitUntil: "networkidle0" }); await shot("10h-analytics-customers")
 await page.goto(`${BASE}/website-insights`, { waitUntil: "networkidle0" }); await shot("10f-website-soon")
 
 // 6. views

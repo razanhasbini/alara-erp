@@ -399,6 +399,10 @@ export interface Dashboard {
     reservedValue: number
     /** Bills dated this month; null unless the user can see costs. */
     billsThisMonth: number | null
+    /** Cost of gifts given this month; null unless the user can see costs. */
+    giftsThisMonth: number | null
+    /** Net profit this month (gross profit − gifts − bills); null unless the user can see costs. */
+    netProfitThisMonth: number | null
   } | null
   dailyOrders: { date: string; orders: number; value: number }[] | null
   bySource: { source: OrderSource; orders: number; value: number }[] | null
@@ -435,15 +439,30 @@ export interface AnalyticsSummary {
   currency: string
   includesCosts: boolean
   totals: {
-    orders: number; unitsSold: number; grossSales: number; discounts: number; netSales: number; averageOrderValue: number
+    orders: number; unitsSold: number; giftUnits: number; grossSales: number; discounts: number; netSales: number; averageOrderValue: number
+    /** Cost of the units customers paid for (free gifts excluded). */
     costOfGoods: number | null; grossProfit: number | null; grossMarginPercent: number | null
-    /** Bills in the range; profit = gross profit − expenses (net profit). */
-    expenses: number | null; profit: number | null; netMarginPercent: number | null
+    /** Cost of everything given away; bills in the range; profit = gross profit − gifts − bills (net profit). */
+    gifts: number | null; expenses: number | null; profit: number | null; netMarginPercent: number | null
     cashReceived: number; uncostedUnits: number
   }
-  series: { periodStart: string; periodEnd: string; orders: number; unitsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; expenses: number | null; profit: number | null; cashReceived: number }[]
+  series: { periodStart: string; periodEnd: string; orders: number; unitsSold: number; netSales: number; costOfGoods: number | null; grossProfit: number | null; gifts: number | null; expenses: number | null; profit: number | null; cashReceived: number }[]
   byChannel: { source: OrderSource; orders: number; netSales: number; grossProfit: number | null }[]
   expensesByCategory: { category: ExpenseCategory; amount: number }[] | null
+  gifts: GiftGiven[] | null
+}
+
+/** Something given away: gift lines on a sold order, or stock taken out as a sample or gift. */
+export interface GiftGiven {
+  at: string
+  source: "Order" | "TakenOut"
+  orderId: string | null
+  orderNumber: string | null
+  recipient: string | null
+  description: string
+  units: number
+  /** Null without cost access, or when the units have no recorded cost. */
+  cost: number | null
 }
 
 export interface ProductProfit {

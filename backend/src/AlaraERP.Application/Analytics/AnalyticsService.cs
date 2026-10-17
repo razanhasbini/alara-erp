@@ -27,16 +27,18 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         var orders = await SalesOrders(start, end)
             .Select(o => new
             {
-                o.Id, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal,
+                o.Id, o.OrderNumber, o.RecipientName, o.ConfirmedAt, o.Source, o.Subtotal, o.DiscountTotal,
                 GrossSales = o.Items.Sum(i => i.UnitPrice * i.Quantity),
                 LineDiscounts = o.Items.Sum(i => i.LineDiscount),
             })
             .ToListAsync(ct);
-        var costLines = await SaleCostsAsync(orders.Select(o => o.Id).ToList(), ct);
-        var byOrder = costLines.GroupBy(m => m.OrderId).ToDictionary(g => g.Key, g => (
-            Units: g.Sum(m => m.Quantity),
-            Cost: g.Where(m => m.UnitCost != null).Sum(m => m.Quantity * m.UnitCost!.Value),
-            Uncosted: g.Where(m => m.UnitCost == null).Sum(m => m.Quantity)));
+        var orderIds = orders.Select(o => o.Id).ToList();
+        var lines = await LineUnitsAsync(orderIds, ct);
+        var split = SplitGiftCosts(await SaleCostsAsync(orderIds, ct), lines);
+        var byOrder = split.GroupBy(x => x.OrderId).ToDictionary(g => g.Key, g => (
+            Units: g.Sum(x => x.PaidUnits), Cost: g.Sum(x => x.PaidCost),
+            GiftUnits: g.Sum(x => x.GiftUnits), GiftCost: g.Sum(x => x.GiftCost),
+            Uncosted: g.Sum(x => x.UncostedUnits)));
 
         var paid = await db.Orders.AsNoTracking()
             .Where(o => o.PaymentStatus == PaymentStatus.Paid && o.PaidAt >= start && o.PaidAt < end)
@@ -50,15 +52,34 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
                 .ToListAsync(ct)
             : [];
 
+        // Stock given away outside orders: a sample, a PR box, a bundle taken out as a gift.
+        var takeOuts = (await (from m in db.StockMovements.AsNoTracking()
+                               join p in db.Products.AsNoTracking() on m.ProductId equals p.Id
+                               where m.Type == MovementType.AdjustmentDecrease && m.Reason == AdjustmentReason.SampleOrGift
+                                     && m.CreatedAt >= start && m.CreatedAt < end
+                               select new { m.ReferenceId, m.CreatedAt, m.Notes, p.Name, Units = -m.QuantityChange, UnitCost = m.UnitCost ?? p.StandardCost })
+                .ToListAsync(ct))
+            .GroupBy(m => m.ReferenceId)
+            .Select(g => new
+            {
+                At = g.Min(m => m.CreatedAt),
+                Description = g.Select(m => m.Notes).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
+                              ?? string.Join(", ", g.GroupBy(m => m.Name).Select(x => $"{x.Sum(m => m.Units)} × {x.Key}")),
+                Units = g.Sum(m => m.Units),
+                Cost = g.Where(m => m.UnitCost != null).Sum(m => m.Units * m.UnitCost!.Value),
+                Uncosted = g.Where(m => m.UnitCost == null).Sum(m => m.Units),
+            })
+            .ToList();
+
         var rows = orders.Select(o =>
         {
             var c = byOrder.GetValueOrDefault(o.Id);
             var net = o.Subtotal - o.DiscountTotal;
             return new
             {
-                Period = PeriodOf(clock.ToBusinessDate(o.ConfirmedAt!.Value), query.GroupBy),
+                o.Id, Period = PeriodOf(clock.ToBusinessDate(o.ConfirmedAt!.Value), query.GroupBy),
                 o.Source, o.GrossSales, Discounts = o.LineDiscounts + o.DiscountTotal, Net = net,
-                c.Units, c.Cost, c.Uncosted, Gross = net - c.Cost,
+                c.Units, c.Cost, c.GiftUnits, c.GiftCost, c.Uncosted, Gross = net - c.Cost,
             };
         }).ToList();
 
@@ -66,31 +87,37 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         {
             var inPeriod = rows.Where(r => r.Period == p.Key).ToList();
             var gross = inPeriod.Sum(r => r.Gross);
+            var gifts = inPeriod.Sum(r => r.GiftCost)
+                        + takeOuts.Where(t => PeriodOf(clock.ToBusinessDate(t.At), query.GroupBy) == p.Key).Sum(t => t.Cost);
             var expenses = bills.Where(e => PeriodOf(e.IncurredOn, query.GroupBy) == p.Key).Sum(e => e.Amount);
             return new PeriodPoint(p.Start, p.End, inPeriod.Count, inPeriod.Sum(r => r.Units), Guard.Money(inPeriod.Sum(r => r.Net)),
                 costs ? Guard.Money(inPeriod.Sum(r => r.Cost)) : null,
                 costs ? Guard.Money(gross) : null,
+                costs ? Guard.Money(gifts) : null,
                 costs ? Guard.Money(expenses) : null,
-                costs ? Guard.Money(gross - expenses) : null,
+                costs ? Guard.Money(gross - gifts - expenses) : null,
                 Guard.Money(paid.Where(x => PeriodOf(clock.ToBusinessDate(x.PaidAt!.Value), query.GroupBy) == p.Key).Sum(x => x.Net)));
         }).ToList();
 
         var netSales = rows.Sum(r => r.Net);
         var cogs = rows.Sum(r => r.Cost);
         var grossProfit = netSales - cogs;
+        var totalGifts = rows.Sum(r => r.GiftCost) + takeOuts.Sum(t => t.Cost);
         var totalExpenses = bills.Sum(e => e.Amount);
-        var netProfit = grossProfit - totalExpenses;
+        var netProfit = grossProfit - totalGifts - totalExpenses;
         var totals = new ProfitTotals(
-            rows.Count, rows.Sum(r => r.Units), Guard.Money(rows.Sum(r => r.GrossSales)), Guard.Money(rows.Sum(r => r.Discounts)),
+            rows.Count, rows.Sum(r => r.Units), rows.Sum(r => r.GiftUnits) + takeOuts.Sum(t => t.Units),
+            Guard.Money(rows.Sum(r => r.GrossSales)), Guard.Money(rows.Sum(r => r.Discounts)),
             Guard.Money(netSales), rows.Count == 0 ? 0 : Guard.Money(netSales / rows.Count),
             costs ? Guard.Money(cogs) : null,
             costs ? Guard.Money(grossProfit) : null,
             costs && netSales > 0 ? Math.Round(grossProfit / netSales * 100, 1) : null,
+            costs ? Guard.Money(totalGifts) : null,
             costs ? Guard.Money(totalExpenses) : null,
             costs ? Guard.Money(netProfit) : null,
             costs && netSales > 0 ? Math.Round(netProfit / netSales * 100, 1) : null,
             Guard.Money(paid.Sum(x => x.Net)),
-            costs ? rows.Sum(r => r.Uncosted) : 0);
+            costs ? rows.Sum(r => r.Uncosted) + takeOuts.Sum(t => t.Uncosted) : 0);
 
         var byChannel = Enum.GetValues<OrderSource>().Select(s =>
         {
@@ -104,8 +131,23 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
                 .ToList()
             : null;
 
+        var giftLines = lines.Where(l => l.IsGift).GroupBy(l => l.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+        var gifts = orders.Where(o => giftLines.ContainsKey(o.Id))
+            .Select(o =>
+            {
+                var c = byOrder.GetValueOrDefault(o.Id);
+                var items = giftLines[o.Id].Where(l => l.IsLineHead).ToList();
+                return new GiftDto(o.ConfirmedAt!.Value, GiftSource.Order, o.Id, o.OrderNumber, o.RecipientName,
+                    string.Join(", ", items.Select(l => $"{l.LineQuantity} × {l.LineName}")), c.GiftUnits,
+                    costs ? Guard.Money(c.GiftCost) : null);
+            })
+            .Concat(takeOuts.Select(t => new GiftDto(t.At, GiftSource.TakenOut, null, null, null, t.Description, t.Units,
+                costs && t.Uncosted == 0 ? Guard.Money(t.Cost) : null)))
+            .OrderByDescending(g => g.At)
+            .ToList();
+
         return new AnalyticsSummaryDto(from, to, query.GroupBy, options.Value.BaseCurrency, costs, totals, series, byChannel,
-            expensesByCategory);
+            expensesByCategory, gifts);
     }
 
     public async Task<ProductAnalyticsDto> ProductsAsync(AnalyticsQuery query, CancellationToken ct)
@@ -122,15 +164,18 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         var items = await db.OrderItems.AsNoTracking().Where(i => soldOrderIds.Contains(i.OrderId))
             .Select(i => new
             {
-                i.OrderId, i.ProductId, i.ProductType, i.Quantity, i.LineTotal,
+                i.OrderId, i.ProductId, i.ProductType, i.Quantity, i.LineTotal, i.IsGift,
                 Components = i.Components.Select(c => new { c.ComponentProductId, c.TotalQuantity, c.AllocatedRevenue }).ToList(),
             })
             .ToListAsync(ct);
-        var costLines = await SaleCostsAsync(soldOrderIds, ct);
-        var costByOrderProduct = costLines.GroupBy(m => (m.OrderId, m.ProductId)).ToDictionary(g => g.Key, g => (
-            Cost: g.Where(m => m.UnitCost != null).Sum(m => m.Quantity * m.UnitCost!.Value),
-            Costed: g.Where(m => m.UnitCost != null).Sum(m => m.Quantity),
-            Uncosted: g.Where(m => m.UnitCost == null).Sum(m => m.Quantity)));
+        // Free gift lines are not sales: their units and cost are reported as gifts in the summary, not here.
+        var split = SplitGiftCosts(await SaleCostsAsync(soldOrderIds, ct), await LineUnitsAsync(soldOrderIds, ct));
+        var costByOrderProduct = split.ToDictionary(x => (x.OrderId, x.ProductId), x =>
+        {
+            var allUnits = x.PaidUnits + x.GiftUnits;
+            var uncostedPaid = allUnits > 0 ? (int)Math.Round((decimal)x.UncostedUnits * x.PaidUnits / allUnits) : 0;
+            return (Cost: x.PaidCost, Costed: x.PaidUnits - uncostedPaid, Uncosted: uncostedPaid);
+        });
 
         var revenue = new Dictionary<Guid, decimal>();
         var direct = new Dictionary<Guid, int>();
@@ -138,7 +183,7 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
         var bundleSales = new Dictionary<Guid, (int Sets, decimal Net, decimal Cost)>();
         void Add<T>(Dictionary<Guid, T> d, Guid k, T v, Func<T, T, T> plus) => d[k] = d.TryGetValue(k, out var cur) ? plus(cur, v) : v;
 
-        foreach (var item in items)
+        foreach (var item in items.Where(i => !i.IsGift))
         {
             var factor = Factor(item.OrderId);
             if (item.ProductType == ProductType.Individual)
@@ -275,6 +320,48 @@ public sealed class AnalyticsService(IAlaraDbContext db, BusinessClock clock, IC
     }
 
     private sealed record SaleCostLine(Guid OrderId, Guid ProductId, int Quantity, decimal? UnitCost);
+
+    /// <summary>
+    /// Units of each product on each order line, with bundles expanded to their products. IsLineHead marks one row per
+    /// order line (for naming what was given); LineName/LineQuantity describe the line as sold.
+    /// </summary>
+    private sealed record LineUnits(Guid OrderId, Guid ProductId, bool IsGift, int Units, bool IsLineHead, string LineName, int LineQuantity);
+
+    private async Task<List<LineUnits>> LineUnitsAsync(IReadOnlyCollection<Guid> orderIds, CancellationToken ct)
+    {
+        if (orderIds.Count == 0) return [];
+        var items = await db.OrderItems.AsNoTracking().Where(i => orderIds.Contains(i.OrderId))
+            .Select(i => new
+            {
+                i.OrderId, i.ProductId, i.ProductName, i.ProductType, i.IsGift, i.Quantity,
+                Components = i.Components.Select(c => new { c.ComponentProductId, c.TotalQuantity }).ToList(),
+            })
+            .ToListAsync(ct);
+        return items.SelectMany(i => i.ProductType == ProductType.Bundle
+                ? i.Components.Select((c, n) => new LineUnits(i.OrderId, c.ComponentProductId, i.IsGift, c.TotalQuantity, n == 0, i.ProductName, i.Quantity))
+                : [new LineUnits(i.OrderId, i.ProductId, i.IsGift, i.Quantity, true, i.ProductName, i.Quantity)])
+            .ToList();
+    }
+
+    private sealed record CostSplit(Guid OrderId, Guid ProductId, int PaidUnits, decimal PaidCost, int GiftUnits, decimal GiftCost, int UncostedUnits);
+
+    /// <summary>
+    /// Stock leaves per order and product, not per line, so a product that is both bought and given free on the same
+    /// order shares its recorded cost between the paid and the gift units in proportion.
+    /// </summary>
+    private static List<CostSplit> SplitGiftCosts(IEnumerable<SaleCostLine> costLines, IReadOnlyCollection<LineUnits> lines)
+    {
+        var giftUnits = lines.Where(l => l.IsGift).GroupBy(l => (l.OrderId, l.ProductId)).ToDictionary(g => g.Key, g => g.Sum(l => l.Units));
+        return costLines.GroupBy(m => (m.OrderId, m.ProductId)).Select(g =>
+        {
+            var units = g.Sum(m => m.Quantity);
+            var cost = g.Where(m => m.UnitCost != null).Sum(m => m.Quantity * m.UnitCost!.Value);
+            var uncosted = g.Where(m => m.UnitCost == null).Sum(m => m.Quantity);
+            var gift = Math.Clamp(giftUnits.GetValueOrDefault(g.Key), 0, Math.Max(units, 0));
+            var giftShare = units > 0 ? (decimal)gift / units : 0;
+            return new CostSplit(g.Key.OrderId, g.Key.ProductId, units - gift, cost * (1 - giftShare), gift, cost * giftShare, uncosted);
+        }).ToList();
+    }
 
     /// <summary>Weighted average cost of the units on hand today, falling back to the product's standard cost.</summary>
     private async Task<Dictionary<Guid, decimal>> AverageOnHandCostsAsync(CancellationToken ct)
