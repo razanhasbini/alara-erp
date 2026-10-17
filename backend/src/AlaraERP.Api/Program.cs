@@ -134,8 +134,9 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().
 
 if (servesSpa)
 {
-    // Client-side routes such as /orders/123 must return the SPA after a browser refresh.
-    app.MapFallbackToFile("index.html").AllowAnonymous().ExcludeFromDescription();
+    // Client-side routes such as /orders/123 must return the SPA after a browser refresh. Unknown /api/... addresses
+    // are excluded so they answer 404 instead of the app's HTML.
+    app.MapFallbackToFile("{*path:regex(^(?!api(/|$)).*$)}", "index.html").AllowAnonymous().ExcludeFromDescription();
 }
 else
 {
