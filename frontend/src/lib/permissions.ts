@@ -7,5 +7,6 @@ export const P = {
   expenses: { manage: "expenses.manage" },
   reports: { view: "reports.view" },
   costs: { view: "costs.view" },
+  activity: { view: "activity.view" },
   users: { view: "users.view", create: "users.create", update: "users.update", assignRoles: "users.assign_roles" },
 } as const

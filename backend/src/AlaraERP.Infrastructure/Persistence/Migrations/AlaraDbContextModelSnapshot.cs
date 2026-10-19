@@ -28,6 +28,52 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("transfer_number_seq", "inventory");
 
+            modelBuilder.Entity("AlaraERP.Domain.Activity.ActivityEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Area")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("area");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("link");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("summary");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_activity_log");
+
+                    b.HasIndex("At")
+                        .HasDatabaseName("ix_activity_log_at");
+
+                    b.HasIndex("Area", "At")
+                        .HasDatabaseName("ix_activity_log_area_at");
+
+                    b.HasIndex("UserId", "At")
+                        .HasDatabaseName("ix_activity_log_user_id_at");
+
+                    b.ToTable("activity_log", "audit");
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Catalog.BundleItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1822,6 +1868,15 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasName("pk_user_tokens");
 
                     b.ToTable("user_tokens", "identity");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Activity.ActivityEntry", b =>
+                {
+                    b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_activity_log_users_user_id");
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Catalog.BundleItem", b =>

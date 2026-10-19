@@ -18,8 +18,10 @@ import { dateOnly, dateTime, money, number, todayIso } from "@/lib/format"
 import { P } from "@/lib/permissions"
 import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import type { InventorySettings, Paged, ProductDetail, Receipt, ReceiptSummary } from "@/types/api"
+import { useLogView } from "@/lib/activity"
 
 export function ReceiptsPage() {
+  useLogView("Receipts")
   const { can } = useAuth()
   const { data: settings } = useSettings()
   const navigate = useNavigate()

@@ -9,8 +9,14 @@ namespace AlaraERP.Application.Inventory;
 /// <summary>Receipts, adjustments and transfers. Each runs in one transaction with stock rows locked.</summary>
 public sealed class StockOperationsService(
     IAlaraDbContext db, IStockLocks locks, StockLedger ledger, IDocumentNumbers numbers,
-    StockQueryService queries, ICurrentUser currentUser)
+    StockQueryService queries, ICurrentUser currentUser, IActivityLog activity, BusinessClock clock)
 {
+    private static string ReasonText(AdjustmentReason reason) => reason switch
+    {
+        AdjustmentReason.SampleOrGift => "sample / gift",
+        AdjustmentReason.CountCorrection => "count correction",
+        _ => reason.ToString().ToLowerInvariant(),
+    };
     private readonly IAlaraDbContext _db = db;
     private readonly IStockLocks _locks = locks;
     private readonly StockLedger _ledger = ledger;
@@ -73,6 +79,14 @@ public sealed class StockOperationsService(
         }
 
         _db.StockReceipts.Add(receipt);
+        var received = request.Lines.GroupBy(l => l.ProductId).Select(g => (g.Sum(l => l.Quantity), products[g.Key].Label)).ToList();
+        activity.Record(Domain.Activity.ActivityArea.Stock,
+            (received.Count == 1 ? $"restocked {ActivityText.Items(received)}"
+                                 : $"restocked {ActivityText.Units(received.Sum(r => r.Item1))}: {ActivityText.Items(received)}")
+            + (string.IsNullOrWhiteSpace(request.SupplierName) ? "" : $" from {request.SupplierName.Trim()}")
+            + $", received on {clock.ToBusinessDate(receipt.ReceivedAt):dd MMM yyyy}"
+            + $" (receipt {number})",
+            $"/inventory/receipts/{receipt.Id}");
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return await _queries.GetReceiptAsync(receipt.Id, ct);
@@ -125,6 +139,10 @@ public sealed class StockOperationsService(
                 MovementReference.Adjustment, adjustmentId, "ADJ", StockLedger.CostOf(batch, product), request.Reason, request.Notes);
         }
 
+        activity.Record(Domain.Activity.ActivityArea.Stock,
+            (increase ? $"added {quantity} × {product.Label} to stock" : $"removed {quantity} × {product.Label} from stock")
+            + $" ({ReasonText(request.Reason)}{(string.IsNullOrWhiteSpace(request.Notes) ? "" : $": {request.Notes.Trim()}")})",
+            $"/inventory?product={product.Id}");
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return (await _queries.ListMovementsAsync(new MovementQuery(null, null, null, null, null, adjustmentId), ct)).Items.Single();
@@ -176,6 +194,9 @@ public sealed class StockOperationsService(
         }
 
         _db.StockTransfers.Add(transfer);
+        activity.Record(Domain.Activity.ActivityArea.Stock,
+            $"moved {ActivityText.Items(request.Lines.GroupBy(l => l.ProductId).Select(g => (g.Sum(l => l.Quantity), products[g.Key].Label)))} from {from.Code} to {to.Code} (transfer {number})",
+            $"/inventory/transfers/{transfer.Id}");
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return await _queries.GetTransferAsync(transfer.Id, ct);
@@ -219,6 +240,9 @@ public sealed class StockOperationsService(
             }
         }
 
+        activity.Record(Domain.Activity.ActivityArea.Stock,
+            $"took {request.Quantity} × {bundle.Name} out of stock ({ReasonText(request.Reason)}{(string.IsNullOrWhiteSpace(request.Notes) ? "" : $": {request.Notes.Trim()}")})",
+            $"/products/{bundle.Id}");
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return (await _queries.ListMovementsAsync(new MovementQuery(null, null, null, null, null, adjustmentId, 1, 100), ct)).Items;

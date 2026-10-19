@@ -13,6 +13,7 @@ import { qk, useSettings } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Dashboard } from "@/types/api"
 import { MovementReferenceLink } from "@/features/inventory/MovementReferenceLink"
+import { useLogView } from "@/lib/activity"
 
 const ROSE = "#b8306f"
 const GRID = "#efe9e7"
@@ -24,6 +25,7 @@ function greeting() {
 }
 
 export function DashboardPage() {
+  useLogView("Dashboard")
   const { user } = useAuth()
   const { data: settings } = useSettings()
   const expiryEnabled = settings?.expiryDatesEnabled ?? false

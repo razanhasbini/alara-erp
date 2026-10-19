@@ -44,6 +44,12 @@ public static class Permissions
         public const string ManagePayments = "orders.manage_payments";
     }
 
+    /// <summary>The activity log: who did what and when. Granted only to Super Admin.</summary>
+    public static class Activity
+    {
+        public const string View = "activity.view";
+    }
+
     /// <summary>Bills and running costs (electricity, internet, models, wages). Granted only to Super Admin.</summary>
     public static class Expenses
     {

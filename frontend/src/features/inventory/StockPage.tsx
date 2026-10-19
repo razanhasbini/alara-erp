@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import type { Paged, ProductStock, StockFilter, StockRow } from "@/types/api"
 import { AdjustStockDialog, type AdjustTarget } from "./AdjustStockDialog"
 import { deliveryLabel } from "./deliveryLabel"
+import { useLogView } from "@/lib/activity"
 
 const emptyTitle: Record<StockFilter, string> = {
   All: "No products",
@@ -33,6 +34,7 @@ const emptyTitle: Record<StockFilter, string> = {
 }
 
 export function StockPage() {
+  useLogView("Inventory")
   const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const search = params.get("search") ?? ""

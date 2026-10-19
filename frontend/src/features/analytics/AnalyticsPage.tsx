@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils"
 import type { AnalyticsSummary, BundleProfit, CustomerAnalytics, CustomerLoyalty, GiftGiven, Grouping, ProductAnalytics, ProductProfit } from "@/types/api"
 import { PRESETS, presetRange, type Preset } from "./range"
 import { formatPhone } from "@/lib/phone"
+import { useLogView } from "@/lib/activity"
 
 // Single series (net sales) in the brand rose; passes the dataviz contrast check on the light surface.
 const BAR_COLOR = "#b8306f"
@@ -27,6 +28,7 @@ const INK_MUTED = "#6f6567"
 type Tab = "overview" | "products" | "customers" | "gifts"
 
 export function AnalyticsPage() {
+  useLogView("Analytics")
   const [params, setParams] = useSearchParams()
   const preset = (params.get("range") ?? "last-30") as Preset
   const defaults = presetRange(preset)

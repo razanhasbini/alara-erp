@@ -4,6 +4,7 @@ import { useAuth } from "@/auth/auth"
 import { FullPageSpinner } from "@/components/common/states"
 import { RequireAuth, RequirePermission, RequireRole } from "@/auth/guards"
 import { AppShell } from "@/components/layout/AppShell"
+import { ActivityPage } from "@/features/admin/ActivityPage"
 import { EmployeesPage } from "@/features/admin/EmployeesPage"
 import { RolesPage } from "@/features/admin/RolesPage"
 import { FeatureSettingsPage } from "@/features/admin/FeatureSettingsPage"
@@ -96,6 +97,7 @@ export const router = createBrowserRouter([
           { path: "website-insights", element: <WebsiteInsightsPage /> },
         ]),
 
+        gate(P.activity.view, [{ path: "activity", element: <ActivityPage /> }]),
         gate(P.users.view, [
           { path: "employees", element: <EmployeesPage /> },
           { path: "roles", element: <RolesPage /> },

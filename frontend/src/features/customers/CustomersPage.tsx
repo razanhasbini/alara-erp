@@ -21,8 +21,10 @@ import { P } from "@/lib/permissions"
 import { qk } from "@/lib/queries"
 import type { Customer, Paged } from "@/types/api"
 import { formatPhone } from "@/lib/phone"
+import { useLogView } from "@/lib/activity"
 
 export function CustomersPage() {
+  useLogView("Customers")
   const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const [editing, setEditing] = useState<Customer | "new" | null>(null)

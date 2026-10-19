@@ -13,6 +13,8 @@ internal sealed class AuthService(
     UserManager<AppUser> users,
     SignInManager<AppUser> signIn,
     AlaraDbContext db,
+    ICurrentUser currentUser,
+    IActivityLog activity,
     TimeProvider clock,
     IConfiguration configuration,
     IHostEnvironment environment) : IAuthService
@@ -34,6 +36,7 @@ internal sealed class AuthService(
             return new LoginResult(LoginOutcome.InvalidCredentials); // wrong password or deactivated: same answer
 
         user.LastLoginAt = clock.GetUtcNow();
+        activity.Record(Domain.Activity.ActivityArea.SignIn, "signed in", userId: user.Id);
         await users.UpdateAsync(user);
         return new LoginResult(LoginOutcome.Succeeded, await BuildCurrentUserAsync(user, ct));
     }
@@ -56,11 +59,20 @@ internal sealed class AuthService(
 
         await signIn.SignInAsync(user, isPersistent: false);
         user.LastLoginAt = clock.GetUtcNow();
+        activity.Record(Domain.Activity.ActivityArea.SignIn, "signed in", userId: user.Id);
         await users.UpdateAsync(user);
         return new LoginResult(LoginOutcome.Succeeded, await BuildCurrentUserAsync(user, ct));
     }
 
-    public Task LogoutAsync() => signIn.SignOutAsync();
+    public async Task LogoutAsync()
+    {
+        if (currentUser.UserId is not null)
+        {
+            activity.Record(Domain.Activity.ActivityArea.SignIn, "signed out");
+            await db.SaveChangesAsync();
+        }
+        await signIn.SignOutAsync();
+    }
 
     public async Task<CurrentUserDto> GetCurrentUserAsync(Guid userId, CancellationToken ct)
     {
@@ -74,6 +86,7 @@ internal sealed class AuthService(
         (await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword)).ThrowIfFailed("newPassword");
 
         user.MustChangePassword = false;
+        activity.Record(Domain.Activity.ActivityArea.SignIn, "changed their password", userId: user.Id);
         (await users.UpdateAsync(user)).ThrowIfFailed();
         await signIn.RefreshSignInAsync(user); // security stamp changed; keep this session, others are invalidated
     }

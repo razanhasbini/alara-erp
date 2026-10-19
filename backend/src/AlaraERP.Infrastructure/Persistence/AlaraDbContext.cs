@@ -1,4 +1,5 @@
 using AlaraERP.Application.Common;
+using AlaraERP.Domain.Activity;
 using AlaraERP.Domain.Catalog;
 using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Inventory;
@@ -39,6 +40,7 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
 
     public DbSet<AlaraERP.Domain.Notifications.Notification> Notifications => Set<AlaraERP.Domain.Notifications.Notification>();
     public DbSet<AlaraERP.Domain.Notifications.NotificationRead> NotificationReads => Set<AlaraERP.Domain.Notifications.NotificationRead>();

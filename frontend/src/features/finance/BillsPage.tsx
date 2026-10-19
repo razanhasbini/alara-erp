@@ -18,6 +18,7 @@ import { api, ApiError, errorMessage } from "@/lib/api"
 import { dateOnly, money, todayIso } from "@/lib/format"
 import { qk } from "@/lib/queries"
 import type { Expense, ExpenseCategory, ExpenseList } from "@/types/api"
+import { useLogView } from "@/lib/activity"
 
 export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string; hint: string; placeholder: string }[] = [
   { value: "Electricity", label: "Electricity", hint: "Electricity and generator bills.", placeholder: "e.g. EDL + generator" },
@@ -44,6 +45,7 @@ const monthLabel = (month: string) =>
   new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`))
 
 export function BillsPage() {
+  useLogView("Bills")
   const [params, setParams] = useSearchParams()
   const month = /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month")! : thisMonth()
   const category = (params.get("category") ?? "") as ExpenseCategory | ""

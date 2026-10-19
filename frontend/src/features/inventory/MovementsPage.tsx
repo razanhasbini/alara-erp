@@ -12,6 +12,7 @@ import { humanize, when } from "@/lib/format"
 import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Movement, MovementType, Paged } from "@/types/api"
+import { useLogView } from "@/lib/activity"
 
 const typeLabel: Record<MovementType, string> = {
   Receipt: "Received", Shipment: "Order confirmed", Return: "Returned", AdjustmentIncrease: "Adjusted +", AdjustmentDecrease: "Adjusted −",
@@ -19,6 +20,7 @@ const typeLabel: Record<MovementType, string> = {
 }
 
 export function MovementsPage() {
+  useLogView("StockMovements")
   const [params, setParams] = useSearchParams()
   const productId = params.get("product") ?? undefined
   const warehouseId = params.get("warehouse") ?? undefined

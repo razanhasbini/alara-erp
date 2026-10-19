@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Inventory;
 
-public sealed class WarehouseService(IAlaraDbContext db) : IWarehouseDirectory
+public sealed class WarehouseService(IAlaraDbContext db, IActivityLog activity) : IWarehouseDirectory
 {
     public async Task<IReadOnlyList<WarehouseDto>> ListAsync(bool includeInactive, CancellationToken ct) =>
         await Project(db.Warehouses.AsNoTracking().Where(w => includeInactive || w.IsActive)
@@ -22,6 +22,7 @@ public sealed class WarehouseService(IAlaraDbContext db) : IWarehouseDirectory
         await EnsureCodeFreeAsync(warehouse.Code, null, ct);
         if (!request.IsActive) warehouse.SetActive(false);
         db.Warehouses.Add(warehouse);
+        activity.Record(Domain.Activity.ActivityArea.Stock, $"added the warehouse {warehouse.Name} ({warehouse.Code})", "/warehouses");
         await db.SaveChangesAsync(ct);
         return await GetAsync(warehouse.Id, ct);
     }
@@ -40,6 +41,7 @@ public sealed class WarehouseService(IAlaraDbContext db) : IWarehouseDirectory
                     "This warehouse still holds or reserves stock. Transfer or adjust it to zero before deactivating.");
         }
         warehouse.SetActive(request.IsActive);
+        activity.Record(Domain.Activity.ActivityArea.Stock, $"updated the warehouse {warehouse.Name} ({warehouse.Code})", "/warehouses");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }

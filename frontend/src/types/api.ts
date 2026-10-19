@@ -533,3 +533,18 @@ export interface AlertChannels {
   whatsAppPending: number
   whatsAppNotSent: number
 }
+
+// ---- activity log -------------------------------------------------------------------------
+export type ActivityArea = "Orders" | "Customers" | "Stock" | "Products" | "Bills" | "Employees" | "SignIn" | "Settings" | "Viewed"
+
+export interface ActivityEntry {
+  id: string
+  at: string
+  userId: string | null
+  who: string
+  area: ActivityArea
+  summary: string
+  link: string | null
+}
+
+export type ViewedPage = "Inventory" | "Analytics" | "Bills" | "Customers" | "StockMovements" | "Receipts" | "Orders" | "Dashboard"

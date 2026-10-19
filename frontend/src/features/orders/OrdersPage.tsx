@@ -17,8 +17,10 @@ import { qk } from "@/lib/queries"
 import { SOURCES } from "@/lib/rules"
 import type { OrderListItem, OrderSource, OrderStatus, Paged } from "@/types/api"
 import { formatPhone } from "@/lib/phone"
+import { useLogView } from "@/lib/activity"
 
 export function OrdersPage() {
+  useLogView("Orders")
   const { can } = useAuth()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()

@@ -26,6 +26,7 @@ export const qk = {
   expenses: (params: object) => ["finance", "expenses", params] as const,
   users: (params: object) => ["identity", "users", params] as const,
   roles: ["identity", "roles"] as const,
+  activity: (params: object) => ["activity", params] as const,
   analytics: (kind: string, params: object) => ["analytics", kind, params] as const,
 }
 

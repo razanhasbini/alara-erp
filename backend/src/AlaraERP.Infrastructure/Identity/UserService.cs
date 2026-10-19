@@ -11,6 +11,7 @@ internal sealed class UserService(
     UserManager<AppUser> users,
     AlaraDbContext db,
     ICurrentUser actor,
+    IActivityLog activity,
     TimeProvider clock) : IUserService
 {
     public async Task<PagedResult<UserSummaryDto>> ListAsync(UserListQuery query, CancellationToken ct)
@@ -68,6 +69,8 @@ internal sealed class UserService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         (await users.CreateAsync(user, request.TemporaryPassword)).ThrowIfFailed("temporaryPassword");
         (await users.AddToRolesAsync(user, roles.Select(r => r.Name))).ThrowIfFailed();
+        Log($"added employee {Name(user)} ({email}) as {RoleList(roles.Select(r => r.Name))}");
+        await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
         return await GetAsync(user.Id, ct);
@@ -78,6 +81,7 @@ internal sealed class UserService(
         var user = await FindAsync(id);
         await EnsureCanManageAsync(user, ct);
 
+        var before = Name(user);
         user.FirstName = request.FirstName.Trim();
         user.LastName = request.LastName.Trim();
         var email = request.Email.Trim();
@@ -87,6 +91,7 @@ internal sealed class UserService(
             user.UserName = email;
             user.EmailConfirmed = true;
         }
+        Log(before == Name(user) ? $"updated the details of employee {before}" : $"renamed employee {before} to {Name(user)}");
         (await users.UpdateAsync(user)).ThrowIfFailed();
         return await GetAsync(id, ct);
     }
@@ -105,6 +110,7 @@ internal sealed class UserService(
             RoleAssignmentPolicy.EnsureSuperAdminRemains(await OtherActiveSuperAdminsAsync(id, ct), removingSuperAdmin: true);
 
         user.IsActive = isActive;
+        Log(isActive ? $"let {Name(user)} sign in again" : $"blocked {Name(user)} from signing in");
         (await users.UpdateAsync(user)).ThrowIfFailed();
         if (!isActive)
             await users.UpdateSecurityStampAsync(user); // ends existing sessions at the next validation
@@ -132,6 +138,11 @@ internal sealed class UserService(
         var toAdd = wantedNames.Except(current).ToList();
         if (toRemove.Count > 0) (await users.RemoveFromRolesAsync(user, toRemove)).ThrowIfFailed();
         if (toAdd.Count > 0) (await users.AddToRolesAsync(user, toAdd)).ThrowIfFailed();
+        if (toRemove.Count > 0 || toAdd.Count > 0)
+        {
+            Log($"changed what {Name(user)} can do: now {RoleList(wantedNames)}");
+            await db.SaveChangesAsync(ct);
+        }
         await tx.CommitAsync(ct);
 
         return await GetAsync(id, ct);
@@ -149,12 +160,20 @@ internal sealed class UserService(
         user.MustChangePassword = true;
         user.LockoutEnd = null;
         user.AccessFailedCount = 0;
+        Log($"gave {Name(user)} a new temporary password");
         (await users.UpdateAsync(user)).ThrowIfFailed();
     }
 
     // ---- helpers -------------------------------------------------------------------------
 
     private bool ActorIsSuperAdmin => actor.Roles.Contains(SystemRoles.SuperAdmin);
+
+    /// <summary>Staged with the user change; UserManager's save (same context) writes both.</summary>
+    private void Log(string summary) => activity.Record(Domain.Activity.ActivityArea.Employees, summary, "/employees");
+
+    private static string Name(AppUser u) => $"{u.FirstName} {u.LastName}".Trim();
+
+    private static string RoleList(IEnumerable<string> roles) => roles.Any() ? string.Join(" and ", roles) : "no role";
 
     private async Task<AppUser> FindAsync(Guid id) =>
         await users.FindByIdAsync(id.ToString()) ?? throw new NotFoundException("User", id);

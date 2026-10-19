@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Sales;
 
-public sealed class CustomerService(IAlaraDbContext db)
+public sealed class CustomerService(IAlaraDbContext db, IActivityLog activity)
 {
     public async Task<PagedResult<CustomerDto>> ListAsync(CustomerListQuery query, CancellationToken ct)
     {
@@ -37,6 +37,7 @@ public sealed class CustomerService(IAlaraDbContext db)
         await EnsurePhoneFreeAsync(customer.NormalizedPhone, null, ct);
         if (!request.IsActive) customer.SetActive(false);
         db.Customers.Add(customer);
+        activity.Record(Domain.Activity.ActivityArea.Customers, $"added customer {customer.Name} ({customer.Phone})", $"/customers?search={Uri.EscapeDataString(customer.Phone)}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(customer.Id, ct);
     }
@@ -47,6 +48,7 @@ public sealed class CustomerService(IAlaraDbContext db)
         customer.Update(request.Name, request.Phone, request.Email, request.City, request.Address, request.Notes);
         await EnsurePhoneFreeAsync(customer.NormalizedPhone, id, ct);
         customer.SetActive(request.IsActive);
+        activity.Record(Domain.Activity.ActivityArea.Customers, $"updated customer {customer.Name} ({customer.Phone})", $"/customers?search={Uri.EscapeDataString(customer.Phone)}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }

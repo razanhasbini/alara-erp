@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AlaraERP.Application.Inventory;
 
 /// <summary>Per-product inventory policy (low-stock threshold, expiry tracking), set by managers.</summary>
-public sealed class InventorySettingsService(IAlaraDbContext db, ICurrentUser currentUser)
+public sealed class InventorySettingsService(IAlaraDbContext db, ICurrentUser currentUser, IActivityLog activity)
 {
     /// <summary>Defaults for products nobody has configured yet.</summary>
     public const int DefaultThreshold = 0;
@@ -30,6 +30,10 @@ public sealed class InventorySettingsService(IAlaraDbContext db, ICurrentUser cu
             db.ProductInventorySettings.Add(settings);
         }
         settings.Update(request.LowStockThreshold, request.TracksExpiry, currentUser.UserId);
+        var productName = await db.Products.Where(p => p.Id == productId).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "a product";
+        activity.Record(Domain.Activity.ActivityArea.Stock, request.LowStockThreshold > 0
+            ? $"set the stock alert for {productName} to {request.LowStockThreshold}"
+            : $"set {productName} to alert only when it runs out", $"/inventory?product={productId}");
         await db.SaveChangesAsync(ct);
         return ToDto(productId, settings);
     }

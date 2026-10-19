@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AlaraERP.Application.Finance;
 
 /// <summary>Bills and running costs. They reduce net profit in analytics on the date they apply to.</summary>
-public sealed class ExpenseService(IAlaraDbContext db, BusinessClock clock, ICurrentUser currentUser, IUserDirectory users)
+public sealed class ExpenseService(IAlaraDbContext db, BusinessClock clock, ICurrentUser currentUser, IUserDirectory users, IActivityLog activity)
 {
     /// <summary>How far ahead a bill may be dated (e.g. wages entered before month end).</summary>
     private const int MaxDaysAhead = 62;
@@ -47,6 +47,7 @@ public sealed class ExpenseService(IAlaraDbContext db, BusinessClock clock, ICur
         var expense = new Expense(request.Category, request.IncurredOn, request.Amount, request.Description, request.Notes,
             currentUser.UserId);
         db.Expenses.Add(expense);
+        activity.Record(Domain.Activity.ActivityArea.Bills, $"added a bill: {Describe(expense)}", "/bills");
         await db.SaveChangesAsync(ct);
         return await GetAsync(expense.Id, ct);
     }
@@ -56,6 +57,7 @@ public sealed class ExpenseService(IAlaraDbContext db, BusinessClock clock, ICur
         var expense = await db.Expenses.FirstOrDefaultAsync(e => e.Id == id, ct) ?? throw new NotFoundException("Bill", id);
         EnsureDate(request.IncurredOn);
         expense.Update(request.Category, request.IncurredOn, request.Amount, request.Description, request.Notes);
+        activity.Record(Domain.Activity.ActivityArea.Bills, $"changed a bill: now {Describe(expense)}", "/bills");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -64,8 +66,13 @@ public sealed class ExpenseService(IAlaraDbContext db, BusinessClock clock, ICur
     {
         var expense = await db.Expenses.FirstOrDefaultAsync(e => e.Id == id, ct) ?? throw new NotFoundException("Bill", id);
         db.Expenses.Remove(expense);
+        activity.Record(Domain.Activity.ActivityArea.Bills, $"deleted a bill: {Describe(expense)}", "/bills");
         await db.SaveChangesAsync(ct);
     }
+
+    private static string Describe(Expense e) =>
+        $"{e.Category switch { ExpenseCategory.Internet => "internet / Wi-Fi", ExpenseCategory.Models => "models", _ => e.Category.ToString().ToLowerInvariant() }}, {ActivityText.Money(e.Amount)}"
+        + (e.Description is null ? "" : $" ({e.Description})") + $" for {e.IncurredOn:dd MMM yyyy}";
 
     private void EnsureDate(DateOnly date)
     {

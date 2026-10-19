@@ -22,9 +22,26 @@ public sealed class OrderService(
     ICurrentUser currentUser,
     IUserDirectory users,
     IOrderDeletionLedger deletionLedger,
-    IOptions<ErpOptions> options)
+    IOptions<ErpOptions> options,
+    IActivityLog activity)
 {
     private Guid? UserId => currentUser.UserId;
+    /// <summary>Set when this request created the customer profile (for the activity log).</summary>
+    private bool _createdCustomer;
+
+    /// <summary>"2 × Miracle Mask, plus a gift of 1 × Hair Mist — total $48.00", for the activity log.</summary>
+    private static string Describe(Order o)
+    {
+        var gifts = o.Items.Where(i => i.IsGift).Select(i => (i.Quantity, i.ProductName)).ToList();
+        return ActivityText.Items(o.Items.Where(i => !i.IsGift).Select(i => (i.Quantity, i.ProductName)))
+               + (gifts.Count > 0 ? $", plus a gift of {ActivityText.Items(gifts)}" : "")
+               + $" — total {ActivityText.Money(o.GrandTotal)}";
+    }
+
+    private void Log(Order o, string summary) =>
+        activity.Record(Domain.Activity.ActivityArea.Orders, summary, $"/orders/{o.Id}");
+
+    private static string Reason(string? notes) => string.IsNullOrWhiteSpace(notes) ? "" : $" (\"{notes.Trim()}\")";
 
     // ---- queries -----------------------------------------------------------------------------
 
@@ -145,6 +162,7 @@ public sealed class OrderService(
             await ReserveStockAsync(order, ct);
         }
 
+        Log(order, $"entered order {order.OrderNumber} for {order.RecipientName}{(_createdCustomer ? " (a new customer)" : "")}: {Describe(order)}");
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return await GetAsync(order.Id, ct);
@@ -177,6 +195,7 @@ public sealed class OrderService(
             order.SetCustomer(customerId);
             order.SetNotes(request.Notes);
             if (reserved || sold) await ReserveStockAsync(order, ct);
+            Log(order, $"changed order {order.OrderNumber} for {order.RecipientName}; it is now {Describe(order)}");
             if (sold)
             {
                 await db.SaveChangesAsync(ct);
@@ -190,6 +209,7 @@ public sealed class OrderService(
         {
             order.SetRecipient(ToRecipient(request.Recipient));
             order.SetNotes(request.Notes);
+            Log(order, $"updated the customer details on order {order.OrderNumber} ({order.RecipientName}, {order.RecipientPhone})");
             await Task.CompletedTask;
         }, ct);
 
@@ -201,6 +221,7 @@ public sealed class OrderService(
             var wasReserved = order.Status == OrderStatus.Reserved;
             order.TransitionTo(OrderStatus.Confirmed, UserId, clock.UtcNow, request.Notes);
             if (!wasReserved) await ReserveStockAsync(order, ct);
+            Log(order, $"marked order {order.OrderNumber} for {order.RecipientName} as sold: {Describe(order)}");
             await db.SaveChangesAsync(ct);
             await stock.ShipAsync(order.Id, order.OrderNumber, ct);
         }, ct);
@@ -211,6 +232,7 @@ public sealed class OrderService(
         {
             var wasSold = order.Status == OrderStatus.Confirmed;
             order.Reserve(request.ReservedUntil, UserId, clock.UtcNow, request.Notes);
+            Log(order, $"reserved order {order.OrderNumber} for {order.RecipientName}");
             if (wasSold)
             {
                 await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
@@ -223,6 +245,7 @@ public sealed class OrderService(
         ChangeAsync(id, order =>
         {
             order.ChangeReservationDeadline(request.ReservedUntil, UserId, clock.UtcNow, request.Notes);
+            Log(order, $"changed the reservation time of order {order.OrderNumber}");
             return Task.CompletedTask;
         }, ct);
 
@@ -244,6 +267,7 @@ public sealed class OrderService(
         ChangeAsync(id, async order =>
         {
             order.TransitionTo(OrderStatus.Returned, UserId, clock.UtcNow, request.Notes);
+            Log(order, $"recorded order {order.OrderNumber} from {order.RecipientName} as returned — {ActivityText.Money(order.GrandTotal)} taken out of sales{Reason(request.Notes)}");
             await stock.ReleaseAsync(order.Id, ct); // a hold left by an order sold before sales deducted at once
             await stock.ReturnShipmentAsync(order.Id, order.OrderNumber, ct);
         }, ct);
@@ -253,6 +277,7 @@ public sealed class OrderService(
         {
             var hadReservation = order.Status is OrderStatus.Confirmed or OrderStatus.Reserved;
             order.TransitionTo(OrderStatus.Cancelled, UserId, clock.UtcNow, request.Notes);
+            Log(order, $"cancelled order {order.OrderNumber} for {order.RecipientName}{Reason(request.Notes)}");
             if (hadReservation)
             {
                 await stock.ReleaseAsync(order.Id, ct);
@@ -270,6 +295,8 @@ public sealed class OrderService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == id, ct)
                     ?? throw new NotFoundException("Order", id);
+        // Staged now so it is saved by the inventory step's save, inside this transaction.
+        activity.Record(Domain.Activity.ActivityArea.Orders, $"deleted test order {order.OrderNumber} for {order.RecipientName} (its stock was put back)");
 
         // A reserved order may still hold units. A sold order may have net shipment movements.
         // Both methods are idempotent for cancelled/returned orders that already put stock back.
@@ -392,6 +419,7 @@ public sealed class OrderService(
         try
         {
             await db.SaveChangesAsync(ct);
+            _createdCustomer = true;
             return customer.Id;
         }
         catch (DbUpdateException)

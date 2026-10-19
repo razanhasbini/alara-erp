@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Catalog;
 
-public sealed class CategoryService(IAlaraDbContext db)
+public sealed class CategoryService(IAlaraDbContext db, IActivityLog activity)
 {
     public async Task<IReadOnlyList<CategoryDto>> ListAsync(bool includeInactive, CancellationToken ct)
     {
@@ -54,6 +54,7 @@ public sealed class CategoryService(IAlaraDbContext db)
         var category = new Category(request.Name, slug, request.ParentCategoryId, request.Description, request.SortOrder);
         if (!request.IsActive) category.Update(request.Name, slug, request.ParentCategoryId, request.Description, request.SortOrder, false);
         db.Categories.Add(category);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"added the category {category.Name}", "/categories");
         await db.SaveChangesAsync(ct);
         return await GetAsync(category.Id, ct);
     }
@@ -64,6 +65,7 @@ public sealed class CategoryService(IAlaraDbContext db)
         var slug = await UniqueSlugAsync(request.Slug, request.Name, id, ct);
         await EnsureParentValidAsync(id, request.ParentCategoryId, ct);
         category.Update(request.Name, slug, request.ParentCategoryId, request.Description, request.SortOrder, request.IsActive);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"updated the category {category.Name}", "/categories");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }

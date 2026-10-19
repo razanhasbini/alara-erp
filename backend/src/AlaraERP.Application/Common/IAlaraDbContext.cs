@@ -1,3 +1,4 @@
+using AlaraERP.Domain.Activity;
 using AlaraERP.Domain.Catalog;
 using AlaraERP.Domain.Finance;
 using AlaraERP.Domain.Inventory;
@@ -38,6 +39,7 @@ public interface IAlaraDbContext
     DbSet<OrderItem> OrderItems { get; }
     DbSet<OrderHistoryEntry> OrderHistory { get; }
     DbSet<Expense> Expenses { get; }
+    DbSet<ActivityEntry> ActivityEntries { get; }
 
     // notifications
     DbSet<AlaraERP.Domain.Notifications.Notification> Notifications { get; }

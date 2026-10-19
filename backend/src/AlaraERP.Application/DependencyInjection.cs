@@ -54,6 +54,8 @@ public static class DependencyInjection
         services.AddScoped<WhatsAppDispatcher>();
         services.AddScoped<ReservationExpiryJob>();
         services.AddScoped<LowStockAlertJob>();
+        services.AddScoped<IActivityLog, ActivityLog>();
+        services.AddScoped<Activity.ActivityService>();
         return services;
     }
 }

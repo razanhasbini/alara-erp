@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Catalog;
 
-public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
+public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser, IActivityLog activity)
 {
     public async Task<PagedResult<ProductListItemDto>> ListAsync(ProductListQuery query, CancellationToken ct)
     {
@@ -91,6 +91,8 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
             product.ReplaceBundleItems(await ResolveComponentsAsync(request.BundleItems ?? [], ct));
 
         db.Products.Add(product);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"added {(product.Type == ProductType.Bundle ? "bundle" : "product")} {product.Name} at {ActivityText.Money(product.SellingPrice)}"
+            + (product.StandardCost is { } c ? $", cost {ActivityText.Money(c)}" : ""), $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(product.Id, ct);
     }
@@ -102,6 +104,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         await EnsureCategoryExistsAsync(request.CategoryId, ct);
 
         var priceChanged = product.SellingPrice != request.SellingPrice || product.CompareAtPrice != request.CompareAtPrice;
+        var (oldName, oldPrice, oldCost) = (product.Name, product.SellingPrice, product.StandardCost);
         if (priceChanged && !currentUser.HasPermission(Permissions.Products.ManagePricing))
             throw new ForbiddenOperationException("products.pricing_not_allowed", "You are not allowed to change product prices.");
 
@@ -112,6 +115,11 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
             EnsureCanSetCost();
             product.SetStandardCost(request.StandardCost);
         }
+        var changes = new List<string>();
+        if (oldName != product.Name) changes.Add($"renamed from {oldName}");
+        if (oldPrice != product.SellingPrice) changes.Add($"price {ActivityText.Money(oldPrice)} → {ActivityText.Money(product.SellingPrice)}");
+        if (oldCost != product.StandardCost) changes.Add($"cost {(oldCost is { } oc ? ActivityText.Money(oc) : "none")} → {(product.StandardCost is { } nc ? ActivityText.Money(nc) : "none")}");
+        activity.Record(Domain.Activity.ActivityArea.Products, $"updated {product.Name}" + (changes.Count > 0 ? $" ({string.Join("; ", changes)})" : ""), $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -120,6 +128,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
     {
         var product = await db.Products.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new NotFoundException("Product", id);
         product.SetActive(isActive);
+        activity.Record(Domain.Activity.ActivityArea.Products, isActive ? $"put {product.Name} back on sale" : $"took {product.Name} off sale", $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }
@@ -139,6 +148,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         db.Products.Remove(product);
         try
         {
+            activity.Record(Domain.Activity.ActivityArea.Products, $"deleted {product.Name}");
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException)
@@ -153,6 +163,7 @@ public sealed class ProductService(IAlaraDbContext db, ICurrentUser currentUser)
         var bundle = await db.Products.Include(p => p.BundleItems).FirstOrDefaultAsync(p => p.Id == id, ct)
                      ?? throw new NotFoundException("Product", id);
         bundle.ReplaceBundleItems(await ResolveComponentsAsync(request.Items, ct));
+        activity.Record(Domain.Activity.ActivityArea.Products, $"changed what's inside the bundle {bundle.Name}", $"/products/{bundle.Id}");
         await db.SaveChangesAsync(ct);
         return await GetAsync(id, ct);
     }

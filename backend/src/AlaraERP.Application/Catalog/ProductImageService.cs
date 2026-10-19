@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AlaraERP.Application.Catalog;
 
-public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage)
+public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage, IActivityLog activity)
 {
     public const long MaxBytes = 5 * 1024 * 1024;
     public const int MaxImagesPerProduct = 12;
@@ -18,6 +18,7 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
 
         var key = await StoreAsync(productId, content, length, ct);
         var image = product.AddImage(key.Key, key.ContentType, key.Size);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"added a photo to {product.Name}", $"/products/{product.Id}");
         await SaveOrDiscardAsync(key.Key, ct);
         return ToDto(image);
     }
@@ -31,6 +32,7 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
 
         var key = await StoreAsync(productId, content, length, ct);
         var (added, removed) = product.ReplaceImage(imageId, key.Key, key.ContentType, key.Size);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"replaced a photo of {product.Name}", $"/products/{product.Id}");
         await SaveOrDiscardAsync(key.Key, ct);
         await storage.DeleteAsync(removed.StorageKey, CancellationToken.None);
         return ToDto(added);
@@ -84,6 +86,7 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
     {
         var product = await LoadAsync(productId, ct);
         var removed = product.RemoveImage(imageId);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"removed a photo from {product.Name}", $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
         await storage.DeleteAsync(removed.StorageKey, ct);
     }
@@ -97,6 +100,7 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
         // "one main photo per product" index never sees two at once.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         product.ClearPrimaryImage();
+        activity.Record(Domain.Activity.ActivityArea.Products, $"changed the main photo of {product.Name}", $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
         product.SetPrimaryImage(imageId);
         await db.SaveChangesAsync(ct);
@@ -107,6 +111,7 @@ public sealed class ProductImageService(IAlaraDbContext db, IFileStorage storage
     {
         var product = await LoadAsync(productId, ct);
         product.ReorderImages(request.ImageIds);
+        activity.Record(Domain.Activity.ActivityArea.Products, $"reordered the photos of {product.Name}", $"/products/{product.Id}");
         await db.SaveChangesAsync(ct);
     }
 

@@ -8,7 +8,7 @@ namespace AlaraERP.Application.Inventory;
 /// Database-backed global inventory switches. Disabled features keep their schema and historical data,
 /// while commands and queries stop applying the dormant workflow.
 /// </summary>
-public sealed class InventoryFeatureService(IAlaraDbContext db, ICurrentUser currentUser)
+public sealed class InventoryFeatureService(IAlaraDbContext db, ICurrentUser currentUser, IActivityLog activity)
 {
     private bool? _expiryDatesEnabled;
 
@@ -44,6 +44,7 @@ public sealed class InventoryFeatureService(IAlaraDbContext db, ICurrentUser cur
             row.SetExpiryDates(enabled, currentUser.UserId);
         }
 
+        activity.Record(Domain.Activity.ActivityArea.Settings, enabled ? "turned expiry dates on" : "turned expiry dates off", "/features");
         await db.SaveChangesAsync(ct);
         _expiryDatesEnabled = enabled;
         return new InventoryFeatureSettingsDto(enabled, row.UpdatedAt);
