@@ -23,7 +23,7 @@ export function Figure({ label, value, hint, sub, tone }: { label: string; value
 
 export function FigureRow({ children, columns = 4 }: { children: ReactNode; columns?: 4 | 5 }) {
   return (
-    <div className={cn("grid grid-cols-[repeat(2,minmax(0,1fr))] divide-hairline border-y border-hairline md:divide-x",
+    <div className={cn("grid grid-cols-[repeat(2,minmax(0,1fr))] divide-hairline border-y border-hairline border-t-gold/50 md:divide-x",
       "[&>*:nth-child(n+3)]:border-t [&>*:nth-child(n+3)]:border-hairline md:[&>*:nth-child(n+3)]:border-t-0",
       columns === 5 ? "md:grid-cols-[repeat(5,minmax(0,1fr))]" : "md:grid-cols-[repeat(4,minmax(0,1fr))]")}>
       {children}

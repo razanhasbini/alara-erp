@@ -8,7 +8,7 @@
 /*
  * ÀLara Line ERP — visual language
  * Paper and ink, with the brand's rose used sparingly: primary actions, the active nav marker,
- * focus rings and the monogram. Display serif (Bodoni Moda, close to the logo's Didone) only for
+ * focus rings and the monogram. Gold is the warm second accent: thin rules, the active-page marker, small labels. Display serif (Bodoni Moda, close to the logo's Didone) only for
  * page titles and headline figures; DM Sans (the website's UI face) for everything else.
  */
 
@@ -59,6 +59,16 @@
   --color-petal: var(--petal);
   --color-paper: var(--paper);
   --color-hairline: var(--hairline);
+  --color-frame: var(--frame);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-gold-soft: var(--gold-soft);
+
+  /* flat, paper-like surfaces: only floating menus lift, and only a little */
+  --shadow-xs: 0 1px 1px rgb(29 24 25 / 0.03);
+  --shadow-sm: 0 1px 2px rgb(29 24 25 / 0.04);
+  --shadow-md: 0 4px 12px -4px rgb(29 24 25 / 0.08);
+  --shadow-lg: 0 8px 24px -8px rgb(29 24 25 / 0.12);
 
   /* status tones (text / tint) */
   --color-tone-neutral: var(--tone-neutral);
@@ -83,11 +93,15 @@
   --radius: 0.4rem;
 
   --paper: #faf7f5;          /* app background */
-  --hairline: #ebe4e1;       /* dividers */
+  --hairline: #f0dde5;       /* dividers: a soft blush */
+  --frame: #eec3d6;          /* card and table borders: brand pink, softened */
   --rose: #e85c9c;           /* brand rose (logo) */
   --rose-ink: #b8306f;       /* rose dark enough for white text / small text (AA) */
   --blush: #fdecf4;          /* brand pale blush */
   --petal: #f8bed6;          /* brand pink */
+  --gold: #b8955c;           /* warm accent for rules and markers (not for text) */
+  --gold-ink: #85662f;       /* gold dark enough for small text (AA on paper and blush) */
+  --gold-soft: #f5ecdc;      /* gold tint */
 
   --background: var(--paper);
   --foreground: #1d1819;
@@ -105,7 +119,7 @@
   --accent-foreground: #1d1819;
   --destructive: #b42330;
   --border: var(--hairline);
-  --input: #ddd4d1;
+  --input: #e6c7d5;
   --ring: var(--rose);
 
   --chart-1: var(--rose-ink);
@@ -168,7 +182,37 @@
   .eyebrow {
     @apply text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
   }
+  /* white cards and tables: a pink frame with a gold top edge */
+  .frame {
+    border: 1px solid var(--frame);
+    border-top: 2px solid var(--gold);
+  }
   .code {
     @apply font-mono text-[0.78rem] tracking-tight;
+  }
+}
+
+/*
+ * Calm motion: menus, dialogs and tooltips simply fade in, quickly — no zooming or sliding.
+ * People who ask their device for less motion get none at all.
+ */
+[class*="animate-in"],
+[class*="animate-out"] {
+  --tw-enter-scale: 1 !important;
+  --tw-exit-scale: 1 !important;
+  --tw-enter-translate-x: 0 !important;
+  --tw-enter-translate-y: 0 !important;
+  --tw-exit-translate-x: 0 !important;
+  --tw-exit-translate-y: 0 !important;
+  animation-duration: 120ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

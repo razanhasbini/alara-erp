@@ -70,7 +70,7 @@ function Brand() {
   return (
     <div className="px-5 pt-5 pb-4">
       <img src={logo} alt="ÀLara Line" className="h-11 w-auto" />
-      <div className="mt-1.5 text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Operations</div>
+      <div className="mt-1.5 text-[0.62rem] tracking-[0.2em] text-gold-ink uppercase">Operations</div>
     </div>
   )
 }
@@ -85,7 +85,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
         if (visible.length === 0) return null
         return (
           <div key={group || "home"} className="mt-3 first:mt-0">
-            {group && <div className="eyebrow px-2.5 pb-1.5 text-[0.62rem]">{group}</div>}
+            {group && <div className="eyebrow px-2.5 pb-1.5 text-[0.62rem] text-gold-ink">{group}</div>}
             <ul className="grid gap-px">
               {visible.map(({ to, label, icon: Icon, end, badge, unreadAlerts }) => (
                 <li key={to}>
@@ -93,7 +93,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
                     className={({ isActive }) => cn(
                       "relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[0.86rem] transition-colors",
                       isActive
-                        ? "bg-blush font-medium text-foreground before:absolute before:top-1.5 before:bottom-1.5 before:-left-2 before:w-[3px] before:rounded-full before:bg-rose"
+                        ? "bg-blush font-medium text-foreground before:absolute before:top-1.5 before:bottom-1.5 before:-left-2 before:w-[3px] before:rounded-full before:bg-gold"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",
                     )}>
                     <Icon className="size-4 shrink-0" />
@@ -161,7 +161,7 @@ export function AppShell() {
   const location = useLocation()
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[15rem_1fr]">
-      <aside className="sticky top-0 hidden h-svh flex-col border-r border-hairline bg-sidebar lg:flex">
+      <aside className="sticky top-0 hidden h-svh flex-col border-r border-gold/60 bg-sidebar lg:flex">
         <Brand />
         <Nav />
       </aside>
@@ -174,7 +174,7 @@ export function AppShell() {
       </Sheet>
 
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-20 flex h-12 items-center justify-between gap-3 border-b border-hairline bg-background/90 px-4 backdrop-blur-sm md:px-6">
+        <header className="sticky top-0 z-20 flex h-12 items-center justify-between gap-3 border-b border-frame bg-background/90 px-4 backdrop-blur-sm md:px-6">
           <div className="flex items-center gap-2 lg:hidden">
             <Button variant="ghost" size="icon-sm" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu /></Button>
             <img src={logo} alt="ÀLara Line" className="h-7 w-auto" />

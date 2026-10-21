@@ -250,7 +250,7 @@ export function NewReceiptPage() {
             <Field label="Received on" htmlFor="rc-date"><Input id="rc-date" type="date" max={todayIso()} value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} /></Field>
             <Field label="Notes" htmlFor="rc-notes"><Textarea id="rc-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
           </Section>
-          <div className="rounded-lg border border-hairline bg-card p-4 text-sm">
+          <div className="frame rounded-lg bg-card p-4 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Units</span><span className="tabular font-medium">{number(totalUnits)}</span></div>
             {showCost && <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Cost</span><span className="tabular">{totalCost !== null && lines.length ? money(totalCost) : "—"}</span></div>}
             <SubmitButton pending={save.isPending} className="mt-4 w-full">Record receipt</SubmitButton>

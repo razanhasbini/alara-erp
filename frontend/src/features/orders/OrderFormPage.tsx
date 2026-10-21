@@ -234,7 +234,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
             </Section>
           )}
 
-          <div className="rounded-lg border border-hairline bg-card p-4 text-sm">
+          <div className="frame rounded-lg bg-card p-4 text-sm">
             <div className="flex justify-between py-1"><span className="text-muted-foreground">Items</span><span className="tabular">{money(totals.subtotal)}</span></div>
             {giftLines.length > 0 && <div className="flex justify-between py-1 text-emerald-700"><span>Gift items</span><span>{giftLines.reduce((sum, line) => sum + line.quantity, 0)} · free</span></div>}
             <div className="flex items-center justify-between gap-3 py-1"><label htmlFor="o-discount" className="text-muted-foreground">Order discount</label>

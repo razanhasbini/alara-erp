@@ -42,7 +42,7 @@ export function DashboardPage() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="eyebrow">{today.label}</p>
+          <p className="eyebrow text-gold-ink">{today.label}</p>
           <h1 className="font-display mt-1 text-[2.1rem] leading-tight">{today.greeting}, {user?.firstName}</h1>
         </div>
         <p className="text-xs text-muted-foreground">Live figures · updated {when(data.generatedAt)}</p>

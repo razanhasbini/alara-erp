@@ -26,7 +26,7 @@ export function RolesPage() {
   return (
     <>
       <PageHeader title="Roles & permissions" description="What each role can do. Permissions are enforced by the server on every request; these roles are defined by the system." />
-      <div className="overflow-x-auto rounded-lg border border-hairline bg-card">
+      <div className="overflow-x-auto frame rounded-lg bg-card">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-hairline">

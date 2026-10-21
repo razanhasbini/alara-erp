@@ -34,7 +34,7 @@ export function DataTable<T>({ columns, rows, rowKey, loading, error, onRetry, e
 }) {
   const align = (a?: string) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left")
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-hairline bg-card", className)}>
+    <div className={cn("overflow-hidden frame rounded-lg bg-card", className)}>
       {error ? (
         <div className="p-4"><ErrorState error={error} onRetry={onRetry} /></div>
       ) : (

@@ -107,21 +107,21 @@ export function ActivityPage() {
           {groups.map((g) => (
             <section key={g.key} aria-labelledby={`day-${g.key}`}>
               <h2 id={`day-${g.key}`} className="eyebrow mb-2">{g.title}</h2>
-              <ul className="overflow-hidden rounded-lg border border-hairline bg-card">
+              <ul className="overflow-hidden frame rounded-lg bg-card">
                 {g.items.map((entry) => <ActivityRow key={entry.id} entry={entry} />)}
               </ul>
             </section>
           ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-hairline bg-card">
+        <div className="frame rounded-lg bg-card">
           <EmptyState title={filtered ? "Nothing matches" : "No activity yet"}>
             {filtered ? "Try another person, day or search." : "As people use the system, what they do will show up here."}
           </EmptyState>
         </div>
       )}
       {data && data.totalCount > data.pageSize && (
-        <div className="mt-4 rounded-lg border border-hairline bg-card">
+        <div className="mt-4 frame rounded-lg bg-card">
           <Pager page={data.page} pageSize={data.pageSize} total={data.totalCount} onPage={(p) => set("page", String(p))} />
         </div>
       )}

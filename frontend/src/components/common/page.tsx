@@ -11,7 +11,7 @@ export function PageHeader({ title, description, actions, back, meta }: {
   meta?: ReactNode
 }) {
   return (
-    <header className="mb-6 flex flex-col gap-3 border-b border-hairline pb-5 md:flex-row md:items-end md:justify-between">
+    <header className="relative mb-6 flex flex-col gap-3 border-b border-hairline pb-5 after:absolute after:-bottom-px after:left-0 after:h-px after:w-16 after:bg-gold md:flex-row md:items-end md:justify-between">
       <div className="min-w-0">
         {back && (
           <Link to={back.to} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
@@ -36,7 +36,7 @@ export function Section({ title, actions, children, className, bodyClassName }: 
   bodyClassName?: string
 }) {
   return (
-    <section className={cn("rounded-lg border border-hairline bg-card", className)}>
+    <section className={cn("frame rounded-lg bg-card", className)}>
       {(title || actions) && (
         <div className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-2.5">
           {title && <h2 className="min-w-0 text-sm font-semibold">{title}</h2>}

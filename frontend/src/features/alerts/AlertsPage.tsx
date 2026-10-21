@@ -59,7 +59,7 @@ export function AlertsPage() {
         actions={<Button variant="outline" disabled={markAll.isPending} onClick={() => markAll.mutate()}>{markAll.isPending ? <InlineSpinner /> : <CheckCheck />} Mark all as read</Button>} />
 
       {channels && !channels.whatsAppConfigured && (
-        <div role="status" className="mb-4 flex items-start gap-3 rounded-lg border border-hairline bg-card px-4 py-3 text-sm">
+        <div role="status" className="mb-4 flex items-start gap-3 frame rounded-lg bg-card px-4 py-3 text-sm">
           <MessageCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
           <div>
             <p className="font-medium">WhatsApp isn't connected yet</p>
@@ -78,7 +78,7 @@ export function AlertsPage() {
           options={[{ value: "all", label: "All" }, { value: "unread", label: "Unread" }]} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-hairline bg-card">
+      <div className="overflow-hidden frame rounded-lg bg-card">
         {data?.items.length ? (
           <ul>
             {data.items.map((alert) => (
