@@ -89,6 +89,11 @@ public sealed class InventoryController(
     [HasPermission(Inventory.Adjust)]
     public Task<MovementDto> Adjust(AdjustStockRequest request, CancellationToken ct) => operations.AdjustAsync(request, ct);
 
+    /// <summary>Fixes a miscount: sets the units on hand to the counted number and records the difference.</summary>
+    [HttpPost("counts")]
+    [HasPermission(Inventory.Adjust)]
+    public Task<ProductStockDto> CorrectCount(CorrectCountRequest request, CancellationToken ct) => operations.CorrectCountAsync(request, ct);
+
     /// <summary>Takes whole bundles out of stock (PR, gifts, damage): deducts each component, never a "bundle stock".</summary>
     [HttpPost("bundle-withdrawals")]
     [HasPermission(Inventory.Adjust)]
@@ -121,3 +126,47 @@ public sealed class InventoryController(
 }
 
 
+
+/// <summary>Packaging boxes. Kept apart from selling: orders never change box counts.</summary>
+[Route("api/boxes")]
+public sealed class BoxesController(BoxService boxes) : ApiControllerBase
+{
+    [HttpGet]
+    [HasPermission(Boxes.View)]
+    public Task<IReadOnlyList<BoxDto>> List([FromQuery] bool includeInactive, CancellationToken ct) => boxes.ListAsync(includeInactive, ct);
+
+    /// <summary>Boxes made for these products (or for products inside these bundles), e.g. while entering an order.</summary>
+    [HttpGet("for-products")]
+    [HasPermission(Boxes.View)]
+    public Task<IReadOnlyList<BoxDto>> ForProducts([FromQuery] Guid[] productIds, CancellationToken ct) => boxes.ForProductsAsync(productIds, ct);
+
+    [HttpGet("{id:guid}")]
+    [HasPermission(Boxes.View)]
+    public Task<BoxDto> Get(Guid id, CancellationToken ct) => boxes.GetAsync(id, ct);
+
+    [HttpGet("{id:guid}/history")]
+    [HasPermission(Boxes.View)]
+    public Task<IReadOnlyList<BoxMovementDto>> History(Guid id, CancellationToken ct) => boxes.HistoryAsync(id, ct);
+
+    [HttpPost]
+    [HasPermission(Boxes.Manage)]
+    [ProducesResponseType<BoxDto>(201)]
+    public async Task<IActionResult> Create(SaveBoxRequest request, CancellationToken ct)
+    {
+        var box = await boxes.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(Get), new { id = box.Id }, box);
+    }
+
+    [HttpPut("{id:guid}")]
+    [HasPermission(Boxes.Manage)]
+    public Task<BoxDto> Update(Guid id, SaveBoxRequest request, CancellationToken ct) => boxes.UpdateAsync(id, request, ct);
+
+    /// <summary>Add boxes delivered, take out boxes used or damaged, or set the count to what was counted.</summary>
+    [HttpPost("{id:guid}/count")]
+    [HasPermission(Boxes.Manage)]
+    public Task<BoxDto> ChangeCount(Guid id, ChangeBoxCountRequest request, CancellationToken ct) => boxes.ChangeCountAsync(id, request, ct);
+
+    [HttpPut("{id:guid}/active")]
+    [HasPermission(Boxes.Manage)]
+    public Task<BoxDto> SetActive(Guid id, SetBoxActiveRequest request, CancellationToken ct) => boxes.SetActiveAsync(id, request.IsActive, ct);
+}

@@ -481,6 +481,163 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.Box", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset?>("LowStockAlertedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("low_stock_alerted_at");
+
+                    b.Property<int>("LowStockThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("low_stock_threshold");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("price");
+
+                    b.Property<int>("QuantityOnHand")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity_on_hand");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_boxes");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_boxes_name");
+
+                    b.ToTable("boxes", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_boxes_on_hand", "quantity_on_hand >= 0");
+
+                            t.HasCheckConstraint("ck_boxes_price", "price IS NULL OR price >= 0");
+
+                            t.HasCheckConstraint("ck_boxes_threshold", "low_stock_threshold >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.BoxContent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BoxId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("box_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("Id")
+                        .HasName("pk_box_contents");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_box_contents_product_id");
+
+                    b.HasIndex("BoxId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_box_contents_box_id_product_id");
+
+                    b.ToTable("box_contents", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_box_contents_quantity", "quantity > 0");
+                        });
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.BoxMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BoxId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("box_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid?>("PerformedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("performed_by_user_id");
+
+                    b.Property<int>("QuantityAfter")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity_after");
+
+                    b.Property<int>("QuantityChange")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity_change");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_box_movements");
+
+                    b.HasIndex("PerformedByUserId")
+                        .HasDatabaseName("ix_box_movements_performed_by_user_id");
+
+                    b.HasIndex("BoxId", "CreatedAt")
+                        .HasDatabaseName("ix_box_movements_box_id_created_at");
+
+                    b.ToTable("box_movements", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_box_movements_after", "quantity_after >= 0");
+
+                            t.HasCheckConstraint("ck_box_movements_nonzero", "quantity_change <> 0");
+                        });
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Inventory.InventoryFeatureSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -1964,6 +2121,39 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Navigation("Batch");
                 });
 
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.BoxContent", b =>
+                {
+                    b.HasOne("AlaraERP.Domain.Inventory.Box", null)
+                        .WithMany("Contents")
+                        .HasForeignKey("BoxId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_box_contents_boxes_box_id");
+
+                    b.HasOne("AlaraERP.Domain.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_box_contents_products_product_id");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.BoxMovement", b =>
+                {
+                    b.HasOne("AlaraERP.Domain.Inventory.Box", null)
+                        .WithMany()
+                        .HasForeignKey("BoxId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_box_movements_boxes_box_id");
+
+                    b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("PerformedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_box_movements_users_performed_by_user_id");
+                });
+
             modelBuilder.Entity("AlaraERP.Domain.Inventory.InventoryFeatureSettings", b =>
                 {
                     b.HasOne("AlaraERP.Infrastructure.Identity.AppUser", null)
@@ -2318,6 +2508,11 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                     b.Navigation("BundleItems");
 
                     b.Navigation("Images");
+                });
+
+            modelBuilder.Entity("AlaraERP.Domain.Inventory.Box", b =>
+                {
+                    b.Navigation("Contents");
                 });
 
             modelBuilder.Entity("AlaraERP.Domain.Inventory.StockReceipt", b =>

@@ -207,3 +207,55 @@ internal sealed class LowStockAlertConfiguration : IEntityTypeConfiguration<LowS
         b.HasOne<Product>().WithMany().HasForeignKey(a => a.ProductId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+internal sealed class BoxConfiguration : IEntityTypeConfiguration<Box>
+{
+    public void Configure(EntityTypeBuilder<Box> b)
+    {
+        b.ToTable("boxes", Schemas.Inventory, t =>
+        {
+            t.HasCheckConstraint("ck_boxes_on_hand", "quantity_on_hand >= 0");
+            t.HasCheckConstraint("ck_boxes_threshold", "low_stock_threshold >= 0");
+            t.HasCheckConstraint("ck_boxes_price", "price IS NULL OR price >= 0");
+        });
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Name).HasMaxLength(150).IsRequired();
+        b.Property(x => x.Notes).HasMaxLength(2000);
+        b.Property(x => x.Price).HasPrecision(12, 2);
+        b.Property(x => x.Version).IsRowVersion();
+        b.Ignore(x => x.IsLow);
+        b.HasIndex(x => x.Name).IsUnique();
+        b.HasMany(x => x.Contents).WithOne().HasForeignKey(c => c.BoxId).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(x => x.Contents).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class BoxContentConfiguration : IEntityTypeConfiguration<BoxContent>
+{
+    public void Configure(EntityTypeBuilder<BoxContent> b)
+    {
+        b.ToTable("box_contents", Schemas.Inventory, t => t.HasCheckConstraint("ck_box_contents_quantity", "quantity > 0"));
+        b.HasKey(x => x.Id);
+        b.HasIndex(x => new { x.BoxId, x.ProductId }).IsUnique();
+        b.HasIndex(x => x.ProductId);
+        b.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class BoxMovementConfiguration : IEntityTypeConfiguration<BoxMovement>
+{
+    public void Configure(EntityTypeBuilder<BoxMovement> b)
+    {
+        b.ToTable("box_movements", Schemas.Inventory, t =>
+        {
+            t.HasCheckConstraint("ck_box_movements_nonzero", "quantity_change <> 0");
+            t.HasCheckConstraint("ck_box_movements_after", "quantity_after >= 0");
+        });
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.Notes).HasMaxLength(2000);
+        b.HasIndex(x => new { x.BoxId, x.CreatedAt });
+        b.HasOne<Box>().WithMany().HasForeignKey(x => x.BoxId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.PerformedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}

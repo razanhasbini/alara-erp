@@ -74,7 +74,7 @@ public sealed partial class DatabaseMigrator(ILogger<DatabaseMigrator> logger)
     }
 
     /// <summary>Tables that must never be updated or deleted by the application.</summary>
-    public static readonly string[] AppendOnlyTables = ["inventory.stock_movements", "sales.order_history", "audit.activity_log"];
+    public static readonly string[] AppendOnlyTables = ["inventory.stock_movements", "inventory.box_movements", "sales.order_history", "audit.activity_log"];
 
     private async Task SyncSystemRolesAsync(AlaraDbContext db, CancellationToken ct)
     {

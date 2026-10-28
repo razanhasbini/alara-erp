@@ -20,6 +20,7 @@ import { qk, useAvailability, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Customer, OrderDetail, OrderListItem, OrderSource, Paged, PaymentMethod, ProductType } from "@/types/api"
 import { SOURCES } from "@/lib/rules"
+import { BoxesLeft } from "@/features/boxes/BoxesLeft"
 
 interface Line {
   key: string
@@ -249,6 +250,7 @@ function OrderEditor({ existing }: { existing?: OrderDetail }) {
               {isEdit && !sellsOnSave ? "The stock is adjusted to the new items; the sale keeps its original date." : "Saving deducts the products and gifts from stock and counts the sale."}
             </p>
           </div>
+          <BoxesLeft productIds={productIds} note="Boxes aren't taken out when an order is saved." />
         </div>
       </form>
     </>

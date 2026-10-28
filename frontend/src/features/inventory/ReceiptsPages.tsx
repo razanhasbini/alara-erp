@@ -18,6 +18,7 @@ import { dateOnly, dateTime, money, number, todayIso } from "@/lib/format"
 import { P } from "@/lib/permissions"
 import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import type { InventorySettings, Paged, ProductDetail, Receipt, ReceiptSummary } from "@/types/api"
+import { BoxesLeft } from "@/features/boxes/BoxesLeft"
 import { useLogView } from "@/lib/activity"
 
 export function ReceiptsPage() {
@@ -255,6 +256,7 @@ export function NewReceiptPage() {
             {showCost && <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Cost</span><span className="tabular">{totalCost !== null && lines.length ? money(totalCost) : "—"}</span></div>}
             <SubmitButton pending={save.isPending} className="mt-4 w-full">Record receipt</SubmitButton>
           </div>
+          <BoxesLeft productIds={[...new Set(lines.map((l) => l.productId))]} note="Receiving stock doesn't change box counts. Add delivered boxes under Boxes." />
         </div>
       </form>
     </>

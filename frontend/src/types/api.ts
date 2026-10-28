@@ -548,3 +548,31 @@ export interface ActivityEntry {
 }
 
 export type ViewedPage = "Inventory" | "Analytics" | "Bills" | "Customers" | "StockMovements" | "Receipts" | "Orders" | "Dashboard"
+
+export type BoxMovementType = "Added" | "Removed" | "Counted"
+export type BoxCountAction = "Add" | "Remove" | "Count"
+
+/** A packaging box. Selling does not change box counts; staff keep them up to date. */
+export interface Box {
+  id: string
+  name: string
+  notes: string | null
+  /** What a customer pays when they choose to buy the box (e.g. the PR box). Informational. */
+  price: number | null
+  lowStockThreshold: number
+  onHand: number
+  status: StockStatus
+  isActive: boolean
+  contents: { productId: string; productName: string; productType: ProductType; quantity: number }[]
+  updatedAt: string
+}
+
+export interface BoxMovement {
+  id: string
+  type: BoxMovementType
+  quantityChange: number
+  quantityAfter: number
+  notes: string | null
+  performedBy: string | null
+  createdAt: string
+}

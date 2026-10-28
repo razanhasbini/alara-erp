@@ -27,31 +27,34 @@ public static class SystemRoles
             {
                 P.Products.View, P.Products.Create, P.Products.Update, P.Products.Delete, P.Products.ManagePricing,
                 P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer, P.Inventory.ManageThresholds,
+                P.Boxes.View, P.Boxes.Manage,
                 P.Warehouses.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
                 P.Reports.View,
                 P.Users.View,
             }),
 
-        new(InventoryManager, "Receives, adjusts and transfers stock.",
+        new(InventoryManager, "Receives, adjusts and transfers stock, and keeps the box counts.",
             new HashSet<string>
             {
                 P.Products.View,
                 P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer,
+                P.Boxes.View, P.Boxes.Manage,
             }),
 
-        new(SalesEmployee, "Handles the day-to-day catalogue, customers, orders, receipts and stock records.",
+        new(SalesEmployee, "Handles the day-to-day catalogue, customers, orders, receipts, stock records and boxes.",
             new HashSet<string>
             {
                 P.Products.View, P.Products.Create, P.Products.Update,
                 P.Inventory.View, P.Inventory.Receive,
+                P.Boxes.View, P.Boxes.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel,
             }),
 
-        new(Viewer, "Read-only access to catalogue, inventory, orders and reports.",
+        new(Viewer, "Read-only access to catalogue, inventory, boxes, orders and reports.",
             new HashSet<string>
             {
-                P.Products.View, P.Inventory.View, P.Orders.View, P.Reports.View,
+                P.Products.View, P.Inventory.View, P.Boxes.View, P.Orders.View, P.Reports.View,
             }),
     ];
 

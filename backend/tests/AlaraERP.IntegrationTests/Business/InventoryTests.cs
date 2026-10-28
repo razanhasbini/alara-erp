@@ -119,6 +119,70 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
     }
 
     [Fact]
+    public async Task Correcting_a_count_sets_stock_to_the_counted_number_and_logs_the_difference()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var oil = await s.ProductAsync("ALR-BC-TANOIL", 16m);
+        await s.ReceiveAsync(warehouse.Id, oil.Id, 10, batch: "OLD");
+        await s.ReceiveAsync(warehouse.Id, oil.Id, 5, batch: "NEW");
+
+        var down = await (await client.PostAsync("/api/inventory/counts",
+            new CorrectCountRequest(warehouse.Id, oil.Id, 8, null, "Shelf count"))).OkJsonAsync<ProductStockDto>();
+        var unchanged = await client.PostAsync("/api/inventory/counts", new CorrectCountRequest(warehouse.Id, oil.Id, 8, null, null));
+        var up = await (await client.PostAsync("/api/inventory/counts",
+            new CorrectCountRequest(warehouse.Id, oil.Id, 11, null, null))).OkJsonAsync<ProductStockDto>();
+
+        // 7 missing: all 5 of the newest delivery, then 2 of the older one. 3 found: back into the newest delivery.
+        Assert.Equal(8, down.OnHand);
+        Assert.Equal((8, 0), (down.Batches.Single(b => b.BatchNumber == "OLD").OnHand, down.Batches.SingleOrDefault(b => b.BatchNumber == "NEW")?.OnHand ?? 0));
+        Assert.Equal("inventory.count_unchanged", await unchanged.ProblemCodeAsync());
+        Assert.Equal(11, up.OnHand);
+        Assert.Equal(3, up.Batches.Single(b => b.BatchNumber == "NEW").OnHand);
+        var corrections = (await client.GetJsonAsync<PagedResult<MovementDto>>($"/api/inventory/movements?productId={oil.Id}")).Items
+            .Where(m => m.Reason == AdjustmentReason.CountCorrection).ToList();
+        Assert.Equal([-5, -2, 3], corrections.Select(m => m.QuantityChange).Order());
+        Assert.Contains(corrections, m => m.Notes == "Counted 8, was 15. Shelf count");
+    }
+
+    [Fact]
+    public async Task A_count_can_be_corrected_for_one_delivery_or_for_a_product_never_stocked()
+    {
+        var (client, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var oil = await s.ProductAsync("ALR-BC-TANOIL", 16m);
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m, tracksExpiry: false);
+        await s.ReceiveAsync(warehouse.Id, oil.Id, 10, batch: "OLD");
+        await s.ReceiveAsync(warehouse.Id, oil.Id, 5, batch: "NEW");
+        var old = (await s.StockAsync(oil.Id)).Batches.Single(b => b.BatchNumber == "OLD");
+
+        var oneDelivery = await (await client.PostAsync("/api/inventory/counts",
+            new CorrectCountRequest(warehouse.Id, oil.Id, 12, old.BatchId, null))).OkJsonAsync<ProductStockDto>();
+        var neverStocked = await (await client.PostAsync("/api/inventory/counts",
+            new CorrectCountRequest(warehouse.Id, mask.Id, 6, null, null))).OkJsonAsync<ProductStockDto>();
+
+        Assert.Equal((17, 12, 5), (oneDelivery.OnHand, oneDelivery.Batches.Single(b => b.BatchNumber == "OLD").OnHand,
+            oneDelivery.Batches.Single(b => b.BatchNumber == "NEW").OnHand));
+        Assert.Equal(6, neverStocked.OnHand);
+        Assert.Equal(6, Assert.Single(neverStocked.Batches).OnHand);
+    }
+
+    [Fact]
+    public async Task Sales_staff_cannot_correct_counts()
+    {
+        var (_, s) = await ManagerAsync();
+        var warehouse = await s.WarehouseAsync();
+        var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
+        await s.ReceiveAsync(warehouse.Id, mask.Id, 5);
+        using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
+
+        var response = await sales.PostAsync("/api/inventory/counts", new CorrectCountRequest(warehouse.Id, mask.Id, 50, null, null));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(5, (await s.StockAsync(mask.Id)).OnHand);
+    }
+
+    [Fact]
     public async Task Transfers_move_stock_first_expiry_first_and_record_both_sides()
     {
         var (client, s) = await ManagerAsync();

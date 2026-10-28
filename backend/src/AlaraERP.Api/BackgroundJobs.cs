@@ -5,7 +5,7 @@ using AlaraERP.Application.Sales;
 namespace AlaraERP.Api;
 
 /// <summary>
-/// Periodic work: raise low-stock and "reservation time is up" alerts and send queued WhatsApp messages.
+/// Periodic work: raise low-stock, low-box and "reservation time is up" alerts and send queued WhatsApp messages.
 /// Disabled with <c>Jobs:Enabled=false</c> (tests run the jobs directly instead).
 /// </summary>
 public sealed class BackgroundJobs(IServiceScopeFactory scopes, IConfiguration config, ILogger<BackgroundJobs> logger) : BackgroundService
@@ -21,6 +21,7 @@ public sealed class BackgroundJobs(IServiceScopeFactory scopes, IConfiguration c
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var raised = await scope.ServiceProvider.GetRequiredService<LowStockAlertJob>().RunAsync(stoppingToken)
+                             + await scope.ServiceProvider.GetRequiredService<BoxAlertJob>().RunAsync(stoppingToken)
                              + await scope.ServiceProvider.GetRequiredService<ReservationExpiryJob>().RunAsync(stoppingToken);
                 var sent = await scope.ServiceProvider.GetRequiredService<WhatsAppDispatcher>().SendPendingAsync(50, stoppingToken);
                 if (raised + sent > 0) logger.LogInformation("Background jobs: {Raised} alert(s) raised, {Sent} WhatsApp message(s) processed.", raised, sent);

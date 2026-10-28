@@ -21,6 +21,7 @@ import { NewReceiptPage, ReceiptDetailPage, ReceiptsPage } from "@/features/inve
 import { StockPage } from "@/features/inventory/StockPage"
 import { NewTransferPage, TransferDetailPage, TransfersPage } from "@/features/inventory/TransfersPages"
 import { WarehousesPage } from "@/features/inventory/WarehousesPage"
+import { BoxesPage } from "@/features/boxes/BoxesPage"
 import { AlertsPage } from "@/features/alerts/AlertsPage"
 import { WebsiteInsightsPage } from "@/features/analytics/WebsiteInsightsPage"
 import { BillsPage } from "@/features/finance/BillsPage"
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
           { path: "inventory/movements", element: <MovementsPage /> },
           { path: "warehouses", element: <WarehousesPage /> },
         ]),
+        gate(P.boxes.view, [{ path: "boxes", element: <BoxesPage /> }]),
         gate(P.inventory.receive, [{ path: "inventory/receipts/new", element: <NewReceiptPage /> }]),
         gate(P.inventory.transfer, [
           { path: "inventory/transfers", element: <TransfersPage /> },

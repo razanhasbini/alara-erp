@@ -32,6 +32,8 @@ public interface IAlaraDbContext
     DbSet<LowStockAlert> LowStockAlerts { get; }
     DbSet<StockReceipt> StockReceipts { get; }
     DbSet<StockTransfer> StockTransfers { get; }
+    DbSet<Box> Boxes { get; }
+    DbSet<BoxMovement> BoxMovements { get; }
 
     // sales
     DbSet<Customer> Customers { get; }

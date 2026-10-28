@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlarmClock, Bell, CheckCheck, MessageCircle, PackageMinus, RefreshCw } from "lucide-react"
+import { AlarmClock, Bell, CheckCheck, MessageCircle, Package2, PackageMinus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import { Pager } from "@/components/common/DataTable"
 import { Segmented } from "@/components/common/controls"
@@ -101,7 +101,7 @@ export function AlertsPage() {
 function AlertRow({ alert, canResend, resending, onRead, onResend }: {
   alert: AlertItem; canResend: boolean; resending: boolean; onRead: () => void; onResend: () => void
 }) {
-  const Icon = alert.type === "stock.low" ? PackageMinus : alert.type === "reservation.expired" ? AlarmClock : Bell
+  const Icon = alert.type === "stock.low" ? PackageMinus : alert.type === "boxes.low" ? Package2 : alert.type === "reservation.expired" ? AlarmClock : Bell
   const undelivered = alert.whatsApp.some((m) => m.status === "Failed" || m.status === "NotConfigured")
   const statuses = [...new Set(alert.whatsApp.map((m) => m.status))]
   return (

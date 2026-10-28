@@ -57,6 +57,17 @@ public sealed class AdjustStockRequestValidator : AbstractValidator<AdjustStockR
     }
 }
 
+public sealed class CorrectCountRequestValidator : AbstractValidator<CorrectCountRequest>
+{
+    public CorrectCountRequestValidator()
+    {
+        RuleFor(x => x.WarehouseId).NotEmpty();
+        RuleFor(x => x.ProductId).NotEmpty();
+        RuleFor(x => x.CountedQuantity).InclusiveBetween(0, 1_000_000);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+    }
+}
+
 public sealed class WithdrawBundleRequestValidator : AbstractValidator<WithdrawBundleRequest>
 {
     public WithdrawBundleRequestValidator()
@@ -84,5 +95,35 @@ public sealed class TransferStockRequestValidator : AbstractValidator<TransferSt
             line.RuleFor(l => l.ProductId).NotEmpty();
             line.RuleFor(l => l.Quantity).InclusiveBetween(1, 1_000_000);
         });
+    }
+}
+
+public sealed class SaveBoxRequestValidator : AbstractValidator<SaveBoxRequest>
+{
+    public SaveBoxRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0).PrecisionScale(12, 2, true).When(x => x.Price.HasValue);
+        RuleFor(x => x.LowStockThreshold).InclusiveBetween(0, 10_000_000);
+        RuleFor(x => x.InitialCount).InclusiveBetween(0, 10_000_000).When(x => x.InitialCount.HasValue);
+        RuleFor(x => x.Contents).NotNull();
+        RuleForEach(x => x.Contents).ChildRules(c =>
+        {
+            c.RuleFor(x => x.ProductId).NotEmpty();
+            c.RuleFor(x => x.Quantity).InclusiveBetween(1, 1000);
+        });
+    }
+}
+
+public sealed class ChangeBoxCountRequestValidator : AbstractValidator<ChangeBoxCountRequest>
+{
+    public ChangeBoxCountRequestValidator()
+    {
+        RuleFor(x => x.Action).IsInEnum();
+        RuleFor(x => x.Quantity).InclusiveBetween(0, 10_000_000);
+        RuleFor(x => x.Quantity).GreaterThan(0).When(x => x.Action != BoxCountAction.Count)
+            .WithMessage("Enter how many boxes.");
+        RuleFor(x => x.Notes).MaximumLength(2000);
     }
 }

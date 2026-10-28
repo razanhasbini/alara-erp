@@ -43,6 +43,7 @@ public static class NotificationTypes
 {
     public const string ReservationExpired = "reservation.expired";
     public const string LowStock = "stock.low";
+    public const string LowBoxes = "boxes.low";
 }
 
 /// <summary>Section "App": where the ERP is opened, used to put links in WhatsApp messages.</summary>

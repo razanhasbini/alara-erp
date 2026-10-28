@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<StockLedger>();
         services.AddScoped<StockQueryService>();
         services.AddScoped<StockOperationsService>();
+        services.AddScoped<BoxService>();
         services.AddScoped<IStockReservationService, StockReservationService>();
 
         // Sales
@@ -54,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<WhatsAppDispatcher>();
         services.AddScoped<ReservationExpiryJob>();
         services.AddScoped<LowStockAlertJob>();
+        services.AddScoped<BoxAlertJob>();
         services.AddScoped<IActivityLog, ActivityLog>();
         services.AddScoped<Activity.ActivityService>();
         return services;

@@ -148,6 +148,71 @@ public sealed class StockOperationsService(
         return (await _queries.ListMovementsAsync(new MovementQuery(null, null, null, null, null, adjustmentId), ct)).Items.Single();
     }
 
+    /// <summary>
+    /// Sets the units on hand to what was counted and records the difference as count-correction adjustments.
+    /// Missing units come out of the newest deliveries first (a miscount is usually in the latest one);
+    /// extra units go into the newest delivery, or a new one if the product was never stocked here.
+    /// </summary>
+    public async Task<ProductStockDto> CorrectCountAsync(CorrectCountRequest request, CancellationToken ct)
+    {
+        var warehouseId = request.WarehouseId;
+        await _ledger.RequireActiveWarehouseAsync(warehouseId, ct);
+        var product = (await _ledger.LoadStockableProductsAsync([request.ProductId], ct))[request.ProductId];
+        var adjustmentId = Guid.CreateVersion7();
+
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        var balance = (await _locks.LockAsync([(warehouseId, product.Id)], createMissing: true, ct))[(warehouseId, product.Id)];
+        var batchBalances = await _ledger.LoadBatchBalancesAsync([warehouseId], [product.Id], ct);
+        var deliveries = batchBalances.Values
+            .Where(b => request.BatchId is not { } id || b.BatchId == id)
+            .OrderByDescending(b => b.Batch!.CreatedAt).ToList();
+        if (request.BatchId is not null && deliveries.Count == 0)
+            throw new DomainException("inventory.batch_not_in_warehouse", $"That delivery of {product.Label} is not in this warehouse.");
+
+        var before = request.BatchId is null ? balance.QuantityOnHand : deliveries[0].QuantityOnHand;
+        var change = request.CountedQuantity - before;
+        if (change == 0)
+            throw new DomainException("inventory.count_unchanged", $"{product.Label} already shows {before}. Nothing to correct.");
+
+        var notes = $"Counted {request.CountedQuantity}, was {before}"
+                    + (string.IsNullOrWhiteSpace(request.Notes) ? "" : $". {request.Notes.Trim()}");
+        if (change > 0)
+        {
+            var batch = deliveries.FirstOrDefault()?.Batch
+                        ?? await _ledger.ResolveIncomingBatchAsync(product, null, request.ExpiryDate, $"ADJ-{_ledger.Today:yyyyMMdd}", ct);
+            batch.ApplyReceivedCost(await _ledger.UnitsOnHandAsync(batch.Id, ct), change, batch.UnitCost is null ? product.StandardCost : null);
+            _ledger.GetOrCreateBatchBalance(batchBalances, warehouseId, batch).Add(change);
+            balance.Add(change);
+            _ledger.Record(warehouseId, product.Id, batch.Id, MovementType.AdjustmentIncrease, change,
+                MovementReference.Adjustment, adjustmentId, "COUNT", StockLedger.CostOf(batch, product), AdjustmentReason.CountCorrection, notes);
+        }
+        else
+        {
+            balance.RemoveUnreserved(-change, product.Label);
+            var remaining = -change;
+            foreach (var delivery in deliveries.Where(d => d.QuantityOnHand > 0))
+            {
+                if (remaining == 0) break;
+                var take = Math.Min(delivery.QuantityOnHand, remaining);
+                delivery.Remove(take, delivery.Batch!.BatchNumber);
+                _ledger.Record(warehouseId, product.Id, delivery.BatchId, MovementType.AdjustmentDecrease, -take,
+                    MovementReference.Adjustment, adjustmentId, "COUNT", StockLedger.CostOf(delivery.Batch, product), AdjustmentReason.CountCorrection, notes);
+                remaining -= take;
+            }
+            if (remaining > 0)
+                throw new DomainException("inventory.insufficient_batch_stock", $"Not enough units of {product.Label} in this warehouse's deliveries.");
+        }
+
+        activity.Record(Domain.Activity.ActivityArea.Stock,
+            $"corrected the count of {product.Label} from {before} to {request.CountedQuantity}"
+            + (request.BatchId is null ? "" : " for one delivery")
+            + (string.IsNullOrWhiteSpace(request.Notes) ? "" : $" ({request.Notes.Trim()})"),
+            $"/inventory?product={product.Id}");
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return await _queries.GetProductStockAsync(product.Id, ct);
+    }
+
     public async Task<TransferDto> TransferAsync(TransferStockRequest request, CancellationToken ct)
     {
         var from = await _ledger.RequireActiveWarehouseAsync(request.FromWarehouseId, ct);

@@ -34,6 +34,8 @@ public class AlaraDbContext(DbContextOptions<AlaraDbContext> options)
     public DbSet<LowStockAlert> LowStockAlerts => Set<LowStockAlert>();
     public DbSet<StockReceipt> StockReceipts => Set<StockReceipt>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+    public DbSet<Box> Boxes => Set<Box>();
+    public DbSet<BoxMovement> BoxMovements => Set<BoxMovement>();
 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();

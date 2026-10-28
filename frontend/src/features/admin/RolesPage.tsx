@@ -8,7 +8,7 @@ import { qk } from "@/lib/queries"
 import type { Role } from "@/types/api"
 
 const groupLabel: Record<string, string> = {
-  products: "Catalogue", inventory: "Inventory", warehouses: "Warehouses", orders: "Orders",
+  products: "Catalogue", inventory: "Inventory", boxes: "Boxes", warehouses: "Warehouses", orders: "Orders",
   expenses: "Bills & expenses", reports: "Reports", costs: "Costs & profit", users: "Employees",
 }
 const actionLabel = (p: string) => {

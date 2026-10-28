@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react"
 import { Link, useSearchParams } from "react-router"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeftRight, PackagePlus, SlidersHorizontal } from "lucide-react"
+import { ArrowLeftRight, PackagePlus, Pencil, SlidersHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { DataTable, Pager, type Column } from "@/components/common/DataTable"
@@ -22,6 +22,8 @@ import { qk, useSettings, useWarehouses } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 import type { Paged, ProductStock, StockFilter, StockRow } from "@/types/api"
 import { AdjustStockDialog, type AdjustTarget } from "./AdjustStockDialog"
+import { CorrectCountDialog } from "./CorrectCountDialog"
+import { countTarget, type CountTarget } from "./countTarget"
 import { deliveryLabel } from "./deliveryLabel"
 import { useLogView } from "@/lib/activity"
 
@@ -116,6 +118,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
   const { data: settings } = useSettings()
   const expiryEnabled = settings?.expiryDatesEnabled ?? false
   const [adjust, setAdjust] = useState<AdjustTarget | null>(null)
+  const [count, setCount] = useState<CountTarget | null>(null)
   const { data, isLoading, error } = useQuery({
     queryKey: qk.productStock(productId ?? ""), queryFn: () => api<ProductStock>(`/api/inventory/products/${productId}`), enabled: !!productId,
   })
@@ -138,6 +141,11 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
             <div className="grid gap-6 px-4 pb-6">
               <div className="border-y border-hairline py-3 text-center">
                 <div className="font-display text-3xl tabular">{data.available}</div><div className="eyebrow">In stock</div>
+                {can(P.inventory.adjust) && (
+                  <Button size="xs" variant="outline" className="mt-2" onClick={() => setCount(countTarget(data, expiryEnabled))}>
+                    <Pencil /> Correct count
+                  </Button>
+                )}
               </div>
 
               {data.warehouses.length > 1 && (
@@ -171,6 +179,10 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
                         <div className="flex items-center gap-2">
                           {b.unitCost !== null && <span className="text-xs tabular text-muted-foreground" title="Unit cost of this batch">{fmtCost(b.unitCost)}</span>}
                           <span className="tabular font-medium">{b.onHand}</span>
+                          {can(P.inventory.adjust) && data.batches.length > 1 && (
+                            <Button size="icon-xs" variant="ghost" title="Correct this delivery's count" aria-label="Correct this delivery's count"
+                              onClick={() => setCount(countTarget(data, expiryEnabled, b))}><Pencil /></Button>
+                          )}
                           {can(P.inventory.adjust) && (
                             <Button size="xs" variant="ghost" onClick={() => setAdjust({
                               productId: data.productId, productName: data.name, tracksExpiry: expiryEnabled && data.settings.tracksExpiry, warehouseId: b.warehouseId,
@@ -199,6 +211,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
               </Button>
             </div>
             {adjust && <AdjustStockDialog target={adjust} onClose={() => setAdjust(null)} />}
+            {count && <CorrectCountDialog target={count} onClose={() => setCount(null)} />}
           </>
         )}
       </SheetContent>

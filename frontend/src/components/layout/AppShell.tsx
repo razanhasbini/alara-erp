@@ -2,7 +2,7 @@ import { useState, type ComponentType } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
 import {
   ArrowLeftRight, BarChart3, Bell, Boxes, Globe, ChevronDown, ClipboardList, FolderTree, History, KeyRound, LayoutDashboard, LogOut, Menu,
-  ContactRound, Package, PackageOpen, ReceiptText, ScrollText, Settings2, ShieldCheck, UserRound, Users, Warehouse,
+  ContactRound, Package, Package2, PackageOpen, ReceiptText, ScrollText, Settings2, ShieldCheck, UserRound, Users, Warehouse,
 } from "lucide-react"
 import logo from "@/assets/logo.png"
 import { useAuth } from "@/auth/auth"
@@ -40,6 +40,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: "Stock",
     items: [
       { to: "/inventory", label: "Inventory", icon: Boxes, permission: P.inventory.view, end: true },
+      { to: "/boxes", label: "Boxes", icon: Package2, permission: P.boxes.view },
       { to: "/inventory/receipts", label: "Receipts", icon: PackageOpen, permission: P.inventory.view },
       { to: "/inventory/transfers", label: "Transfers", icon: ArrowLeftRight, permission: P.inventory.transfer },
       { to: "/inventory/movements", label: "Stock movements", icon: History, permission: P.inventory.view },

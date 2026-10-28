@@ -77,6 +77,13 @@ public sealed record AdjustStockRequest(
     Guid WarehouseId, Guid ProductId, int QuantityChange, AdjustmentReason Reason, string? Notes,
     Guid? BatchId, string? BatchNumber, DateOnly? ExpiryDate, decimal? UnitCost = null);
 
+/// <summary>
+/// Sets the units on hand to what was actually counted: for the whole product in a warehouse, or for one delivery
+/// (<paramref name="BatchId"/>). <paramref name="ExpiryDate"/> is only used when the product has no delivery yet.
+/// </summary>
+public sealed record CorrectCountRequest(
+    Guid WarehouseId, Guid ProductId, int CountedQuantity, Guid? BatchId, string? Notes, DateOnly? ExpiryDate = null);
+
 public sealed record WithdrawBundleRequest(Guid WarehouseId, Guid BundleProductId, int Quantity, AdjustmentReason Reason, string? Notes);
 
 public sealed record TransferLineInput(Guid ProductId, int Quantity, Guid? BatchId);
@@ -100,3 +107,25 @@ public sealed record MovementDto(
     MovementReference ReferenceType, Guid ReferenceId, string? ReferenceNumber, string? Notes, string? PerformedBy,
     /// <summary>Cost per unit moved; only for employees with costs.view.</summary>
     decimal? UnitCost = null);
+
+public sealed record BoxContentInput(Guid ProductId, int Quantity);
+
+/// <summary><paramref name="InitialCount"/> is only used when the box is created; later changes go through the count actions.</summary>
+public sealed record SaveBoxRequest(
+    string Name, string? Notes, decimal? Price, int LowStockThreshold, IReadOnlyList<BoxContentInput> Contents, int? InitialCount = null);
+
+/// <summary>Add: boxes delivered. Remove: used, damaged or given away. Count: set the count to what was counted.</summary>
+public enum BoxCountAction { Add, Remove, Count }
+
+public sealed record ChangeBoxCountRequest(BoxCountAction Action, int Quantity, string? Notes);
+
+public sealed record SetBoxActiveRequest(bool IsActive);
+
+public sealed record BoxContentDto(Guid ProductId, string ProductName, Domain.Catalog.ProductType ProductType, int Quantity);
+
+public sealed record BoxDto(
+    Guid Id, string Name, string? Notes, decimal? Price, int LowStockThreshold, int OnHand, StockStatus Status, bool IsActive,
+    IReadOnlyList<BoxContentDto> Contents, DateTimeOffset UpdatedAt);
+
+public sealed record BoxMovementDto(
+    Guid Id, BoxMovementType Type, int QuantityChange, int QuantityAfter, string? Notes, string? PerformedBy, DateTimeOffset CreatedAt);

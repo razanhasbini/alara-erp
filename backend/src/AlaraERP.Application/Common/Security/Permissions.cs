@@ -28,6 +28,13 @@ public static class Permissions
         public const string ManageThresholds = "inventory.manage_thresholds";
     }
 
+    /// <summary>Packaging boxes: counts, contents and alert levels. Everyday staff work, so every role but Viewer manages them.</summary>
+    public static class Boxes
+    {
+        public const string View = "boxes.view";
+        public const string Manage = "boxes.manage";
+    }
+
     public static class Warehouses
     {
         public const string Manage = "warehouses.manage";

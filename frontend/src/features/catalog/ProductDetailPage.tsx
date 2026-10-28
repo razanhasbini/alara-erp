@@ -15,7 +15,10 @@ import { cost as fmtCost, date, dateOnly, dateTime, money, number, percent, toda
 import { P } from "@/lib/permissions"
 import { qk, useAvailability, useSettings } from "@/lib/queries"
 import { cn } from "@/lib/utils"
+import { CorrectCountDialog } from "@/features/inventory/CorrectCountDialog"
+import { countTarget, type CountTarget } from "@/features/inventory/countTarget"
 import { deliveryLabel } from "@/features/inventory/deliveryLabel"
+import { BoxesLeft } from "@/features/boxes/BoxesLeft"
 import type { ProductAnalytics, ProductDetail, ProductStock } from "@/types/api"
 import { WithdrawBundleDialog } from "./WithdrawBundleDialog"
 import { BundleComponentsEditor, type ComponentLine } from "./BundleComponentsEditor"
@@ -38,6 +41,7 @@ export function ProductDetailPage() {
   const [confirm, setConfirm] = useState<"delete" | "deactivate" | null>(null)
   const [editComponents, setEditComponents] = useState(false)
   const [withdraw, setWithdraw] = useState(false)
+  const [count, setCount] = useState<CountTarget | null>(null)
   // Today's set cost and margin for bundles (cost-viewers only).
   const { data: costing } = useQuery({
     queryKey: ["analytics", "costing"],
@@ -177,8 +181,10 @@ export function ProductDetailPage() {
             </Section>
           )}
           {stock && (
-            <Section title="Stock" actions={<Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>}
-              bodyClassName="p-4">
+            <Section title="Stock" actions={<>
+              {can(P.inventory.adjust) && <Button size="sm" variant="outline" onClick={() => setCount(countTarget(stock, expiryEnabled))}><Pencil /> Correct count</Button>}
+              <Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>
+            </>} bodyClassName="p-4">
               <div className="text-center">
                 <div className="font-display text-3xl tabular">{stock.available}</div><div className="eyebrow">In stock</div>
               </div>
@@ -197,6 +203,7 @@ export function ProductDetailPage() {
               )}
             </Section>
           )}
+          <BoxesLeft productIds={[p.id]} title="Boxes" />
         </div>
       </div>
 
@@ -210,6 +217,7 @@ export function ProductDetailPage() {
         <ComponentsDialog product={p} onClose={() => setEditComponents(false)} />
       )}
       {withdraw && <WithdrawBundleDialog bundle={p} onClose={() => setWithdraw(false)} />}
+      {count && <CorrectCountDialog target={count} onClose={() => setCount(null)} />}
     </>
   )
 }
