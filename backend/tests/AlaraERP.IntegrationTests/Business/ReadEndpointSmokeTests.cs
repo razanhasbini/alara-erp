@@ -43,4 +43,16 @@ public sealed class ReadEndpointSmokeTests(AlaraApiFactory factory) : ApiTestBas
             Assert.True(response.StatusCode == HttpStatusCode.OK, $"GET {url} → {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         }
     }
+
+    [Fact]
+    public async Task Health_check_reaches_the_database_and_responses_carry_security_headers()
+    {
+        using var anonymous = NewClient();
+        var response = await anonymous.Http.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Equal("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
+    }
 }

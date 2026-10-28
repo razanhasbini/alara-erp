@@ -1,0 +1,65 @@
+name: CI
+
+# Railway deploys main to production. With "Wait for CI" on in the Railway service settings,
+# a push only goes live after these checks pass.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ConnectionStrings__TestApp: Host=localhost;Port=5432;Database=alara_erp_test;Username=alara_app;Password=ci_app
+      ConnectionStrings__TestOwner: Host=localhost;Port=5432;Database=alara_erp_test;Username=alara_owner;Password=ci_owner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Create the test database and roles (same layout as README → Database setup)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE alara_owner LOGIN PASSWORD 'ci_owner' NOSUPERUSER NOCREATEROLE NOCREATEDB;
+          CREATE ROLE alara_app   LOGIN PASSWORD 'ci_app'   NOSUPERUSER NOCREATEROLE NOCREATEDB;
+          CREATE DATABASE alara_erp_test OWNER alara_owner;
+          REVOKE ALL ON DATABASE alara_erp_test FROM PUBLIC;
+          GRANT CONNECT ON DATABASE alara_erp_test TO alara_app;
+          \c alara_erp_test
+          GRANT CREATE, USAGE ON SCHEMA public TO alara_owner;
+          SQL
+      - run: dotnet test backend/AlaraERP.slnx -c Release
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the production image Railway uses
+        run: docker build -t alara-erp .

@@ -39,8 +39,6 @@ public static class Permissions
         public const string Create = "orders.create";
         public const string Update = "orders.update";
         public const string Cancel = "orders.cancel";
-        /// <summary>Hard-delete test orders. Intentionally granted only through Super Admin's full permission set.</summary>
-        public const string Delete = "orders.delete";
         public const string ManagePayments = "orders.manage_payments";
     }
 

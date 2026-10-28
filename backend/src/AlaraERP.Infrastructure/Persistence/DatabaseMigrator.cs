@@ -55,10 +55,6 @@ public sealed partial class DatabaseMigrator(ILogger<DatabaseMigrator> logger)
 #pragma warning restore EF1002
         }
         await HardenLedgerTablesAsync(db, appRole, ct);
-#pragma warning disable EF1002
-        await db.Database.ExecuteSqlRawAsync(
-            $"GRANT EXECUTE ON PROCEDURE sales.erase_test_order_ledger(uuid) TO {appRole};", ct);
-#pragma warning restore EF1002
         logger.LogInformation("Granted DML access on {Schemas} to role {Role}.", string.Join(", ", Schemas.All.Where(existing.Contains)), appRole);
     }
 

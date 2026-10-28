@@ -405,25 +405,15 @@ public sealed class OrderTests(AlaraApiFactory factory) : ApiTestBase(factory)
     }
 
     [Fact]
-    public async Task Super_admin_can_delete_test_orders_and_restore_reserved_or_deducted_stock()
+    public async Task Orders_cannot_be_deleted_even_by_a_super_admin()
     {
         var shop = await OpenShopAsync();
         var sold = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: true, (shop.Mask.Id, 3));
-        var reserved = await shop.S.OrderAsync(shop.Warehouse.Id, confirm: false, (shop.Mask.Id, 2));
-        using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
         using var admin = await SignedInAsAsync(SystemRoles.SuperAdmin);
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await sales.DeleteAsync($"/api/orders/{sold.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/orders/{sold.Id}")).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/orders/{reserved.Id}")).StatusCode);
-
-        var stock = await shop.S.StockAsync(shop.Mask.Id);
-        Assert.Equal((10, 0, 10), (stock.OnHand, stock.Reserved, stock.Available));
-        Assert.Equal(0, await shop.S.CountAsync("SELECT count(*) FROM sales.orders"));
-        Assert.Equal(0, await shop.S.CountAsync("SELECT count(*) FROM inventory.stock_reservations"));
-        Assert.Equal(0, await shop.S.CountAsync("SELECT count(*) FROM inventory.stock_movements WHERE reference_type = 'Order'"));
-        var analytics = await shop.Client.GetJsonAsync<AlaraERP.Application.Analytics.AnalyticsSummaryDto>("/api/analytics/summary");
-        Assert.Equal((0, 0m), (analytics.Totals.Orders, analytics.Totals.NetSales));
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await admin.DeleteAsync($"/api/orders/{sold.Id}")).StatusCode);
+        Assert.Equal(1, await shop.S.CountAsync("SELECT count(*) FROM sales.orders"));
+        Assert.Equal(7, (await shop.S.StockAsync(shop.Mask.Id)).OnHand);
     }
 
     private static UpdateOrderRequest Update(Shop shop, params (Guid ProductId, int Quantity)[] lines) => new(

@@ -177,10 +177,29 @@ so browser sessions, CSRF protection, images and API calls all use one HTTPS ori
 
    The requested temporary eight-character password requires `Auth__SimpleDevelopmentPasswords=true`. Remove
    that setting after replacing both passwords with production-strength passwords.
+6. **After the first successful start**, delete every `Bootstrap__*__Password` variable and set
+   `Bootstrap__ImportCatalog=false`, so the packaged catalogue never re-creates a product that was deleted in the app.
+7. Give the running app a data-only database role, so the append-only ledgers (stock movements, order history,
+   activity log) cannot be rewritten. Connected to the Railway database as `postgres`, run once:
+
+   ```sql
+   CREATE ROLE alara_app LOGIN PASSWORD '<strong password>' NOSUPERUSER NOCREATEROLE NOCREATEDB;
+   ```
+
+   then add `APP_DB_USER=alara_app` and `APP_DB_PASSWORD=<that password>` to the app service. Migrations keep running
+   as `PGUSER` and grant `alara_app` its access on every start.
+8. Turn on **scheduled backups** for both volumes (the PostgreSQL service and the app's `/app/App_Data`), and turn on
+   **Wait for CI** in the app service settings so a push to `main` only goes live after the
+   [CI checks](.github/workflows/ci.yml) pass.
 
 The container runs the idempotent `initialize` command before every start. It applies pending migrations,
 synchronizes permissions, imports missing catalogue records when enabled, and creates only missing initial users.
-The committed [railway.json](railway.json) also checks `/health` before a deployment is marked healthy.
+The committed [railway.json](railway.json) also checks `/health`, which also checks the database, before a
+deployment is marked healthy.
+
+Because the app keeps files on a volume, Railway stops the old container before starting the new one: each deploy
+makes the app unavailable for a minute or two. Deploy outside working hours, and take a backup first when the
+deploy contains a database migration.
 
 ## Tests and checks
 

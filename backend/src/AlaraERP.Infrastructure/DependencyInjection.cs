@@ -58,7 +58,6 @@ public static class DependencyInjection
         services.AddScoped<IDocumentNumbers, DocumentNumbers>();
         services.AddScoped<IStockLocks, StockLocks>();
         services.AddScoped<IUserDirectory, UserDirectory>();
-        services.AddScoped<IOrderDeletionLedger, OrderDeletionLedger>();
         services.AddSingleton<IFileStorage, LocalFileStorage>();
 
         services.AddScoped<IAuthService, AuthService>();

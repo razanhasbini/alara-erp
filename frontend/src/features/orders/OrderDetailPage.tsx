@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react"
-import { Link, useNavigate, useParams } from "react-router"
+import { Link, useParams } from "react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, Clock, Pencil, Printer, RotateCcw, Trash2, X } from "lucide-react"
+import { Check, Clock, Pencil, Printer, RotateCcw, X } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/auth"
 import { ConfirmDialog, Field, SubmitButton } from "@/components/common/controls"
@@ -37,13 +37,11 @@ const actionCopy: Record<Action, { title: string; description: string; label: st
 export function OrderDetailPage() {
   const { id = "" } = useParams()
   const { can } = useAuth()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: o, isLoading, error, refetch } = useQuery({ queryKey: qk.order(id), queryFn: () => api<OrderDetail>(`/api/orders/${id}`) })
   const [action, setAction] = useState<Action | null>(null)
   const [note, setNote] = useState("")
   const [editingRecipient, setEditingRecipient] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const afterChange = async (updated: OrderDetail, message: string) => {
     queryClient.setQueryData(qk.order(id), updated)
@@ -56,16 +54,6 @@ export function OrderDetailPage() {
     onError: (e) => { setAction(null); toast.error(errorMessage(e)) },
   })
 
-  const remove = useMutation({
-    mutationFn: () => api(`/api/orders/${id}`, { method: "DELETE" }),
-    onSuccess: async () => {
-      await Promise.all(["sales", "inventory", "dashboard", "analytics"].map((key) => queryClient.invalidateQueries({ queryKey: [key] })))
-      toast.success(`${o?.orderNumber ?? "Order"} deleted and its stock restored`)
-      navigate("/orders", { replace: true })
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-
   if (isLoading) return <FullPageSpinner />
   if (error || !o) return <ErrorState error={error} onRetry={refetch} />
 
@@ -75,7 +63,6 @@ export function OrderDetailPage() {
   if (allowed("Cancelled") && can(P.orders.cancel)) buttons.push(<Button key="cancel" variant="ghost" onClick={() => setAction("cancel")}><X /> Cancel</Button>)
   if (allowed("Returned") && can(P.orders.update)) buttons.push(<Button key="return" variant="outline" onClick={() => setAction("return")}><RotateCcw /> Returned</Button>)
   if (allowed("Confirmed") && can(P.orders.update)) buttons.push(<Button key="confirm" onClick={() => setAction("confirm")}><Check /> Mark as sold</Button>)
-  if (can(P.orders.delete)) buttons.push(<Button key="delete" variant="destructive" onClick={() => setConfirmDelete(true)}><Trash2 /> Delete test order</Button>)
 
   // Every order starts as an internal draft and immediately becomes reserved or sold; "Reserved until…" already
   // says it was reserved, so only the "→ Sold" half of that first step is worth showing.
@@ -182,10 +169,6 @@ export function OrderDetailPage() {
           {copy.note && <Textarea aria-label="Note" placeholder="Note (optional)" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />}
         </ConfirmDialog>
       )}
-      <ConfirmDialog open={confirmDelete} onOpenChange={setConfirmDelete}
-        title={`Permanently delete ${o.orderNumber}?`}
-        description="Use this only for deployment testing. The order, its sales result and its inventory history will be removed, and any stock it held or deducted will be restored. This cannot be undone."
-        confirmLabel="Delete test order" destructive pending={remove.isPending} onConfirm={() => remove.mutate()} />
       {editingRecipient && <RecipientDialog order={o} onClose={() => setEditingRecipient(false)} onDone={(u) => afterChange(u, "Customer details saved")} />}
     </>
   )

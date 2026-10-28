@@ -102,17 +102,6 @@ internal sealed class StockReservationService(IAlaraDbContext db, IStockLocks lo
         }
     }
 
-    public async Task RestoreAndEraseOrderInventoryAsync(Guid orderId, string orderNumber, CancellationToken ct)
-    {
-        EnsureTransaction();
-        await ReleaseAsync(orderId, ct);
-        await ReturnShipmentAsync(orderId, orderNumber, ct);
-
-        // Persist the restored balances before removing the movements that prove what needs restoring.
-        await db.SaveChangesAsync(ct);
-        await db.StockReservations.Where(r => r.OrderId == orderId).ExecuteDeleteAsync(ct);
-    }
-
     private Task<List<StockReservation>> ActiveReservationsAsync(Guid orderId, CancellationToken ct) =>
         db.StockReservations.Where(r => r.OrderId == orderId && r.Status == ReservationStatus.Active).ToListAsync(ct);
 

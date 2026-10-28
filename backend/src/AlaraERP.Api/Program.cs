@@ -109,6 +109,17 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseForwardedHeaders();
 
+// The app is never shown inside another site's frame, and browsers must not guess file types.
+app.Use((context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers.XContentTypeOptions = "nosniff";
+    headers.XFrameOptions = "DENY";
+    headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+    headers["Referrer-Policy"] = "same-origin";
+    return next(context);
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
@@ -130,7 +141,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
 
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous().ExcludeFromDescription();
+// Railway only switches traffic to a new deployment once this answers, so it also proves the database is reachable.
+app.MapGet("/health", async (IAlaraDbContext db, CancellationToken ct) =>
+        await db.Database.CanConnectAsync(ct)
+            ? Results.Ok(new { status = "ok" })
+            : Results.Json(new { status = "database unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous().ExcludeFromDescription();
 
 if (servesSpa)
 {

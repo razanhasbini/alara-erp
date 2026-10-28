@@ -30,12 +30,6 @@ public interface IStockReservationService
 
     /// <summary>Puts shipped units back into the batches they left from after a delivery return.</summary>
     Task ReturnShipmentAsync(Guid orderId, string orderNumber, CancellationToken ct);
-
-    /// <summary>
-    /// Pre-launch cleanup only: restores any held or deducted stock, then erases the order's inventory history.
-    /// The caller must own the surrounding database transaction.
-    /// </summary>
-    Task RestoreAndEraseOrderInventoryAsync(Guid orderId, string orderNumber, CancellationToken ct);
 }
 
 public sealed record WarehouseInfo(Guid Id, string Name, string Code, bool IsActive);
