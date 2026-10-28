@@ -182,7 +182,7 @@ export function ProductDetailPage() {
           )}
           {stock && (
             <Section title="Stock" actions={<>
-              {can(P.inventory.adjust) && <Button size="sm" variant="outline" onClick={() => setCount(countTarget(stock, expiryEnabled))}><Pencil /> Correct count</Button>}
+              {can(P.inventory.correctCounts) && <Button size="sm" variant="outline" onClick={() => setCount(countTarget(stock, expiryEnabled))}><Pencil /> Correct count</Button>}
               <Button asChild size="sm" variant="ghost"><Link to={`/inventory?product=${p.id}`}>Open</Link></Button>
             </>} bodyClassName="p-4">
               <div className="text-center">

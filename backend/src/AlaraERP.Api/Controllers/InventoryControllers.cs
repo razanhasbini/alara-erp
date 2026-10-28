@@ -91,7 +91,7 @@ public sealed class InventoryController(
 
     /// <summary>Fixes a miscount: sets the units on hand to the counted number and records the difference.</summary>
     [HttpPost("counts")]
-    [HasPermission(Inventory.Adjust)]
+    [HasPermission(Inventory.CorrectCounts)]
     public Task<ProductStockDto> CorrectCount(CorrectCountRequest request, CancellationToken ct) => operations.CorrectCountAsync(request, ct);
 
     /// <summary>Takes whole bundles out of stock (PR, gifts, damage): deducts each component, never a "bundle stock".</summary>

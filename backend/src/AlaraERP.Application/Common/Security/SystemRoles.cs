@@ -26,7 +26,7 @@ public static class SystemRoles
             new HashSet<string>
             {
                 P.Products.View, P.Products.Create, P.Products.Update, P.Products.Delete, P.Products.ManagePricing,
-                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer, P.Inventory.ManageThresholds,
+                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.CorrectCounts, P.Inventory.Transfer, P.Inventory.ManageThresholds,
                 P.Boxes.View, P.Boxes.Manage,
                 P.Warehouses.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel, P.Orders.ManagePayments,
@@ -38,15 +38,15 @@ public static class SystemRoles
             new HashSet<string>
             {
                 P.Products.View,
-                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.Transfer,
+                P.Inventory.View, P.Inventory.Receive, P.Inventory.Adjust, P.Inventory.CorrectCounts, P.Inventory.Transfer,
                 P.Boxes.View, P.Boxes.Manage,
             }),
 
-        new(SalesEmployee, "Handles the day-to-day catalogue, customers, orders, receipts, stock records and boxes.",
+        new(SalesEmployee, "Handles the day-to-day catalogue, customers, orders, receipts, stock counts and boxes.",
             new HashSet<string>
             {
                 P.Products.View, P.Products.Create, P.Products.Update,
-                P.Inventory.View, P.Inventory.Receive,
+                P.Inventory.View, P.Inventory.Receive, P.Inventory.CorrectCounts,
                 P.Boxes.View, P.Boxes.Manage,
                 P.Orders.View, P.Orders.Create, P.Orders.Update, P.Orders.Cancel,
             }),

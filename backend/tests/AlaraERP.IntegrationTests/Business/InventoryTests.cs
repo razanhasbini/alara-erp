@@ -168,18 +168,22 @@ public sealed class InventoryTests(AlaraApiFactory factory) : ApiTestBase(factor
     }
 
     [Fact]
-    public async Task Sales_staff_cannot_correct_counts()
+    public async Task Sales_staff_can_correct_counts_but_viewers_cannot()
     {
         var (_, s) = await ManagerAsync();
         var warehouse = await s.WarehouseAsync();
         var mask = await s.ProductAsync("ALR-HC-MASK", 24m);
         await s.ReceiveAsync(warehouse.Id, mask.Id, 5);
         using var sales = await SignedInAsAsync(SystemRoles.SalesEmployee);
+        using var viewer = await SignedInAsAsync(SystemRoles.Viewer);
 
-        var response = await sales.PostAsync("/api/inventory/counts", new CorrectCountRequest(warehouse.Id, mask.Id, 50, null, null));
+        var byViewer = await viewer.PostAsync("/api/inventory/counts", new CorrectCountRequest(warehouse.Id, mask.Id, 50, null, null));
+        var bySales = await (await sales.PostAsync("/api/inventory/counts", new CorrectCountRequest(warehouse.Id, mask.Id, 4, null, "Miscounted"))).OkJsonAsync<ProductStockDto>();
+        var writeOff = await sales.PostAsync("/api/inventory/bundle-withdrawals", new { });
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Equal(5, (await s.StockAsync(mask.Id)).OnHand);
+        Assert.Equal(HttpStatusCode.Forbidden, byViewer.StatusCode);
+        Assert.Equal(4, bySales.OnHand);
+        Assert.Equal(HttpStatusCode.Forbidden, writeOff.StatusCode);
     }
 
     [Fact]

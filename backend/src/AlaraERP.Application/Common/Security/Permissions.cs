@@ -24,6 +24,8 @@ public static class Permissions
         public const string View = "inventory.view";
         public const string Receive = "inventory.receive";
         public const string Adjust = "inventory.adjust";
+        /// <summary>Fix a miscount: set stock to the number actually counted. Everyday staff work, unlike write-offs.</summary>
+        public const string CorrectCounts = "inventory.correct_counts";
         public const string Transfer = "inventory.transfer";
         public const string ManageThresholds = "inventory.manage_thresholds";
     }

@@ -141,7 +141,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
             <div className="grid gap-6 px-4 pb-6">
               <div className="border-y border-hairline py-3 text-center">
                 <div className="font-display text-3xl tabular">{data.available}</div><div className="eyebrow">In stock</div>
-                {can(P.inventory.adjust) && (
+                {can(P.inventory.correctCounts) && (
                   <Button size="xs" variant="outline" className="mt-2" onClick={() => setCount(countTarget(data, expiryEnabled))}>
                     <Pencil /> Correct count
                   </Button>
@@ -179,7 +179,7 @@ function ProductStockSheet({ productId, onClose }: { productId: string | null; o
                         <div className="flex items-center gap-2">
                           {b.unitCost !== null && <span className="text-xs tabular text-muted-foreground" title="Unit cost of this batch">{fmtCost(b.unitCost)}</span>}
                           <span className="tabular font-medium">{b.onHand}</span>
-                          {can(P.inventory.adjust) && data.batches.length > 1 && (
+                          {can(P.inventory.correctCounts) && data.batches.length > 1 && (
                             <Button size="icon-xs" variant="ghost" title="Correct this delivery's count" aria-label="Correct this delivery's count"
                               onClick={() => setCount(countTarget(data, expiryEnabled, b))}><Pencil /></Button>
                           )}
