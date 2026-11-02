@@ -82,6 +82,11 @@ public static class Permissions
         public const string AssignRoles = "users.assign_roles";
     }
 
+    public static class Notifications
+    {
+        public const string ManageWhatsApp = "notifications.manage_whatsapp";
+    }
+
     /// <summary>Every permission defined above.</summary>
     public static IReadOnlyList<string> All { get; } = typeof(Permissions)
         .GetNestedTypes(BindingFlags.Public | BindingFlags.Static)

@@ -1,6 +1,7 @@
 using AlaraERP.Application.Inventory;
 using AlaraERP.Application.Notifications;
 using AlaraERP.Application.Sales;
+using Microsoft.Extensions.Options;
 
 namespace AlaraERP.Api;
 
@@ -8,11 +9,12 @@ namespace AlaraERP.Api;
 /// Periodic work: raise low-stock, low-box and "reservation time is up" alerts and send queued WhatsApp messages.
 /// Disabled with <c>Jobs:Enabled=false</c> (tests run the jobs directly instead).
 /// </summary>
-public sealed class BackgroundJobs(IServiceScopeFactory scopes, IConfiguration config, ILogger<BackgroundJobs> logger) : BackgroundService
+public sealed class BackgroundJobs(IServiceScopeFactory scopes, IConfiguration config, IOptions<WhatsAppOptions> whatsApp, ILogger<BackgroundJobs> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Jobs:Enabled", true)) return;
+        WarnAboutWhatsAppSetup();
         var interval = TimeSpan.FromSeconds(Math.Max(10, config.GetValue("Jobs:IntervalSeconds", 60)));
         using var timer = new PeriodicTimer(interval);
         do
@@ -31,5 +33,15 @@ public sealed class BackgroundJobs(IServiceScopeFactory scopes, IConfiguration c
                 logger.LogError(ex, "Background jobs failed; will retry on the next tick.");
             }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    /// <summary>A half-finished setup otherwise just looks like alerts quietly not arriving.</summary>
+    private void WarnAboutWhatsAppSetup()
+    {
+        var o = whatsApp.Value;
+        if (!o.Enabled) return;
+        if (!o.IsConfigured) logger.LogWarning("WhatsApp is enabled but won't send until these are set: {Missing}", string.Join(", ", o.MissingSettings));
+        if (string.IsNullOrWhiteSpace(o.TemplateName)) logger.LogWarning("WhatsApp has no message template, so alerts only reach numbers that messaged the business in the last 24 hours.");
+        if (!o.DeliveryReportsReady) logger.LogWarning("WhatsApp delivery reports are off: set WhatsApp__AppSecret and WhatsApp__WebhookVerifyToken to see whether messages actually arrive.");
     }
 }

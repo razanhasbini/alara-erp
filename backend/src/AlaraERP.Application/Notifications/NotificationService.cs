@@ -1,4 +1,5 @@
 using AlaraERP.Application.Common;
+using AlaraERP.Application.Common.Security;
 using AlaraERP.Domain.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,11 @@ public sealed record NotificationQuery(bool UnreadOnly = false, int Page = 1, in
 
 public sealed record NotificationChannelsDto(bool WhatsAppConfigured, int WhatsAppRecipients, bool UsesTemplate, int WhatsAppPending, int WhatsAppNotSent);
 
+/// <summary>What the administrator needs to see to finish connecting WhatsApp. Never contains the secrets themselves.</summary>
+public sealed record WhatsAppSetupDto(
+    bool Connected, IReadOnlyList<string> MissingSettings, IReadOnlyList<string> Recipients, int IgnoredRecipients,
+    string? TemplateName, string TemplateLanguage, string ApiVersion, bool DeliveryReportsReady, bool LinksReady, string WebhookPath);
+
 internal sealed class NotificationPublisher(IAlaraDbContext db, BusinessClock clock, IOptions<WhatsAppOptions> whatsApp, IOptions<AppLinks> links) : INotificationPublisher
 {
     public void Publish(NotificationRequest r)
@@ -32,13 +38,15 @@ internal sealed class NotificationPublisher(IAlaraDbContext db, BusinessClock cl
             db.WhatsAppMessages.Add(new WhatsAppMessage(notification.Id, "", text, WhatsAppStatus.NotConfigured, clock.UtcNow));
             return;
         }
-        foreach (var phone in options.Recipients.Select(p => new string(p.Where(char.IsDigit).ToArray())).Where(p => p.Length >= 7).Distinct())
+        foreach (var phone in options.RecipientPhones)
             db.WhatsAppMessages.Add(new WhatsAppMessage(notification.Id, phone, text, WhatsAppStatus.Pending, clock.UtcNow));
     }
 }
 
 /// <summary>The in-app Alerts list. Each employee sees alerts their permissions allow and has their own read state.</summary>
-public sealed class NotificationService(IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, IOptions<WhatsAppOptions> whatsApp)
+public sealed class NotificationService(
+    IAlaraDbContext db, ICurrentUser currentUser, BusinessClock clock, IOptions<WhatsAppOptions> whatsApp, IOptions<AppLinks> links,
+    INotificationPublisher publisher, IActivityLog activity)
 {
     public async Task<PagedResult<NotificationDto>> ListAsync(NotificationQuery query, CancellationToken ct)
     {
@@ -102,7 +110,7 @@ public sealed class NotificationService(IAlaraDbContext db, ICurrentUser current
         foreach (var placeholder in messages.Where(m => m.Status == WhatsAppStatus.NotConfigured).ToList())
         {
             db.WhatsAppMessages.Remove(placeholder);
-            foreach (var phone in options.Recipients.Select(p => new string(p.Where(char.IsDigit).ToArray())).Where(p => p.Length >= 7).Distinct())
+            foreach (var phone in options.RecipientPhones)
                 db.WhatsAppMessages.Add(new WhatsAppMessage(id, phone, text, WhatsAppStatus.Pending, clock.UtcNow));
         }
         await db.SaveChangesAsync(ct);
@@ -111,9 +119,33 @@ public sealed class NotificationService(IAlaraDbContext db, ICurrentUser current
     public async Task<NotificationChannelsDto> ChannelsAsync(CancellationToken ct)
     {
         var o = whatsApp.Value;
-        return new NotificationChannelsDto(o.IsConfigured, o.IsConfigured ? o.Recipients.Count : 0, !string.IsNullOrWhiteSpace(o.TemplateName),
+        return new NotificationChannelsDto(o.IsConfigured, o.IsConfigured ? o.RecipientPhones.Count : 0, !string.IsNullOrWhiteSpace(o.TemplateName),
             await db.WhatsAppMessages.CountAsync(m => m.Status == WhatsAppStatus.Pending, ct),
-            await db.WhatsAppMessages.CountAsync(m => m.Status == WhatsAppStatus.NotConfigured || m.Status == WhatsAppStatus.Failed, ct));
+            // Alerts from before WhatsApp was connected aren't failures; they can still be sent one by one.
+            await db.WhatsAppMessages.CountAsync(m => m.Status == WhatsAppStatus.Failed, ct));
+    }
+
+    public WhatsAppSetupDto WhatsAppSetup()
+    {
+        var o = whatsApp.Value;
+        return new WhatsAppSetupDto(o.IsConfigured, o.MissingSettings, o.RecipientPhones.Select(Mask).ToList(), o.Recipients.Count - o.RecipientPhones.Count,
+            string.IsNullOrWhiteSpace(o.TemplateName) ? null : o.TemplateName, o.TemplateLanguage, o.ApiVersion, o.DeliveryReportsReady, links.Value.IsConfigured,
+            "/api/whatsapp/webhook");
+    }
+
+    /// <summary>Sends a real message to every recipient through the normal alert path, so a success proves the whole connection.</summary>
+    public async Task SendWhatsAppTestAsync(CancellationToken ct)
+    {
+        if (!whatsApp.Value.IsConfigured)
+            throw new Domain.Common.DomainException("whatsapp.not_configured", "WhatsApp is not connected yet, so the message cannot be sent.");
+        var aMinuteAgo = clock.UtcNow.AddMinutes(-1);
+        if (await db.Notifications.AnyAsync(n => n.Type == NotificationTypes.WhatsAppTest && n.CreatedAt > aMinuteAgo, ct))
+            throw new Domain.Common.DomainException("whatsapp.test_too_soon", "A test message was just sent. Wait a minute before sending another.");
+
+        publisher.Publish(new NotificationRequest(NotificationTypes.WhatsAppTest, "WhatsApp test message",
+            "If you can read this, ERP alerts are reaching this number.", "/alerts", Permissions.Notifications.ManageWhatsApp));
+        activity.Record(Domain.Activity.ActivityArea.Settings, "sent a WhatsApp test message", "/alerts");
+        await db.SaveChangesAsync(ct);
     }
 
     private IQueryable<Notification> Visible()
@@ -131,7 +163,8 @@ public sealed class WhatsAppDispatcher(IAlaraDbContext db, IWhatsAppSender sende
 {
     public async Task<int> SendPendingAsync(int batchSize, CancellationToken ct)
     {
-        var pending = await db.WhatsAppMessages.Where(m => m.Status == WhatsAppStatus.Pending)
+        var now = clock.UtcNow;
+        var pending = await db.WhatsAppMessages.Where(m => m.Status == WhatsAppStatus.Pending && (m.NextAttemptAt == null || m.NextAttemptAt <= now))
             .OrderBy(m => m.CreatedAt).Take(batchSize).ToListAsync(ct);
         foreach (var message in pending)
         {
@@ -139,7 +172,7 @@ public sealed class WhatsAppDispatcher(IAlaraDbContext db, IWhatsAppSender sende
             if (result.Success) message.MarkSent(result.ProviderMessageId, clock.UtcNow);
             else
             {
-                message.MarkAttemptFailed(result.Error ?? "Unknown error", result.Permanent);
+                message.MarkAttemptFailed(result.Error ?? "Unknown error", result.Permanent, clock.UtcNow);
                 logger.LogWarning("WhatsApp message {Id} not sent (attempt {Attempt}): {Error}", message.Id, message.Attempts, result.Error);
             }
             await db.SaveChangesAsync(ct);

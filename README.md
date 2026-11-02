@@ -86,18 +86,62 @@ dotnet user-secrets set --project src/AlaraERP.Api "ConnectionStrings:TestOwner"
 
 In production, use environment variables. [`.env.example`](.env.example) lists every setting.
 
-**WhatsApp alerts (optional).** Until these are set, alerts are only recorded in the app's Alerts page with status "WhatsApp not connected". They use the Meta WhatsApp Cloud API:
+### WhatsApp alerts
 
-```bash
-dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:Enabled" "true"
-dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:PhoneNumberId" "…"      # from Meta Business → WhatsApp → API setup
-dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:AccessToken" "…"        # a permanent system-user token
-dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:Recipients:0" "96170123456"
-dotnet user-secrets set --project src/AlaraERP.Api "WhatsApp:TemplateName" "erp_alert"  # approved template with one {{1}} body parameter
-dotnet user-secrets set --project src/AlaraERP.Api "App:FrontendUrl" "https://erp.example.com"  # link added to messages
-```
+Staff alerts (low stock, low boxes, expired reservations) are also sent on WhatsApp through Meta's WhatsApp Cloud API. Until it is connected, alerts are only kept on the Alerts page. Only Super Admins see the **WhatsApp connection** panel on that page. It lists what is still missing and has a **Send test message** button.
 
-Without a template, plain text messages only reach numbers that messaged the business in the last 24 hours (Meta's rule).
+**1. In Meta**
+
+1. In [developers.facebook.com](https://developers.facebook.com), create a Business app in the company's business portfolio and add the WhatsApp product.
+2. In **WhatsApp → API setup**, add the sending number and copy its **Phone number ID**. Use a number that isn't needed in the normal WhatsApp app, because a number moved to the API stops working there.
+3. In WhatsApp Manager, add a payment method. Template messages are charged per message.
+4. In **Business settings → Users → System users**, create an admin system user and assign it the app and the WhatsApp account. Generate a token that never expires, with `whatsapp_business_messaging` and `whatsapp_business_management`. The token on the API setup page lasts only 24 hours.
+5. In WhatsApp Manager, create a template in the **Utility** category, named `erp_alert`, in English, with this body:
+
+   ```text
+   ÀLara ERP alert: {{1}} - open the ERP for details.
+   ```
+
+   Meta rejects a template that starts or ends with `{{1}}`. The message ends with a link, so keep a space after `{{1}}`.
+
+**2. In Railway (the alara-erp service → Variables)**
+
+| Variable | Value |
+|---|---|
+| `WhatsApp__Enabled` | `true` |
+| `WhatsApp__PhoneNumberId` | the ID from step 2 |
+| `WhatsApp__AccessToken` | the token from step 4 |
+| `WhatsApp__TemplateName` | `erp_alert` |
+| `WhatsApp__TemplateLanguage` | `en` (must match the template's language exactly) |
+| `WhatsApp__ApiVersion` | optional; the code default is `v26.0` |
+| `WhatsApp__Recipients__0`, `__1`, … | who gets alerts: `96170123456`, country code first, no `+`, no leading 0 |
+| `WhatsApp__AppSecret` | Meta app → **Settings → Basic → App secret** |
+| `WhatsApp__WebhookVerifyToken` | any long random text, e.g. from `openssl rand -hex 32` |
+| `App__FrontendUrl` | the ERP's address, so messages link back to it |
+
+For local development, use `dotnet user-secrets` with `:` instead of `__`.
+
+**3. Turn on delivery reports**
+
+Without them, "Sent" only means Meta accepted the message. In the Meta app, open **WhatsApp → Configuration → Webhook**, then:
+
+- Set the callback URL to `https://<erp-address>/api/whatsapp/webhook`.
+- Set the verify token to the value of `WhatsApp__WebhookVerifyToken`. The app must already be redeployed with it, because Meta checks it when you save.
+- Subscribe to the **messages** field.
+
+Alerts then show Delivered, Read or Failed. The address refuses every request until both secrets are set, and refuses any report not signed with the app secret.
+
+**4. Test**
+
+Press **Send test message** on the Alerts page. It arrives within a minute. Alerts from before the connection are not sent automatically; use **Send on WhatsApp** on the ones you still want.
+
+**How sending behaves**
+
+- Alerts are saved first and sent by a background job every minute, in order, so a failed send never loses one.
+- Rate limits and Meta outages are retried after 1, 5, 15 and 60 minutes. After that the message shows as failed.
+- Problems retrying can't fix, like an expired token or an unapproved template, fail at once with a plain explanation on the alert. **Send on WhatsApp** tries again after you fix them.
+- Without a template, messages only reach numbers that messaged the business in the last 24 hours (Meta's rule).
+- Messages sent to the business number are ignored. The ERP only sends alerts and doesn't message customers.
 
 ## First run
 

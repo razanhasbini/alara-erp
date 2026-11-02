@@ -98,6 +98,9 @@ builder.Services.AddRateLimiter(o =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));
+    // Public address, so a flood is stopped before it costs any signature checks. Meta sends again what is refused here.
+    o.AddPolicy(RateLimitPolicies.Webhook, _ => RateLimitPartition.GetFixedWindowLimiter("webhook",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 
 var app = builder.Build();

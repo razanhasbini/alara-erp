@@ -1279,6 +1279,10 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("last_error");
 
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<Guid>("NotificationId")
                         .HasColumnType("uuid")
                         .HasColumnName("notification_id");
@@ -1309,6 +1313,9 @@ namespace AlaraERP.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NotificationId")
                         .HasDatabaseName("ix_whatsapp_messages_notification_id");
+
+                    b.HasIndex("ProviderMessageId")
+                        .HasDatabaseName("ix_whatsapp_messages_provider_message_id");
 
                     b.HasIndex("Status", "CreatedAt")
                         .HasDatabaseName("ix_whatsapp_messages_status_created_at");

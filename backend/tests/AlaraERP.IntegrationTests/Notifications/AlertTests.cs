@@ -101,6 +101,8 @@ public sealed class AlertTests(AlaraApiFactory factory) : ApiTestBase(factory)
         {
             var dispatcher = scope.ServiceProvider.GetRequiredService<WhatsAppDispatcher>();
             Assert.Equal(2, await dispatcher.SendPendingAsync(10, CancellationToken.None)); // one sent, one failed (will retry)
+            Assert.Equal(0, await dispatcher.SendPendingAsync(10, CancellationToken.None)); // the retry waits a while
+            await new Scenario(NewClient(), Factory).ExecuteAsync("UPDATE notifications.whatsapp_messages SET next_attempt_at = now() - interval '1 second' WHERE status = 'Pending'");
             Assert.Equal(1, await dispatcher.SendPendingAsync(10, CancellationToken.None)); // retry succeeds
             Assert.Equal(0, await dispatcher.SendPendingAsync(10, CancellationToken.None));
         }

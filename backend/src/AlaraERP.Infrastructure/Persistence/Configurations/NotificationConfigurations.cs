@@ -47,6 +47,7 @@ internal sealed class WhatsAppMessageConfiguration : IEntityTypeConfiguration<Wh
         b.Property(m => m.ProviderMessageId).HasMaxLength(200);
         b.HasIndex(m => new { m.Status, m.CreatedAt });
         b.HasIndex(m => m.NotificationId);
+        b.HasIndex(m => m.ProviderMessageId);
         b.HasOne<Notification>().WithMany().HasForeignKey(m => m.NotificationId).OnDelete(DeleteBehavior.Cascade);
     }
 }

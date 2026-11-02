@@ -5,6 +5,7 @@ export const alertKeys = {
   all: ["alerts"] as const,
   unread: ["alerts", "unread-count"] as const,
   channels: ["alerts", "channels"] as const,
+  whatsAppSetup: ["alerts", "whatsapp-setup"] as const,
   list: (unreadOnly: boolean, page: number) => ["alerts", "list", unreadOnly, page] as const,
 }
 

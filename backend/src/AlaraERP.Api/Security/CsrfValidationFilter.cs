@@ -4,6 +4,10 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace AlaraERP.Api.Security;
 
+/// <summary>For a call made by another server, not a browser: it has no session to protect and must prove itself another way.</summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class SkipCsrfAttribute : Attribute;
+
 /// <summary>
 /// Validates the antiforgery token (cookie + <c>X-XSRF-TOKEN</c> header) on every state-changing request.
 /// The SPA obtains the header value from <c>GET /api/auth/csrf</c>.
@@ -15,6 +19,7 @@ public sealed class CsrfValidationFilter(IAntiforgery antiforgery) : IAsyncAutho
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         if (SafeMethods.Contains(context.HttpContext.Request.Method)) return;
+        if (context.ActionDescriptor.EndpointMetadata.OfType<SkipCsrfAttribute>().Any()) return;
 
         try
         {

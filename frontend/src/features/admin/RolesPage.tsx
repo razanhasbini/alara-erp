@@ -9,11 +9,11 @@ import type { Role } from "@/types/api"
 
 const groupLabel: Record<string, string> = {
   products: "Catalogue", inventory: "Inventory", boxes: "Boxes", warehouses: "Warehouses", orders: "Orders",
-  expenses: "Bills & expenses", reports: "Reports", costs: "Costs & profit", users: "Employees",
+  expenses: "Bills & expenses", reports: "Reports", costs: "Costs & profit", users: "Employees", notifications: "WhatsApp alerts",
 }
 const actionLabel = (p: string) => {
   const a = p.split(".")[1]
-  return ({ manage_pricing: "change prices", manage_thresholds: "set stock alerts", manage_payments: "manage order payments", assign_roles: "assign roles" } as Record<string, string>)[a] ?? a.replace(/_/g, " ")
+  return ({ manage_pricing: "change prices", manage_thresholds: "set stock alerts", manage_payments: "manage order payments", assign_roles: "assign roles", manage_whatsapp: "manage the WhatsApp connection" } as Record<string, string>)[a] ?? a.replace(/_/g, " ")
 }
 
 export function RolesPage() {

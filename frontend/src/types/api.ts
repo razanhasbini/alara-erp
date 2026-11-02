@@ -513,7 +513,7 @@ export interface ReservedStock {
   orders: { orderId: string; orderNumber: string; recipientName: string; quantity: number; reservedUntil: string | null }[]
 }
 
-export type WhatsAppStatus = "Pending" | "Sent" | "Failed" | "NotConfigured"
+export type WhatsAppStatus = "Pending" | "Sent" | "Failed" | "NotConfigured" | "Delivered" | "Read"
 
 export interface AlertItem {
   id: string
@@ -532,6 +532,19 @@ export interface AlertChannels {
   usesTemplate: boolean
   whatsAppPending: number
   whatsAppNotSent: number
+}
+
+export interface WhatsAppSetup {
+  connected: boolean
+  missingSettings: string[]
+  recipients: string[]
+  ignoredRecipients: number
+  templateName: string | null
+  templateLanguage: string
+  apiVersion: string
+  deliveryReportsReady: boolean
+  linksReady: boolean
+  webhookPath: string
 }
 
 // ---- activity log -------------------------------------------------------------------------

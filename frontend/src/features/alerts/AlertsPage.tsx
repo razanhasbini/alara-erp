@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlarmClock, Bell, CheckCheck, MessageCircle, Package2, PackageMinus, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { useAuth } from "@/auth/auth"
 import { Pager } from "@/components/common/DataTable"
 import { Segmented } from "@/components/common/controls"
 import { PageHeader } from "@/components/common/page"
@@ -12,10 +13,14 @@ import { Button } from "@/components/ui/button"
 import { api, errorMessage } from "@/lib/api"
 import { dateTime, when } from "@/lib/format"
 import { alertKeys } from "@/lib/alerts"
+import { P } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 import type { AlertChannels, AlertItem, Paged, WhatsAppStatus } from "@/types/api"
+import { WhatsAppSetupPanel } from "./WhatsAppSetupPanel"
 
 const whatsAppCopy: Record<WhatsAppStatus, { label: string; tone: "green" | "amber" | "red" | "neutral" }> = {
+  Read: { label: "Read on WhatsApp", tone: "green" },
+  Delivered: { label: "Delivered on WhatsApp", tone: "green" },
   Sent: { label: "Sent on WhatsApp", tone: "green" },
   Pending: { label: "Sending on WhatsApp", tone: "amber" },
   Failed: { label: "WhatsApp failed", tone: "red" },
@@ -24,6 +29,8 @@ const whatsAppCopy: Record<WhatsAppStatus, { label: string; tone: "green" | "amb
 
 export function AlertsPage() {
   const queryClient = useQueryClient()
+  const { can } = useAuth()
+  const managesWhatsApp = can(P.notifications.manageWhatsApp)
   const [unreadOnly, setUnreadOnly] = useState(false)
   const [page, setPage] = useState(1)
   const { data: channels } = useQuery({ queryKey: alertKeys.channels, queryFn: () => api<AlertChannels>("/api/notifications/channels") })
@@ -58,7 +65,8 @@ export function AlertsPage() {
       <PageHeader title="Alerts" description="Everything the system sends on WhatsApp is kept here too, so nothing is missed if a message isn't seen."
         actions={<Button variant="outline" disabled={markAll.isPending} onClick={() => markAll.mutate()}>{markAll.isPending ? <InlineSpinner /> : <CheckCheck />} Mark all as read</Button>} />
 
-      {channels && !channels.whatsAppConfigured && (
+      {managesWhatsApp && <WhatsAppSetupPanel />}
+      {channels && !channels.whatsAppConfigured && !managesWhatsApp && (
         <div role="status" className="mb-4 flex items-start gap-3 frame rounded-lg bg-card px-4 py-3 text-sm">
           <MessageCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
           <div>
@@ -101,7 +109,7 @@ export function AlertsPage() {
 function AlertRow({ alert, canResend, resending, onRead, onResend }: {
   alert: AlertItem; canResend: boolean; resending: boolean; onRead: () => void; onResend: () => void
 }) {
-  const Icon = alert.type === "stock.low" ? PackageMinus : alert.type === "boxes.low" ? Package2 : alert.type === "reservation.expired" ? AlarmClock : Bell
+  const Icon = alert.type === "stock.low" ? PackageMinus : alert.type === "boxes.low" ? Package2 : alert.type === "reservation.expired" ? AlarmClock : alert.type === "whatsapp.test" ? MessageCircle : Bell
   const undelivered = alert.whatsApp.some((m) => m.status === "Failed" || m.status === "NotConfigured")
   const statuses = [...new Set(alert.whatsApp.map((m) => m.status))]
   return (

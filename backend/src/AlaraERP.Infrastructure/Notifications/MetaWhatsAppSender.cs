@@ -28,7 +28,7 @@ internal sealed class MetaWhatsAppSender(HttpClient http, IOptions<WhatsAppOptio
                 template = new
                 {
                     name = o.TemplateName, language = new { code = o.TemplateLanguage },
-                    components = new[] { new { type = "body", parameters = new[] { new { type = "text", text = body.Replace('\n', ' ') } } } },
+                    components = new[] { new { type = "body", parameters = new[] { new { type = "text", text = WhatsAppText.ForTemplate(body) } } } },
                 },
             };
 
@@ -44,17 +44,47 @@ internal sealed class MetaWhatsAppSender(HttpClient http, IOptions<WhatsAppOptio
             var text = await response.Content.ReadAsStringAsync(ct);
             if (response.IsSuccessStatusCode)
             {
-                using var doc = JsonDocument.Parse(text);
-                var id = doc.RootElement.TryGetProperty("messages", out var m) && m.GetArrayLength() > 0 ? m[0].GetProperty("id").GetString() : null;
-                return new WhatsAppSendResult(true, id, null, false);
+                return new WhatsAppSendResult(true, MessageId(text), null, false);
             }
-            // 4xx (bad number, expired token, template not approved) will not fix itself by retrying; 429/5xx might.
-            var permanent = (int)response.StatusCode is >= 400 and < 500 && response.StatusCode != HttpStatusCode.TooManyRequests;
-            return new WhatsAppSendResult(false, null, $"{(int)response.StatusCode}: {Trim(text)}", permanent);
+            var (code, message) = ErrorOf(text);
+            // Bad number, expired token, template not approved: retrying won't fix these. Rate limits and outages might pass.
+            var temporary = response.StatusCode == HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500 || (code is { } c && WhatsAppText.IsTemporary(c));
+            var error = code is { } known ? WhatsAppText.Describe(known, message) : $"{(int)response.StatusCode}: {Trim(text)}";
+            return new WhatsAppSendResult(false, null, error, !temporary);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             return new WhatsAppSendResult(false, null, ex.Message, Permanent: false);
+        }
+    }
+
+    /// <summary>The send has already succeeded here, so an unreadable reply must not make the message go out again.</summary>
+    private static string? MessageId(string reply)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(reply);
+            return doc.RootElement.TryGetProperty("messages", out var m) && m.GetArrayLength() > 0 ? m[0].GetProperty("id").GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static (int? Code, string? Message) ErrorOf(string reply)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(reply);
+            if (!doc.RootElement.TryGetProperty("error", out var error)) return (null, null);
+            var code = error.TryGetProperty("code", out var c) && c.TryGetInt32(out var n) ? n : (int?)null;
+            var detail = error.TryGetProperty("error_data", out var data) && data.TryGetProperty("details", out var d) ? d.GetString() : null;
+            return (code, detail ?? (error.TryGetProperty("message", out var m) ? m.GetString() : null));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
         }
     }
 

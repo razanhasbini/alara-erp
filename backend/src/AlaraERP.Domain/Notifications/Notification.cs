@@ -51,12 +51,16 @@ public sealed class NotificationRead
     public DateTimeOffset ReadAt { get; private set; }
 }
 
-public enum WhatsAppStatus { Pending, Sent, Failed, NotConfigured }
+/// <summary>Sent means Meta accepted the message; Delivered, Read and a late Failed come from Meta's delivery reports.</summary>
+public enum WhatsAppStatus { Pending, Sent, Failed, NotConfigured, Delivered, Read }
 
 /// <summary>One WhatsApp message to one recipient for an alert (an outbox: sent by a background worker, retried on failure).</summary>
 public sealed class WhatsAppMessage
 {
     public const int MaxAttempts = 5;
+
+    /// <summary>How long to wait after each failed attempt. An alert is raised only once, so a Meta outage must not lose it.</summary>
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15), TimeSpan.FromHours(1)];
 
     private WhatsAppMessage() { }
 
@@ -80,6 +84,7 @@ public sealed class WhatsAppMessage
     public string? ProviderMessageId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset? SentAt { get; private set; }
+    public DateTimeOffset? NextAttemptAt { get; private set; }
 
     public void MarkSent(string? providerMessageId, DateTimeOffset at)
     {
@@ -88,14 +93,34 @@ public sealed class WhatsAppMessage
         ProviderMessageId = providerMessageId;
         SentAt = at;
         LastError = null;
+        NextAttemptAt = null;
     }
 
     /// <summary>Records a failed attempt; gives up (Failed) after <see cref="MaxAttempts"/> or on a permanent error.</summary>
-    public void MarkAttemptFailed(string error, bool permanent)
+    public void MarkAttemptFailed(string error, bool permanent, DateTimeOffset at)
     {
         Attempts++;
-        LastError = error.Length > 1000 ? error[..1000] : error;
+        LastError = Fit(error);
         Status = permanent || Attempts >= MaxAttempts ? WhatsAppStatus.Failed : WhatsAppStatus.Pending;
+        NextAttemptAt = Status == WhatsAppStatus.Pending ? at + RetryDelays[Attempts - 1] : null;
+    }
+
+    /// <summary>Applies a delivery report from Meta. Reports can arrive out of order, so a message only ever moves forward.</summary>
+    public void ApplyDeliveryReport(WhatsAppStatus reported, string? error)
+    {
+        switch (reported)
+        {
+            case WhatsAppStatus.Delivered when Status == WhatsAppStatus.Sent:
+                Status = WhatsAppStatus.Delivered;
+                break;
+            case WhatsAppStatus.Read when Status is WhatsAppStatus.Sent or WhatsAppStatus.Delivered:
+                Status = WhatsAppStatus.Read;
+                break;
+            case WhatsAppStatus.Failed when Status == WhatsAppStatus.Sent:
+                Status = WhatsAppStatus.Failed;
+                LastError = Fit(error ?? "WhatsApp could not deliver this message.");
+                break;
+        }
     }
 
     /// <summary>Queues a message that could not be sent (not connected / failed) to be sent again.</summary>
@@ -104,5 +129,10 @@ public sealed class WhatsAppMessage
         Status = WhatsAppStatus.Pending;
         Attempts = 0;
         LastError = null;
+        ProviderMessageId = null; // a late report about the old attempt must not change the new one
+        SentAt = null;
+        NextAttemptAt = null;
     }
+
+    private static string Fit(string error) => error.Length > 1000 ? error[..1000] : error;
 }

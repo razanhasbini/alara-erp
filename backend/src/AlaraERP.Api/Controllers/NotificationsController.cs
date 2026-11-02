@@ -1,4 +1,6 @@
+using AlaraERP.Api.Security;
 using AlaraERP.Application.Common;
+using AlaraERP.Application.Common.Security;
 using AlaraERP.Application.Notifications;
 using Microsoft.AspNetCore.Mvc;
 
@@ -38,4 +40,18 @@ public sealed class NotificationsController(NotificationService notifications) :
 
     [HttpGet("channels")]
     public Task<NotificationChannelsDto> Channels(CancellationToken ct) => notifications.ChannelsAsync(ct);
+
+    [HttpGet("whatsapp/setup")]
+    [HasPermission(Permissions.Notifications.ManageWhatsApp)]
+    public WhatsAppSetupDto WhatsAppSetup() => notifications.WhatsAppSetup();
+
+    /// <summary>Sends a test message to every recipient, within a minute.</summary>
+    [HttpPost("whatsapp/test")]
+    [HasPermission(Permissions.Notifications.ManageWhatsApp)]
+    [ProducesResponseType(204)]
+    public async Task<IActionResult> SendWhatsAppTest(CancellationToken ct)
+    {
+        await notifications.SendWhatsAppTestAsync(ct);
+        return NoContent();
+    }
 }
